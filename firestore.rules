@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+    }
+    function isAdmin()    { return userRole() == 'ADMIN' }
+    function isHQ()       { return userRole() in ['HQ_CHIEF', 'HQ_MEMBER'] }
+    function isHQOrAdmin(){ return isAdmin() || isHQ() }
+
+    // 사용자
+    match /users/{uid} {
+      allow read:  if request.auth != null
+      allow write: if request.auth.uid == uid || isAdmin()
+    }
+
+    // 사업장: 관리자만 생성/수정/삭제, 로그인 사용자 읽기
+    match /businesses/{bizId} {
+      allow read:                if request.auth != null
+      allow create, update, delete: if isAdmin()
+    }
+
+    // 메시지
+    match /messages/{msgId} {
+      allow read: if request.auth != null && (
+        isHQOrAdmin()
+        || resource.data.targetBizIds.hasAny([
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.bizId
+           ])
+      )
+      allow create: if isHQ()        // 본부장/본부멤버만 전달 작성
+      allow update: if request.auth != null  // 접수/답변은 누구나
+    }
+  }
+}
