@@ -72,7 +72,7 @@ export default function BusinessDetailPage() {
     if (!replyTxt.trim() || !selMsg || !user) return
     setSending(true)
     await addReply(selMsg.id, id, {
-      fromUid: user.uid, fromName: user.name, role: user.role, text: replyTxt,
+      fromUid: user.uid, fromName: user.name, role: user.role, text: replyTxt, createdAt: new Date().toISOString(),
     })
     setReplyTxt('')
     setSending(false)
