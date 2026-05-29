@@ -191,3 +191,19 @@ export async function hideMessage(msgId: string, bizId: string) {
   )
   await updateDoc(ref, { receipts: updated, updatedAt: serverTimestamp() })
 }
+
+// ── 운영본부 자동 생성/조회 ────────────────────────────
+const HQ_BIZ_NAME = '운영본부'
+
+export async function ensureHQBusiness(): Promise<string> {
+  const { getDocs, query, where, collection: col, addDoc: add, serverTimestamp: sts } = await import('firebase/firestore')
+  const snap = await getDocs(query(col(db, 'businesses'), where('isHQ', '==', true)))
+  if (!snap.empty) return snap.docs[0].id
+  // 없으면 생성
+  const ref = await add(col(db, 'businesses'), {
+    name: HQ_BIZ_NAME,
+    isHQ: true,
+    createdAt: sts(),
+  })
+  return ref.id
+}
