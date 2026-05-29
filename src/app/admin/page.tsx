@@ -9,7 +9,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
 import { auth, db } from '@/lib/firebase'
 import type { AppUser, Business, UserRole } from '@/types'
-import { UserPlus, Edit2, Check, X, ShieldCheck } from 'lucide-react'
+import { UserPlus, Edit2, Check, X, ShieldCheck, ChevronDown } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function AdminPage() {
@@ -30,7 +30,6 @@ export default function AdminPage() {
   const [addError,  setAddError]  = useState('')
 
   useEffect(() => {
-    // 관리자(ADMIN)만 접근 가능
     if (user && user.role !== 'ADMIN') { router.replace('/dashboard'); return }
     const u1 = listenUsers(setUsers)
     const u2 = listenBusinesses(setBusinesses)
@@ -38,7 +37,8 @@ export default function AdminPage() {
   }, [user, router])
 
   const handleAddUser = async () => {
-    if (!newEmail || !newPw || !newName) return
+    if (!newEmail || !newPw || !newName) { setAddError('이름, 이메일, 비밀번호를 모두 입력해주세요'); return }
+    if (newRole === 'BIZ_REP' && !newBizId) { setAddError('담당 사업장을 선택해주세요'); return }
     setAdding(true); setAddError('')
     try {
       const cred = await createUserWithEmailAndPassword(auth, newEmail, newPw)
@@ -77,6 +77,8 @@ export default function AdminPage() {
     return 'bg-green-100 text-green-800'
   }
 
+  const selectedBiz = businesses.find(b => b.id === newBizId)
+
   return (
     <AppShell>
       <div className="p-4 md:p-6 max-w-3xl mx-auto">
@@ -96,7 +98,7 @@ export default function AdminPage() {
         {/* 역할 안내 */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
           {([
-            { role: 'ADMIN',      desc: '계정/권한 관리' },
+            { role: 'ADMIN',      desc: '계정/권한/사업장 관리' },
             { role: 'HQ_CHIEF',   desc: '전달 발송, 현황 조회' },
             { role: 'HQ_MEMBER',  desc: '전달 발송, 현황 조회' },
             { role: 'BIZ_REP',    desc: '내 사업장 접수/답변' },
@@ -112,49 +114,94 @@ export default function AdminPage() {
 
         {/* 계정 추가 폼 */}
         {showAdd && (
-          <div className="card p-4 mb-5 flex flex-col gap-3">
+          <div className="card p-4 mb-5 flex flex-col gap-4">
             <h2 className="text-sm font-semibold text-gray-900">새 계정 추가</h2>
+
+            {/* 역할 선택 */}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-2">역할 *</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {(['HQ_MEMBER', 'HQ_CHIEF', 'BIZ_REP', 'ADMIN'] as UserRole[]).map(r => (
+                  <button
+                    key={r}
+                    onClick={() => { setNewRole(r); if (r !== 'BIZ_REP') setNewBizId('') }}
+                    className={clsx(
+                      'py-2 rounded-lg border text-xs font-medium transition-all',
+                      newRole === r
+                        ? 'border-primary-400 bg-primary-50 text-primary-800'
+                        : 'border-gray-100 bg-white text-gray-600 hover:bg-gray-50'
+                    )}
+                  >
+                    {roleLabel(r)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 사업장대표인 경우 사업장 먼저 선택 */}
+            {newRole === 'BIZ_REP' && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-2">담당 사업장 * (먼저 선택하세요)</label>
+                {businesses.length === 0 ? (
+                  <div className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">
+                    ※ 먼저 사업장 목록에서 사업장을 추가해주세요
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {businesses.map(b => (
+                      <button
+                        key={b.id}
+                        onClick={() => setNewBizId(b.id)}
+                        className={clsx(
+                          'flex flex-col items-start px-3 py-2.5 rounded-lg border text-left transition-all',
+                          newBizId === b.id
+                            ? 'border-primary-400 bg-primary-50'
+                            : 'border-gray-100 bg-white hover:border-gray-200'
+                        )}
+                      >
+                        <span className={clsx('text-sm font-medium', newBizId === b.id ? 'text-primary-800' : 'text-gray-900')}>
+                          {b.name}
+                        </span>
+                        <span className="text-xs text-gray-400">{b.repName} 대표</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {newBizId && selectedBiz && (
+                  <p className="text-xs text-primary-700 mt-2 font-medium">
+                    ✓ {selectedBiz.name} 선택됨
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* 기본 정보 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">이름 *</label>
-                <input className="input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="홍길동" />
+                <input className="input" value={newName} onChange={e => setNewName(e.target.value)}
+                  placeholder={newRole === 'BIZ_REP' && selectedBiz ? `${selectedBiz.repName}` : '홍길동'} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">이메일 *</label>
-                <input className="input" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="user@gmail.com" />
+                <input className="input" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+                  placeholder="user@gmail.com" />
               </div>
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">초기 비밀번호 * (6자 이상)</label>
-                <input className="input" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="••••••••" />
+                <input className="input" type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
+                  placeholder="••••••••" />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">역할 *</label>
-                <select className="input" value={newRole} onChange={e => setNewRole(e.target.value as UserRole)}>
-                  <option value="HQ_MEMBER">본부멤버</option>
-                  <option value="HQ_CHIEF">본부장</option>
-                  <option value="BIZ_REP">사업장대표</option>
-                  <option value="ADMIN">관리자</option>
-                </select>
-              </div>
-              {newRole === 'BIZ_REP' && (
-                <div className="col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">담당 사업장 *</label>
-                  <select className="input" value={newBizId} onChange={e => setNewBizId(e.target.value)}>
-                    <option value="">사업장을 선택하세요</option>
-                    {businesses.map(b => <option key={b.id} value={b.id}>{b.name} ({b.repName})</option>)}
-                  </select>
-                  <p className="text-xs text-gray-400 mt-1">
-                    ※ 사업장이 없으면 먼저 사업장 목록에서 추가하세요
-                  </p>
-                </div>
-              )}
             </div>
+
             {addError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{addError}</p>}
+
             <div className="bg-amber-50 rounded-lg px-3 py-2 text-xs text-amber-700">
               계정 생성 후 이메일과 비밀번호를 해당 사용자에게 직접 전달해주세요.
             </div>
+
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowAdd(false)} className="btn">취소</button>
+              <button onClick={() => { setShowAdd(false); setAddError('') }} className="btn">취소</button>
               <button onClick={handleAddUser} disabled={adding} className="btn btn-primary">
                 {adding ? '생성 중...' : '계정 생성'}
               </button>

@@ -8,7 +8,6 @@ import { useAuth } from '@/lib/auth-context'
 import { listenBusinesses, listenMessages } from '@/lib/db'
 import type { Business, Message } from '@/types'
 import { Plus, Users, MapPin, ChevronRight } from 'lucide-react'
-import clsx from 'clsx'
 
 export default function BusinessesPage() {
   const { user } = useAuth()
@@ -16,8 +15,10 @@ export default function BusinessesPage() {
   const [messages,   setMessages]   = useState<Message[]>([])
   const [showForm,   setShowForm]   = useState(false)
 
-  const isHQ    = user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
-  const isChief = user?.role === 'HQ_CHIEF'
+  // 관리자(ADMIN)도 사업장 추가/수정/삭제 가능
+  const isAdmin  = user?.role === 'ADMIN'
+  const isHQ     = user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
+  const canManage = isAdmin  // 사업장 추가/수정/삭제 권한
 
   useEffect(() => {
     const u1 = listenBusinesses(setBusinesses)
@@ -31,7 +32,7 @@ export default function BusinessesPage() {
       m.receipts.find(r => r.bizId === bizId)?.status === 'pending'
     ).length
 
-  const visible = isHQ ? businesses : businesses.filter(b => b.id === user?.bizId)
+  const visible = (isHQ || isAdmin) ? businesses : businesses.filter(b => b.id === user?.bizId)
 
   return (
     <AppShell>
@@ -41,7 +42,7 @@ export default function BusinessesPage() {
             <h1 className="text-xl font-semibold text-gray-900">사업장 목록</h1>
             <p className="text-sm text-gray-500 mt-0.5">총 {visible.length}개 사업장</p>
           </div>
-          {isChief && (
+          {canManage && (
             <button onClick={() => setShowForm(true)} className="btn btn-primary">
               <Plus className="w-4 h-4" /> 사업장 추가
             </button>
@@ -85,6 +86,12 @@ export default function BusinessesPage() {
             )
           })}
         </div>
+
+        {visible.length === 0 && (
+          <div className="text-center py-16 text-gray-400 text-sm">
+            {canManage ? '사업장을 추가해주세요' : '등록된 사업장이 없습니다'}
+          </div>
+        )}
 
         {showForm && (
           <BusinessForm

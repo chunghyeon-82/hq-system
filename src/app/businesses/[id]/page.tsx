@@ -29,6 +29,7 @@ export default function BusinessDetailPage() {
   const [filter,   setFilter]   = useState<'all' | 'pending' | 'done'>('all')
 
   const isHQ    = user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
+  const isAdmin  = user?.role === 'ADMIN'
   const isChief = user?.role === 'HQ_CHIEF'
   const isBizRep = user?.role === 'BIZ_REP'
 
@@ -98,7 +99,7 @@ export default function BusinessDetailPage() {
               <p className="text-sm text-gray-500">{biz.repName} 대표 · {biz.address}</p>
             </div>
           </div>
-          {isChief && (
+          {(isChief || isAdmin) && (
             <div className="flex gap-2">
               <button onClick={() => setEditing(true)} className="btn">
                 <Edit className="w-4 h-4" /> 수정
