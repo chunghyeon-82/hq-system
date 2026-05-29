@@ -1,6 +1,6 @@
 import {
-  collection, doc, addDoc, getDoc, updateDoc, setDoc, deleteDoc,
-  query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion, or,
+  collection, doc, addDoc, getDocs, getDoc, updateDoc, setDoc, deleteDoc,
+  query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion, or, limit,
 } from 'firebase/firestore'
 import { db } from './firebase'
 import type { AppUser, Business, Message, Receipt, Reply, MessageStatus, MessageType } from '@/types'
@@ -196,14 +196,10 @@ export async function hideMessage(msgId: string, bizId: string) {
 const HQ_BIZ_NAME = '운영본부'
 
 export async function ensureHQBusiness(): Promise<string> {
-  const { getDocs, query, where, collection: col, addDoc: add, serverTimestamp: sts } = await import('firebase/firestore')
-  const snap = await getDocs(query(col(db, 'businesses'), where('isHQ', '==', true)))
+  const snap = await getDocs(query(collection(db, 'businesses'), where('isHQ', '==', true)))
   if (!snap.empty) return snap.docs[0].id
-  // 없으면 생성
-  const ref = await add(col(db, 'businesses'), {
-    name: HQ_BIZ_NAME,
-    isHQ: true,
-    createdAt: sts(),
+  const ref = await addDoc(collection(db, 'businesses'), {
+    name: HQ_BIZ_NAME, isHQ: true, createdAt: serverTimestamp(),
   })
   return ref.id
 }
@@ -219,12 +215,10 @@ export interface ChatMessage {
 }
 
 export function listenChatMessages(viewerRole: string, cb: (msgs: ChatMessage[]) => void) {
-  const { query, collection: col, orderBy: ob, onSnapshot: ons, limit } = require('firebase/firestore')
-  return ons(
-    query(col(db, 'hq_chat'), ob('createdAt', 'asc'), limit(200)),
-    (snap: any) => {
-      const all: ChatMessage[] = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))
-      // 관리자가 아닌 경우 → 관리자가 보낸 메시지 숨김
+  return onSnapshot(
+    query(collection(db, 'hq_chat'), orderBy('createdAt', 'asc'), limit(200)),
+    (snap) => {
+      const all: ChatMessage[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage))
       const filtered = viewerRole === 'ADMIN'
         ? all
         : all.filter(m => m.authorRole !== 'ADMIN')
@@ -234,6 +228,7 @@ export function listenChatMessages(viewerRole: string, cb: (msgs: ChatMessage[])
 }
 
 export async function sendChatMessage(authorUid: string, authorName: string, authorRole: string, body: string) {
-  const { collection: col, addDoc: add, serverTimestamp: sts } = await import('firebase/firestore')
-  await add(col(db, 'hq_chat'), { authorUid, authorName, authorRole, body, createdAt: sts() })
+  await addDoc(collection(db, 'hq_chat'), {
+    authorUid, authorName, authorRole, body, createdAt: serverTimestamp()
+  })
 }

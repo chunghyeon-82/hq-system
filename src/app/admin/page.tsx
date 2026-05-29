@@ -8,21 +8,31 @@ import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { auth, db } from '@/lib/firebase'
 import type { AppUser, Business, UserRole, UserPermissions } from '@/types'
-import { UserPlus, Edit2, Trash2, Building2, Check, X, ShieldCheck } from 'lucide-react'
+import { UserPlus, Edit2, Trash2, Building2, Check, X, ShieldCheck, Pencil } from 'lucide-react'
 import clsx from 'clsx'
 
 const ROLE_LABELS: Record<UserRole, string> = {
-  ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표'
+  ADMIN:     '관리자',
+  HQ_CHIEF:  '본부장',
+  HQ_MEMBER: '본부멤버',
+  BIZ_REP:   '사업장대표',
+  ETC:       '기타',
 }
 const ROLE_COLORS: Record<UserRole, string> = {
   ADMIN:     'bg-purple-100 text-purple-700',
   HQ_CHIEF:  'bg-primary-100 text-primary-700',
   HQ_MEMBER: 'bg-blue-100 text-blue-700',
   BIZ_REP:   'bg-green-100 text-green-700',
+  ETC:       'bg-gray-100 text-gray-600',
 }
 
-// 본부 소속 역할 (운영본부에 자동 배정)
 const HQ_ROLES: UserRole[] = ['ADMIN', 'HQ_CHIEF', 'HQ_MEMBER']
+
+// 역할 표시명 (customRole 우선)
+function roleDisplay(u: AppUser) {
+  if (u.role === 'ETC' && u.customRole) return u.customRole
+  return ROLE_LABELS[u.role] ?? u.role
+}
 
 function PermToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -48,56 +58,68 @@ export default function AdminPage() {
   const [businesses, setBusinesses] = useState<Business[]>([])
   const [showAdd,    setShowAdd]    = useState(false)
   const [editUser,   setEditUser]   = useState<AppUser | null>(null)
-  const [hqBizId,    setHqBizId]    = useState<string>('')
+  const [hqBizId,    setHqBizId]    = useState('')
 
-  const [newEmail,  setNewEmail]  = useState('')
-  const [newPw,     setNewPw]     = useState('')
-  const [newName,   setNewName]   = useState('')
-  const [newRole,   setNewRole]   = useState<UserRole>('HQ_MEMBER')
-  const [newBizId,  setNewBizId]  = useState('')
-  const [newPerms,  setNewPerms]  = useState<UserPermissions>({})
-  const [adding,    setAdding]    = useState(false)
-  const [addError,  setAddError]  = useState('')
+  // 신규 추가 폼
+  const [newEmail,      setNewEmail]      = useState('')
+  const [newPw,         setNewPw]         = useState('')
+  const [newName,       setNewName]       = useState('')
+  const [newRole,       setNewRole]       = useState<UserRole>('HQ_MEMBER')
+  const [newCustomRole, setNewCustomRole] = useState('')
+  const [newBizId,      setNewBizId]      = useState('')
+  const [newPerms,      setNewPerms]      = useState<UserPermissions>({})
+  const [adding,        setAdding]        = useState(false)
+  const [addError,      setAddError]      = useState('')
 
-  const [editName,  setEditName]  = useState('')
-  const [editRole,  setEditRole]  = useState<UserRole>('HQ_MEMBER')
-  const [editBizId, setEditBizId] = useState('')
-  const [editPerms, setEditPerms] = useState<UserPermissions>({})
-  const [saving,    setSaving]    = useState(false)
+  // 수정 폼
+  const [editName,       setEditName]       = useState('')
+  const [editRole,       setEditRole]       = useState<UserRole>('HQ_MEMBER')
+  const [editCustomRole, setEditCustomRole] = useState('')
+  const [editBizId,      setEditBizId]      = useState('')
+  const [editPerms,      setEditPerms]      = useState<UserPermissions>({})
+  const [saving,         setSaving]         = useState(false)
 
   useEffect(() => {
     if (user && user.role !== 'ADMIN') { router.replace('/dashboard'); return }
     const u1 = listenUsers(setUsers)
     const u2 = listenBusinesses(setBusinesses)
-    // 운영본부 ID 미리 확보
     ensureHQBusiness().then(setHqBizId)
     return () => { u1(); u2() }
   }, [user, router])
 
   const openEdit = (u: AppUser) => {
-    setEditUser(u); setEditName(u.name)
-    setEditRole(u.role); setEditBizId(u.bizId ?? '')
+    setEditUser(u)
+    setEditName(u.name)
+    setEditRole(u.role)
+    setEditCustomRole(u.customRole ?? '')
+    setEditBizId(u.bizId ?? '')
     setEditPerms(u.permissions ?? {})
   }
 
   const handleSaveEdit = async () => {
     if (!editUser || !editName.trim()) return
     if (editRole === 'BIZ_REP' && !editBizId) return
+    if (editRole === 'ETC' && !editCustomRole.trim()) return
     setSaving(true)
 
-    // 본부 역할이면 운영본부에 자동 배정
-    const assignedBizId = HQ_ROLES.includes(editRole)
-      ? (hqBizId || await ensureHQBusiness())
-      : editRole === 'BIZ_REP' ? editBizId : null
+    // bizId 결정
+    let assignedBizId: string | null = null
+    if (HQ_ROLES.includes(editRole)) {
+      assignedBizId = hqBizId || await ensureHQBusiness()
+    } else if (editRole === 'BIZ_REP' || editRole === 'ETC') {
+      assignedBizId = editBizId || null
+    }
 
     await updateDoc(doc(db, 'users', editUser.uid), {
-      name: editName, role: editRole,
-      bizId: assignedBizId,
+      name:       editName,
+      role:       editRole,
+      customRole: editRole === 'ETC' ? editCustomRole.trim() : null,
+      bizId:      assignedBizId,
       permissions: editPerms,
     })
 
     // 이전 사업장 대표 해제
-    if (editUser.bizId && editUser.role === 'BIZ_REP' && editUser.bizId !== editBizId) {
+    if (editUser.role === 'BIZ_REP' && editUser.bizId && editUser.bizId !== editBizId) {
       await updateBusiness(editUser.bizId, { repName: '', repUid: '' })
     }
     // 새 사업장 대표 연동
@@ -120,17 +142,21 @@ export default function AdminPage() {
   const handleAddUser = async () => {
     if (!newEmail || !newPw || !newName) { setAddError('모두 입력해주세요'); return }
     if (newRole === 'BIZ_REP' && !newBizId) { setAddError('담당 사업장을 선택해주세요'); return }
+    if (newRole === 'ETC' && !newCustomRole.trim()) { setAddError('직책명을 입력해주세요'); return }
     setAdding(true); setAddError('')
     try {
-      // 본부 역할이면 운영본부에 자동 배정
-      const assignedBizId = HQ_ROLES.includes(newRole)
-        ? (hqBizId || await ensureHQBusiness())
-        : newRole === 'BIZ_REP' ? newBizId : null
+      let assignedBizId: string | null = null
+      if (HQ_ROLES.includes(newRole)) {
+        assignedBizId = hqBizId || await ensureHQBusiness()
+      } else if (newRole === 'BIZ_REP' || newRole === 'ETC') {
+        assignedBizId = newBizId || null
+      }
 
       const cred = await createUserWithEmailAndPassword(auth, newEmail, newPw)
       const newUser: AppUser = {
         uid: cred.user.uid, email: newEmail, name: newName,
         role: newRole, permissions: newPerms,
+        ...(newRole === 'ETC' ? { customRole: newCustomRole.trim() } : {}),
         ...(assignedBizId ? { bizId: assignedBizId } : {}),
       }
       await setDoc(doc(db, 'users', cred.user.uid), newUser)
@@ -142,22 +168,22 @@ export default function AdminPage() {
       setShowAdd(false)
       setNewEmail(''); setNewPw(''); setNewName('')
       setNewBizId(''); setNewRole('HQ_MEMBER'); setNewPerms({})
+      setNewCustomRole('')
     } catch (e: unknown) {
       setAddError(e instanceof Error ? e.message : '오류가 발생했습니다')
     } finally { setAdding(false) }
   }
 
   const showPerms = (role: UserRole) => role !== 'ADMIN' && role !== 'HQ_CHIEF'
-
-  // 운영본부 비즈니스 객체
-  const hqBiz = businesses.find(b => b.isHQ)
-
-  // 멤버를 운영본부 / 사업장 / 기타로 그룹핑
-  // 운영본부 표시: 본부장·본부멤버만 (관리자 제외)
+  const hqBiz     = businesses.find(b => b.isHQ)
+  const adminUsers = users.filter(u => u.role === 'ADMIN')
   const hqMembers  = users.filter(u => u.role === 'HQ_CHIEF' || u.role === 'HQ_MEMBER')
   const bizMembers = users.filter(u => u.role === 'BIZ_REP')
-  // 관리자는 별도 (자기 자신만 보임)
-  const adminUsers = users.filter(u => u.role === 'ADMIN')
+  const etcMembers = users.filter(u => u.role === 'ETC')
+
+  const cardProps = { user, businesses, editUser, editName, editRole, editCustomRole, editBizId, editPerms,
+    setEditName, setEditRole, setEditCustomRole, setEditBizId, setEditPerms,
+    saving, showPerms, openEdit, handleSaveEdit, handleDelete, setEditUser, hqBizId }
 
   return (
     <AppShell title="멤버 관리">
@@ -170,80 +196,45 @@ export default function AdminPage() {
           </button>
         </div>
 
-        {/* 관리자 (본인에게만 보임) */}
+        {/* 관리자 */}
         {adminUsers.length > 0 && (
-          <div>
-            <div className="flex items-center gap-2 mb-2 px-1">
-              <div className="w-2 h-2 rounded-full bg-purple-500"/>
-              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                관리자 — {adminUsers.length}명
-              </span>
-              <span className="text-xs text-gray-400">(다른 멤버에게 비노출)</span>
-            </div>
-            <div className="space-y-2">
-              {adminUsers.map(u => <MemberCard key={u.uid} u={u} user={user} businesses={businesses}
-              editUser={editUser} editName={editName} editRole={editRole} editBizId={editBizId} editPerms={editPerms}
-              setEditName={setEditName} setEditRole={setEditRole} setEditBizId={setEditBizId} setEditPerms={setEditPerms}
-              saving={saving} showPerms={showPerms} openEdit={openEdit} handleSaveEdit={handleSaveEdit}
-              handleDelete={handleDelete} setEditUser={setEditUser}/>)}
-            </div>
-          </div>
+          <Section dot="bg-purple-500" label={`관리자 — ${adminUsers.length}명`} sub="(다른 멤버에게 비노출)">
+            {adminUsers.map(u => <MemberCard key={u.uid} u={u} {...cardProps}/>)}
+          </Section>
         )}
 
-        {/* 운영본부 그룹 */}
-        <div>
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <div className="w-2 h-2 rounded-full bg-primary-500"/>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              운영본부 {hqBiz ? `(${hqBiz.name})` : ''} — {hqMembers.length}명
-            </span>
-          </div>
-          <div className="space-y-2">
-            {hqMembers.length === 0 && (
-              <div className="text-center py-4 text-gray-400 text-xs bg-gray-50 border border-gray-100 rounded-xl">
-                운영본부 멤버가 없습니다
-              </div>
-            )}
-            {hqMembers.map(u => <MemberCard key={u.uid} u={u} user={user} businesses={businesses}
-              editUser={editUser} editName={editName} editRole={editRole} editBizId={editBizId} editPerms={editPerms}
-              setEditName={setEditName} setEditRole={setEditRole} setEditBizId={setEditBizId} setEditPerms={setEditPerms}
-              saving={saving} showPerms={showPerms} openEdit={openEdit} handleSaveEdit={handleSaveEdit}
-              handleDelete={handleDelete} setEditUser={setEditUser}/>)}
-          </div>
-        </div>
+        {/* 운영본부 */}
+        <Section dot="bg-primary-500" label={`운영본부 ${hqBiz ? `(${hqBiz.name})` : ''} — ${hqMembers.length}명`}>
+          {hqMembers.length === 0
+            ? <Empty>운영본부 멤버가 없습니다</Empty>
+            : hqMembers.map(u => <MemberCard key={u.uid} u={u} {...cardProps}/>)}
+        </Section>
 
-        {/* 사업장 대표 그룹 */}
-        <div>
-          <div className="flex items-center gap-2 mb-2 px-1">
-            <div className="w-2 h-2 rounded-full bg-green-500"/>
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              사업장 대표 — {bizMembers.length}명
-            </span>
-          </div>
-          <div className="space-y-2">
-            {bizMembers.length === 0 && (
-              <div className="text-center py-4 text-gray-400 text-xs bg-gray-50 border border-gray-100 rounded-xl">
-                등록된 사업장 대표가 없습니다
-              </div>
-            )}
-            {bizMembers.map(u => <MemberCard key={u.uid} u={u} user={user} businesses={businesses}
-              editUser={editUser} editName={editName} editRole={editRole} editBizId={editBizId} editPerms={editPerms}
-              setEditName={setEditName} setEditRole={setEditRole} setEditBizId={setEditBizId} setEditPerms={setEditPerms}
-              saving={saving} showPerms={showPerms} openEdit={openEdit} handleSaveEdit={handleSaveEdit}
-              handleDelete={handleDelete} setEditUser={setEditUser}/>)}
-          </div>
-        </div>
+        {/* 사업장 대표 */}
+        <Section dot="bg-green-500" label={`사업장 대표 — ${bizMembers.length}명`}>
+          {bizMembers.length === 0
+            ? <Empty>등록된 사업장 대표가 없습니다</Empty>
+            : bizMembers.map(u => <MemberCard key={u.uid} u={u} {...cardProps}/>)}
+        </Section>
+
+        {/* 기타 */}
+        {etcMembers.length > 0 && (
+          <Section dot="bg-gray-400" label={`기타 — ${etcMembers.length}명`}>
+            {etcMembers.map(u => <MemberCard key={u.uid} u={u} {...cardProps}/>)}
+          </Section>
+        )}
       </div>
 
       {/* 계정 추가 모달 */}
       {showAdd && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between p-5 border-b border-gray-100 sticky top-0 bg-white z-10">
               <h3 className="font-semibold text-gray-900">새 계정 추가</h3>
               <button onClick={() => setShowAdd(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
             </div>
             <div className="p-5 space-y-4">
+              {/* 기본 정보 */}
               {[
                 { label: '이름',     value: newName,  onChange: setNewName,  type: 'text',     placeholder: '홍길동' },
                 { label: '이메일',   value: newEmail, onChange: setNewEmail, type: 'email',    placeholder: 'example@email.com' },
@@ -256,31 +247,53 @@ export default function AdminPage() {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
                 </div>
               ))}
+
+              {/* 역할 선택 */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">역할</label>
-                <select value={newRole} onChange={e => { setNewRole(e.target.value as UserRole); setNewPerms({}) }}
+                <select value={newRole} onChange={e => { setNewRole(e.target.value as UserRole); setNewPerms({}); setNewCustomRole(''); setNewBizId('') }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
-                  {(Object.entries(ROLE_LABELS) as [UserRole, string][]).map(([v, l]) => (
+                  {(Object.entries(ROLE_LABELS) as [UserRole, string][]).filter(([v]) => v !== 'ADMIN').map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
                   ))}
                 </select>
               </div>
 
-              {/* 본부 역할 안내 */}
-              {HQ_ROLES.includes(newRole) && (
-                <div className="bg-primary-50 border border-primary-200 rounded-lg px-3 py-2 text-xs text-primary-700 flex items-center gap-2">
-                  <Building2 size={13}/>
-                  <span>저장 시 <strong>운영본부</strong>에 자동 소속됩니다</span>
+              {/* 기타: 직책명 직접 입력 */}
+              {newRole === 'ETC' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    직책명 <span className="text-gray-400 font-normal text-xs">— 다른 멤버에게 보입니다</span>
+                  </label>
+                  <div className="relative">
+                    <Pencil size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                    <input value={newCustomRole} onChange={e => setNewCustomRole(e.target.value)}
+                      placeholder="예: 회계담당, 물류팀장, 외부감사..."
+                      className="w-full border border-gray-300 rounded-lg pl-8 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
+                  </div>
                 </div>
               )}
 
-              {/* 사업장 대표 선택 */}
-              {newRole === 'BIZ_REP' && (
+              {/* 운영본부 자동 소속 안내 */}
+              {HQ_ROLES.includes(newRole) && (
+                <div className="bg-primary-50 border border-primary-200 rounded-lg px-3 py-2 text-xs text-primary-700 flex items-center gap-2">
+                  <Building2 size={13}/> 저장 시 <strong>운영본부</strong>에 자동 소속됩니다
+                </div>
+              )}
+
+              {/* 소속 사업장 선택 (사업장대표 또는 기타) */}
+              {(newRole === 'BIZ_REP' || newRole === 'ETC') && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">담당 사업장</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    소속 {newRole === 'BIZ_REP' ? '사업장 *' : '(선택)'}
+                  </label>
                   <select value={newBizId} onChange={e => setNewBizId(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
-                    <option value="">선택하세요</option>
+                    <option value="">{newRole === 'ETC' ? '소속 없음' : '선택하세요'}</option>
+                    {/* ETC는 운영본부도 선택 가능 */}
+                    {newRole === 'ETC' && businesses.find(b => b.isHQ) && (
+                      <option value={businesses.find(b => b.isHQ)!.id}>운영본부</option>
+                    )}
                     {businesses.filter(b => !b.isHQ).map(b => (
                       <option key={b.id} value={b.id}>{b.name}</option>
                     ))}
@@ -303,6 +316,7 @@ export default function AdminPage() {
                   </div>
                 </div>
               )}
+
               {addError && <p className="text-red-500 text-sm">{addError}</p>}
             </div>
             <div className="flex gap-2 p-5 pt-0">
@@ -320,26 +334,54 @@ export default function AdminPage() {
   )
 }
 
-// ── 멤버 카드 컴포넌트 ──────────────────────────────────
-function MemberCard({ u, user, businesses, editUser, editName, editRole, editBizId, editPerms,
-  setEditName, setEditRole, setEditBizId, setEditPerms,
-  saving, showPerms, openEdit, handleSaveEdit, handleDelete, setEditUser }: {
+// ── 섹션 래퍼 ─────────────────────────────────────────
+function Section({ dot, label, sub, children }: {
+  dot: string; label: string; sub?: string; children: React.ReactNode
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <div className={clsx('w-2 h-2 rounded-full shrink-0', dot)}/>
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+        {sub && <span className="text-xs text-gray-400">{sub}</span>}
+      </div>
+      <div className="space-y-2">{children}</div>
+    </div>
+  )
+}
+function Empty({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-center py-4 text-gray-400 text-xs bg-gray-50 border border-gray-100 rounded-xl">{children}</div>
+  )
+}
+
+// ── 멤버 카드 ─────────────────────────────────────────
+function MemberCard({ u, user, businesses, editUser, editName, editRole, editCustomRole, editBizId, editPerms,
+  setEditName, setEditRole, setEditCustomRole, setEditBizId, setEditPerms,
+  saving, showPerms, openEdit, handleSaveEdit, handleDelete, setEditUser, hqBizId }: {
   u: AppUser; user: AppUser | null; businesses: Business[]
-  editUser: AppUser | null; editName: string; editRole: UserRole; editBizId: string; editPerms: UserPermissions
+  editUser: AppUser | null; editName: string; editRole: UserRole
+  editCustomRole: string; editBizId: string; editPerms: UserPermissions
   setEditName: (v: string) => void; setEditRole: (v: UserRole) => void
-  setEditBizId: (v: string) => void; setEditPerms: (fn: (p: UserPermissions) => UserPermissions) => void
+  setEditCustomRole: (v: string) => void; setEditBizId: (v: string) => void
+  setEditPerms: (fn: (p: UserPermissions) => UserPermissions) => void
   saving: boolean; showPerms: (r: UserRole) => boolean
   openEdit: (u: AppUser) => void; handleSaveEdit: () => void
   handleDelete: (u: AppUser) => void; setEditUser: (u: AppUser | null) => void
+  hqBizId: string
 }) {
+  const HQ_ROLES: UserRole[] = ['ADMIN', 'HQ_CHIEF', 'HQ_MEMBER']
   const ROLE_LABELS: Record<UserRole, string> = {
-    ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표'
+    ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표', ETC: '기타'
   }
   const ROLE_COLORS: Record<UserRole, string> = {
     ADMIN: 'bg-purple-100 text-purple-700', HQ_CHIEF: 'bg-primary-100 text-primary-700',
     HQ_MEMBER: 'bg-blue-100 text-blue-700', BIZ_REP: 'bg-green-100 text-green-700',
+    ETC: 'bg-gray-100 text-gray-600',
   }
-  const HQ_ROLES: UserRole[] = ['ADMIN', 'HQ_CHIEF', 'HQ_MEMBER']
+
+  const displayRole = u.role === 'ETC' && u.customRole ? u.customRole : ROLE_LABELS[u.role]
+  const bizName = businesses.find(b => b.id === u.bizId)
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -351,12 +393,17 @@ function MemberCard({ u, user, businesses, editUser, editName, editRole, editBiz
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm text-gray-900">{u.name}</span>
             <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium', ROLE_COLORS[u.role])}>
-              {ROLE_LABELS[u.role]}
+              {displayRole}
             </span>
-            {u.bizId && !HQ_ROLES.includes(u.role) && (
+            {/* 소속 (운영본부 소속은 표시 안 함) */}
+            {u.bizId && !HQ_ROLES.includes(u.role) && bizName && !bizName.isHQ && (
               <span className="text-xs text-gray-500 flex items-center gap-1">
-                <Building2 size={10}/>
-                {businesses.find(b => b.id === u.bizId)?.name ?? u.bizId}
+                <Building2 size={10}/>{bizName.name}
+              </span>
+            )}
+            {u.bizId && u.role === 'ETC' && bizName?.isHQ && (
+              <span className="text-xs text-gray-500 flex items-center gap-1">
+                <Building2 size={10}/>운영본부
               </span>
             )}
           </div>
@@ -378,12 +425,10 @@ function MemberCard({ u, user, businesses, editUser, editName, editRole, editBiz
         </div>
         {u.uid !== user?.uid ? (
           <div className="flex items-center gap-1 shrink-0">
-            <button onClick={() => openEdit(u)}
-              className="p-2 text-gray-400 hover:text-primary-600 rounded-lg hover:bg-primary-50 transition-colors">
+            <button onClick={() => openEdit(u)} className="p-2 text-gray-400 hover:text-primary-600 rounded-lg hover:bg-primary-50 transition-colors">
               <Edit2 size={15}/>
             </button>
-            <button onClick={() => handleDelete(u)}
-              className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+            <button onClick={() => handleDelete(u)} className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
               <Trash2 size={15}/>
             </button>
           </div>
@@ -392,6 +437,7 @@ function MemberCard({ u, user, businesses, editUser, editName, editRole, editBiz
         )}
       </div>
 
+      {/* 인라인 수정 폼 */}
       {editUser?.uid === u.uid && (
         <div className="border-t border-gray-100 bg-gray-50 p-4 space-y-4">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">정보 수정</p>
@@ -403,13 +449,30 @@ function MemberCard({ u, user, businesses, editUser, editName, editRole, editBiz
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">역할</label>
-              <select value={editRole} onChange={e => { setEditRole(e.target.value as UserRole); setEditPerms(() => ({})) }}
+              <select value={editRole} onChange={e => { setEditRole(e.target.value as UserRole); setEditPerms(() => ({})); setEditCustomRole(''); setEditBizId('') }}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
-                {(Object.entries(ROLE_LABELS) as [UserRole, string][]).map(([v, l]) => (
+                {(Object.entries(ROLE_LABELS) as [UserRole, string][]).filter(([v]) => v !== 'ADMIN').map(([v, l]) => (
                   <option key={v} value={v}>{l}</option>
                 ))}
               </select>
             </div>
+
+            {/* 기타: 직책명 입력 */}
+            {editRole === 'ETC' && (
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  직책명 <span className="text-gray-400 font-normal">— 다른 멤버에게 보입니다</span>
+                </label>
+                <div className="relative">
+                  <Pencil size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
+                  <input value={editCustomRole} onChange={e => setEditCustomRole(e.target.value)}
+                    placeholder="예: 회계담당, 물류팀장..."
+                    className="w-full border border-gray-300 rounded-lg pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
+                </div>
+              </div>
+            )}
+
+            {/* 운영본부 자동 안내 */}
             {HQ_ROLES.includes(editRole) && (
               <div className="sm:col-span-2">
                 <div className="bg-primary-50 border border-primary-200 rounded-lg px-3 py-2 text-xs text-primary-700 flex items-center gap-2">
@@ -417,12 +480,19 @@ function MemberCard({ u, user, businesses, editUser, editName, editRole, editBiz
                 </div>
               </div>
             )}
-            {editRole === 'BIZ_REP' && (
+
+            {/* 소속 선택 (사업장대표 또는 기타) */}
+            {(editRole === 'BIZ_REP' || editRole === 'ETC') && (
               <div className="sm:col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">담당 사업장</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  소속 {editRole === 'BIZ_REP' ? '사업장 *' : '(선택)'}
+                </label>
                 <select value={editBizId} onChange={e => setEditBizId(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
-                  <option value="">선택하세요</option>
+                  <option value="">{editRole === 'ETC' ? '소속 없음' : '선택하세요'}</option>
+                  {editRole === 'ETC' && businesses.find(b => b.isHQ) && (
+                    <option value={businesses.find(b => b.isHQ)!.id}>운영본부</option>
+                  )}
                   {businesses.filter(b => !b.isHQ).map(b => (
                     <option key={b.id} value={b.id}>{b.name}</option>
                   ))}
@@ -430,6 +500,8 @@ function MemberCard({ u, user, businesses, editUser, editName, editRole, editBiz
               </div>
             )}
           </div>
+
+          {/* 권한 */}
           {showPerms(editRole) && (
             <div className="space-y-2">
               <div className="flex items-center gap-1.5">
@@ -444,9 +516,10 @@ function MemberCard({ u, user, businesses, editUser, editName, editRole, editBiz
               </div>
             </div>
           )}
+
           <div className="flex gap-2">
             <button onClick={handleSaveEdit}
-              disabled={saving || !editName.trim() || (editRole === 'BIZ_REP' && !editBizId)}
+              disabled={saving || !editName.trim() || (editRole === 'BIZ_REP' && !editBizId) || (editRole === 'ETC' && !editCustomRole.trim())}
               className="flex items-center gap-1.5 bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-800 disabled:opacity-50 transition-colors">
               <Check size={14}/> {saving ? '저장 중...' : '저장'}
             </button>

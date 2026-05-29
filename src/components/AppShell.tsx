@@ -35,8 +35,12 @@ export default function AppShell({ children, title, back }: Props) {
 
   const handleLogout = async () => { await signOut(auth); router.replace('/login') }
   const roleLabel: Record<string, string> = {
-    ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표'
+    ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표', ETC: '기타'
   }
+  // ETC는 customRole 표시
+  const displayRole = user?.role === 'ETC' && user?.customRole
+    ? user.customRole
+    : roleLabel[user?.role ?? '']
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -68,7 +72,7 @@ export default function AppShell({ children, title, back }: Props) {
             </div>
             <div className="min-w-0">
               <p className="text-sm font-medium truncate">{user?.name}</p>
-              <p className="text-xs text-primary-300">{roleLabel[user?.role ?? '']}</p>
+              <p className="text-xs text-primary-300">{displayRole}</p>
             </div>
           </div>
           <button onClick={handleLogout}

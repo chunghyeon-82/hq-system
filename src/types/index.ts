@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'HQ_CHIEF' | 'HQ_MEMBER' | 'BIZ_REP'
+export type UserRole = 'ADMIN' | 'HQ_CHIEF' | 'HQ_MEMBER' | 'BIZ_REP' | 'ETC'
 
 export interface UserPermissions {
   canEditBusiness?: boolean
@@ -10,6 +10,7 @@ export interface AppUser {
   email:        string
   name:         string
   role:         UserRole
+  customRole?:  string   // ETC 역할일 때 직접 입력한 직책명
   bizId?:       string
   permissions?: UserPermissions
 }
