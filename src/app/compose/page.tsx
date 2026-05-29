@@ -1,5 +1,6 @@
 'use client'
 // src/app/compose/page.tsx
+import { Suspense } from 'react'
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AppShell from '@/components/AppShell'
@@ -8,7 +9,7 @@ import { listenBusinesses, sendMessage } from '@/lib/db'
 import type { Business, Receipt } from '@/types'
 import { Send, CheckSquare, Square } from 'lucide-react'
 
-export default function ComposePage() {
+function ComposeContent() {
   const { user }       = useAuth()
   const router         = useRouter()
   const searchParams   = useSearchParams()
@@ -29,7 +30,6 @@ export default function ComposePage() {
     return unsub
   }, [isHQ, router])
 
-  // URL 파라미터로 사업장 사전 선택
   useEffect(() => {
     const bizId = searchParams.get('biz')
     if (bizId) setSelected(new Set([bizId]))
@@ -106,7 +106,6 @@ export default function ComposePage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          {/* 수신 사업장 선택 */}
           <div className="card p-4">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-semibold text-gray-900">수신 사업장 선택</h2>
@@ -147,7 +146,6 @@ export default function ComposePage() {
             )}
           </div>
 
-          {/* 제목 / 내용 */}
           <div className="card p-4 flex flex-col gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">제목 *</label>
@@ -189,7 +187,6 @@ export default function ComposePage() {
             </div>
           </div>
 
-          {/* 전송 */}
           <button
             onClick={handleSend}
             disabled={!title.trim() || !body.trim() || selected.size === 0 || sending}
@@ -207,5 +204,13 @@ export default function ComposePage() {
         </div>
       </div>
     </AppShell>
+  )
+}
+
+export default function ComposePage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-gray-400">로딩 중...</div>}>
+      <ComposeContent />
+    </Suspense>
   )
 }
