@@ -1,173 +1,66 @@
 'use client'
-// src/components/BusinessForm.tsx
 import { useState } from 'react'
 import { addBusiness, updateBusiness } from '@/lib/db'
-import type { Business, Shareholder, Officer } from '@/types'
-import { Plus, Trash2, X } from 'lucide-react'
+import type { Business } from '@/types'
 
 interface Props {
-  initial?: Business
+  initial?: Business | null
   onClose: () => void
   onSaved: () => void
 }
 
-const emptyBiz = (): Omit<Business, 'id' | 'createdAt' | 'updatedAt'> => ({
-  name: '', repName: '', repPhone: '', repUid: '',
-  employees: 0, established: '', address: '', businessType: '요식업',
-  shareholders: [], officers: [],
-})
-
 export default function BusinessForm({ initial, onClose, onSaved }: Props) {
-  const [form, setForm] = useState(() =>
-    initial
-      ? (({ id, createdAt, updatedAt, ...rest }: Business) => rest)(initial)
-      : emptyBiz()
-  )
-  const [saving, setSaving] = useState(false)
-
-  const setField = (k: string, v: unknown) => setForm(f => ({ ...f, [k]: v }))
-
-  // 주주
-  const setShareholder = (i: number, k: keyof Shareholder, v: string | number) => {
-    const next = [...form.shareholders]
-    next[i] = { ...next[i], [k]: k === 'shares' || k === 'pct' ? Number(v) : v }
-    setField('shareholders', next)
-  }
-  const addShareholder = () =>
-    setField('shareholders', [...form.shareholders, { name: '', shares: 0, pct: 0 }])
-  const removeShareholder = (i: number) =>
-    setField('shareholders', form.shareholders.filter((_, idx) => idx !== i))
-
-  // 임원
-  const setOfficer = (i: number, k: keyof Officer, v: string) => {
-    const next = [...form.officers]
-    next[i] = { ...next[i], [k]: v }
-    setField('officers', next)
-  }
-  const addOfficer = () =>
-    setField('officers', [...form.officers, { name: '', title: '', termStart: '', termEnd: '' }])
-  const removeOfficer = (i: number) =>
-    setField('officers', form.officers.filter((_, idx) => idx !== i))
+  const [name,    setName]    = useState(initial?.name    ?? '')
+  const [address, setAddress] = useState(initial?.address ?? '')
+  const [repName, setRepName] = useState(initial?.repName ?? '')
+  const [phone,   setPhone]   = useState(initial?.phone   ?? '')
+  const [saving,  setSaving]  = useState(false)
 
   const handleSave = async () => {
-    if (!form.name || !form.repName) return
+    if (!name.trim()) return
     setSaving(true)
-    try {
-      if (initial) {
-        await updateBusiness(initial.id, form)
-      } else {
-        await addBusiness(form)
-      }
-      onSaved()
-    } finally {
-      setSaving(false)
+    if (initial?.id) {
+      await updateBusiness(initial.id, { name, address, repName, phone })
+    } else {
+      await addBusiness({ name, address, repName, phone } as Omit<Business, 'id'>)
     }
+    setSaving(false)
+    onSaved()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 overflow-y-auto py-6 px-4">
-      <div className="w-full max-w-2xl bg-white rounded-2xl shadow-xl">
-        {/* 헤더 */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-semibold text-gray-900">
-            {initial ? '사업장 수정' : '사업장 추가'}
-          </h2>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
-            <X className="w-5 h-5" />
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+        <div className="flex items-center justify-between p-5 border-b border-gray-100">
+          <h3 className="font-semibold text-gray-900">{initial ? '사업장 수정' : '사업장 추가'}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-light">✕</button>
+        </div>
+        <div className="p-5 space-y-4">
+          {[
+            { label: '사업장명 *', value: name,    onChange: setName,    placeholder: '○○ 지점' },
+            { label: '주소',       value: address, onChange: setAddress, placeholder: '서울시 강남구...' },
+            { label: '대표자명',   value: repName, onChange: setRepName, placeholder: '홍길동' },
+            { label: '연락처',     value: phone,   onChange: setPhone,   placeholder: '010-0000-0000' },
+          ].map(f => (
+            <div key={f.label}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
+              <input value={f.value} onChange={e => f.onChange(e.target.value)}
+                placeholder={f.placeholder}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 p-5 pt-0">
+          <button onClick={onClose}
+            className="flex-1 border border-gray-300 text-gray-700 rounded-xl py-2.5 text-sm font-medium hover:bg-gray-50">
+            취소
           </button>
-        </div>
-
-        <div className="px-6 py-5 flex flex-col gap-5 max-h-[70vh] overflow-y-auto">
-          {/* 기본정보 */}
-          <Section title="기본정보">
-            <Row label="사업장명 *">
-              <input className="input" value={form.name} onChange={e => setField('name', e.target.value)} placeholder="서울 1호점" />
-            </Row>
-            <div className="grid grid-cols-2 gap-3">
-              <Row label="대표자 *">
-                <input className="input" value={form.repName} onChange={e => setField('repName', e.target.value)} placeholder="홍길동" />
-              </Row>
-              <Row label="대표자 연락처">
-                <input className="input" value={form.repPhone} onChange={e => setField('repPhone', e.target.value)} placeholder="010-0000-0000" />
-              </Row>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Row label="직원 수">
-                <input className="input" type="number" value={form.employees} onChange={e => setField('employees', Number(e.target.value))} min={0} />
-              </Row>
-              <Row label="설립일">
-                <input className="input" type="date" value={form.established} onChange={e => setField('established', e.target.value)} />
-              </Row>
-            </div>
-            <Row label="주소">
-              <input className="input" value={form.address} onChange={e => setField('address', e.target.value)} placeholder="서울 강남구..." />
-            </Row>
-            <Row label="업종">
-              <input className="input" value={form.businessType} onChange={e => setField('businessType', e.target.value)} />
-            </Row>
-          </Section>
-
-          {/* 주주명부 */}
-          <Section title="주주명부">
-            {form.shareholders.map((s, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <input className="input flex-1" placeholder="주주명" value={s.name} onChange={e => setShareholder(i, 'name', e.target.value)} />
-                <input className="input w-28" type="number" placeholder="주식수" value={s.shares || ''} onChange={e => setShareholder(i, 'shares', e.target.value)} />
-                <input className="input w-20" type="number" placeholder="지분%" value={s.pct || ''} onChange={e => setShareholder(i, 'pct', e.target.value)} />
-                <button onClick={() => removeShareholder(i)} className="text-gray-400 hover:text-red-500 flex-shrink-0">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-            <button onClick={addShareholder} className="btn text-xs">
-              <Plus className="w-3.5 h-3.5" /> 주주 추가
-            </button>
-          </Section>
-
-          {/* 임원정보 */}
-          <Section title="임원정보">
-            {form.officers.map((o, i) => (
-              <div key={i} className="flex flex-wrap items-center gap-2">
-                <input className="input w-24" placeholder="성명" value={o.name} onChange={e => setOfficer(i, 'name', e.target.value)} />
-                <input className="input flex-1 min-w-[100px]" placeholder="직책 (예: 대표이사)" value={o.title} onChange={e => setOfficer(i, 'title', e.target.value)} />
-                <input className="input w-36" type="date" placeholder="임기시작" value={o.termStart} onChange={e => setOfficer(i, 'termStart', e.target.value)} />
-                <input className="input w-36" type="date" placeholder="임기만료" value={o.termEnd} onChange={e => setOfficer(i, 'termEnd', e.target.value)} />
-                <button onClick={() => removeOfficer(i)} className="text-gray-400 hover:text-red-500">
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-            <button onClick={addOfficer} className="btn text-xs">
-              <Plus className="w-3.5 h-3.5" /> 임원 추가
-            </button>
-          </Section>
-        </div>
-
-        <div className="flex justify-end gap-2 px-6 py-4 border-t border-gray-100">
-          <button onClick={onClose} className="btn">취소</button>
-          <button onClick={handleSave} className="btn btn-primary" disabled={saving}>
-            {saving ? '저장 중...' : initial ? '수정 완료' : '사업장 추가'}
+          <button onClick={handleSave} disabled={!name.trim() || saving}
+            className="flex-1 bg-primary-600 text-white rounded-xl py-2.5 text-sm font-medium hover:bg-primary-800 disabled:opacity-50">
+            {saving ? '저장 중...' : '저장'}
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="text-sm font-semibold text-gray-700 mb-3 pb-1.5 border-b border-gray-100">{title}</h3>
-      <div className="flex flex-col gap-3">{children}</div>
-    </div>
-  )
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-      {children}
     </div>
   )
 }
