@@ -10,9 +10,9 @@ import type { Business, Receipt } from '@/types'
 import { Send, CheckSquare, Square } from 'lucide-react'
 
 function ComposeContent() {
-  const { user }       = useAuth()
-  const router         = useRouter()
-  const searchParams   = useSearchParams()
+  const { user }     = useAuth()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
 
   const [businesses, setBusinesses] = useState<Business[]>([])
   const [selected,   setSelected]   = useState<Set<string>>(new Set())
@@ -22,13 +22,14 @@ function ComposeContent() {
   const [sending,    setSending]    = useState(false)
   const [sent,       setSent]       = useState(false)
 
-  const isHQ = user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
+  // 관리자, 본부장, 본부멤버 모두 전달 작성 가능
+  const canSend = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
 
   useEffect(() => {
-    if (!isHQ) { router.replace('/dashboard'); return }
+    if (!canSend) { router.replace('/dashboard'); return }
     const unsub = listenBusinesses(setBusinesses)
     return unsub
-  }, [isHQ, router])
+  }, [canSend, router])
 
   useEffect(() => {
     const bizId = searchParams.get('biz')
@@ -81,8 +82,7 @@ function ComposeContent() {
           </div>
           <h2 className="text-lg font-semibold text-gray-900">전달 완료</h2>
           <p className="text-sm text-gray-500 text-center">
-            {selected.size}개 사업장에 전달사항이 발송되었습니다.<br />
-            사업장 대표들이 접수 확인을 하면 알림이 표시됩니다.
+            {selected.size}개 사업장에 전달사항이 발송되었습니다.
           </p>
           <div className="flex gap-3 mt-2">
             <button onClick={() => { setTitle(''); setBody(''); setSelected(new Set()); setSent(false) }} className="btn">
@@ -115,33 +115,23 @@ function ComposeContent() {
                   : <><Square className="w-3.5 h-3.5" /> 전체 선택</>}
               </button>
             </div>
-
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {businesses.map(b => {
                 const checked = selected.has(b.id)
                 return (
-                  <button
-                    key={b.id}
-                    onClick={() => toggle(b.id)}
+                  <button key={b.id} onClick={() => toggle(b.id)}
                     className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left text-sm transition-all ${
-                      checked
-                        ? 'border-primary-400 bg-primary-50 text-primary-800'
-                        : 'border-gray-100 bg-white text-gray-700 hover:border-gray-200'
-                    }`}
-                  >
-                    {checked
-                      ? <CheckSquare className="w-4 h-4 text-primary-600 flex-shrink-0" />
-                      : <Square className="w-4 h-4 text-gray-300 flex-shrink-0" />}
+                      checked ? 'border-primary-400 bg-primary-50 text-primary-800' : 'border-gray-100 bg-white text-gray-700 hover:border-gray-200'
+                    }`}>
+                    {checked ? <CheckSquare className="w-4 h-4 text-primary-600 flex-shrink-0" /> : <Square className="w-4 h-4 text-gray-300 flex-shrink-0" />}
                     <span className="truncate font-medium">{b.name}</span>
                   </button>
                 )
               })}
             </div>
-
             {selected.size > 0 && (
               <p className="text-xs text-primary-700 mt-3 font-medium">
-                {selected.size}개 사업장 선택됨
-                {selected.size === businesses.length && ' (전체)'}
+                {selected.size}개 사업장 선택됨{selected.size === businesses.length && ' (전체)'}
               </p>
             )}
           </div>
@@ -149,58 +139,32 @@ function ComposeContent() {
           <div className="card p-4 flex flex-col gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">제목 *</label>
-              <input
-                className="input"
-                placeholder="전달사항 제목을 입력하세요"
-                value={title}
-                onChange={e => setTitle(e.target.value)}
-              />
+              <input className="input" placeholder="전달사항 제목을 입력하세요" value={title} onChange={e => setTitle(e.target.value)} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">내용 *</label>
-              <textarea
-                className="input resize-none min-h-[160px] text-sm leading-relaxed"
-                placeholder="전달할 내용을 자세히 입력하세요"
-                value={body}
-                onChange={e => setBody(e.target.value)}
-              />
+              <textarea className="input resize-none min-h-[160px] text-sm leading-relaxed" placeholder="전달할 내용을 자세히 입력하세요" value={body} onChange={e => setBody(e.target.value)} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-2">중요도</label>
               <div className="flex gap-2">
                 {([['normal', '일반'], ['urgent', '긴급']] as const).map(([v, l]) => (
-                  <button
-                    key={v}
-                    onClick={() => setPriority(v)}
+                  <button key={v} onClick={() => setPriority(v)}
                     className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-all ${
                       priority === v
-                        ? v === 'urgent'
-                          ? 'border-red-400 bg-red-50 text-red-700'
-                          : 'border-blue-300 bg-blue-50 text-blue-700'
+                        ? v === 'urgent' ? 'border-red-400 bg-red-50 text-red-700' : 'border-blue-300 bg-blue-50 text-blue-700'
                         : 'border-gray-100 bg-white text-gray-500 hover:bg-gray-50'
-                    }`}
-                  >
-                    {l}
-                  </button>
+                    }`}>{l}</button>
                 ))}
               </div>
             </div>
           </div>
 
-          <button
-            onClick={handleSend}
-            disabled={!title.trim() || !body.trim() || selected.size === 0 || sending}
-            className="btn btn-primary w-full justify-center py-3 text-base"
-          >
+          <button onClick={handleSend} disabled={!title.trim() || !body.trim() || selected.size === 0 || sending}
+            className="btn btn-primary w-full justify-center py-3 text-base">
             <Send className="w-4 h-4" />
             {sending ? '전송 중...' : `${selected.size}개 사업장에 발송`}
           </button>
-
-          {(!title.trim() || !body.trim() || selected.size === 0) && (
-            <p className="text-xs text-gray-400 text-center -mt-2">
-              수신 사업장, 제목, 내용을 모두 입력해주세요
-            </p>
-          )}
         </div>
       </div>
     </AppShell>

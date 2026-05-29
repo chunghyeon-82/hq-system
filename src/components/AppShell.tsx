@@ -45,7 +45,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const isAdmin  = user.role === 'ADMIN'
   const isHQ     = user.role === 'HQ_CHIEF' || user.role === 'HQ_MEMBER'
-  const canSend  = isHQ  // 본부장, 본부멤버만 전달 작성 가능
+  const canSend  = isAdmin || isHQ  // 관리자, 본부장, 본부멤버 전달 작성 가능
 
   const pendingByBiz = (bizId: string) =>
     messages.filter(m =>

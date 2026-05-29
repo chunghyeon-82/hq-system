@@ -48,6 +48,11 @@ export default function AdminPage() {
         ...(newRole === 'BIZ_REP' && newBizId ? { bizId: newBizId } : {}),
       }
       await setDoc(doc(db, 'users', cred.user.uid), newUser)
+      // 사업장대표로 지정된 경우 사업장 대표자 정보 자동 연동
+      if (newRole === 'BIZ_REP' && newBizId) {
+        const { updateBusiness } = await import('@/lib/db')
+        await updateBusiness(newBizId, { repName: newName, repUid: cred.user.uid })
+      }
       setShowAdd(false)
       setNewEmail(''); setNewPw(''); setNewName(''); setNewBizId('')
       setNewRole('HQ_MEMBER')

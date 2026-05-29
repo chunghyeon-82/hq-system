@@ -2,12 +2,11 @@
 import {
   collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc,
   query, where, orderBy, onSnapshot, serverTimestamp, Timestamp,
-  arrayUnion, writeBatch,
+  arrayUnion,
 } from 'firebase/firestore'
 import { db } from './firebase'
 import type { Business, Message, AppUser, Receipt, Reply, MessageStatus } from '@/types'
 
-// ── 유틸 ────────────────────────────────────────────────
 const now = () => new Date().toISOString()
 const tsToStr = (v: unknown): string => {
   if (!v) return ''
@@ -66,7 +65,6 @@ export async function deleteBusiness(id: string) {
 
 // ── 메시지 ──────────────────────────────────────────────
 export function listenMessages(bizId: string | null, cb: (msgs: Message[]) => void) {
-  // 본부: 전체 / 사업장대표: 자기 사업장 포함 메시지
   const q = bizId
     ? query(
         collection(db, 'messages'),
@@ -100,6 +98,7 @@ export async function sendMessage(data: {
   fromUid: string
   fromName: string
   fromRole: string
+  fromBizId?: string
   targetBizIds: string[]
   receipts: Receipt[]
 }) {
@@ -140,4 +139,18 @@ export async function addReply(msgId: string, bizId: string, reply: Omit<Reply, 
     receipts: updated,
     updatedAt: serverTimestamp(),
   })
+}
+
+// 메시지 숨기기 (해당 사업장에서만 숨김, 본부에는 유지)
+export async function hideMessage(msgId: string, bizId: string) {
+  const ref = doc(db, 'messages', msgId)
+  const snap = await getDoc(ref)
+  if (!snap.exists()) return
+  const receipts: Receipt[] = snap.data().receipts || []
+  const updated = receipts.map(r =>
+    r.bizId === bizId
+      ? { ...r, hidden: true, hiddenAt: now() }
+      : r
+  )
+  await updateDoc(ref, { receipts: updated, updatedAt: serverTimestamp() })
 }
