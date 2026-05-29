@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/auth-context'
-import { LayoutDashboard, Building2, Send, Users, LogOut, Menu, X, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Building2, Send, Users, LogOut, Menu, X, ChevronRight, MessageSquare } from 'lucide-react'
 import clsx from 'clsx'
 
 interface Props { children: ReactNode; title?: string; back?: string }
@@ -16,14 +16,23 @@ export default function AppShell({ children, title, back }: Props) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
-  const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
-  const isAdmin = user?.role === 'ADMIN'
+  const isAdmin   = user?.role === 'ADMIN'
+  const isHQChief = user?.role === 'HQ_CHIEF'
+  const isHQMember= user?.role === 'HQ_MEMBER'
+  const isBiz     = user?.role === 'BIZ_REP'
+  const isHQ      = isAdmin || isHQChief || isHQMember
+
+  // 전체 발송 권한: 관리자, 본부장은 기본, 본부멤버/사업장대표는 권한 있을 때
+  const canBroadcast = isAdmin || isHQChief || !!user?.permissions?.canBroadcast
+  // 사업장 정보 수정 권한
+  const canEditBiz   = isAdmin || isHQChief || !!user?.permissions?.canEditBusiness
 
   const nav = [
-    { href: '/dashboard',  label: '대시보드',   icon: LayoutDashboard, show: true },
-    { href: '/businesses', label: '사업장 현황', icon: Building2,       show: isHQ },
-    { href: '/compose',    label: '전달 작성',   icon: Send,            show: isHQ },
-    { href: '/admin',      label: '멤버 관리',   icon: Users,           show: isAdmin },
+    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true },
+    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ },
+    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast },
+    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: isBiz },
+    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin },
   ].filter(n => n.show)
 
   const handleLogout = async () => { await signOut(auth); router.replace('/login') }
@@ -38,7 +47,7 @@ export default function AppShell({ children, title, back }: Props) {
         open ? 'translate-x-0' : '-translate-x-full', 'lg:relative lg:translate-x-0'
       )}>
         <div className="flex items-center gap-2 px-5 py-5 border-b border-primary-800">
-          <Building2 size={22} className="text-primary-200" />
+          <Building2 size={22} className="text-primary-200"/>
           <span className="font-bold text-base">본부관리시스템</span>
           <button onClick={() => setOpen(false)} className="ml-auto lg:hidden"><X size={18}/></button>
         </div>

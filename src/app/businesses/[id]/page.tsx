@@ -34,6 +34,7 @@ export default function BusinessDetailPage() {
 
   const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
   const isAdmin = user?.role === 'ADMIN'
+  const canEditBiz = isAdmin || user?.role === 'HQ_CHIEF' || !!user?.permissions?.canEditBusiness
 
   useEffect(() => {
     const u1 = listenBusinesses(bizs => {

@@ -1,10 +1,9 @@
 import {
   collection, doc, addDoc, getDoc, updateDoc, setDoc, deleteDoc,
-  query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion,
-  Timestamp,
+  query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion, or,
 } from 'firebase/firestore'
 import { db } from './firebase'
-import type { AppUser, Business, Message, Receipt, Reply, MessageStatus } from '@/types'
+import type { AppUser, Business, Message, Receipt, Reply, MessageStatus, MessageType } from '@/types'
 
 const now = () => new Date().toISOString()
 
@@ -36,6 +35,45 @@ export async function deleteBusiness(id: string) {
 }
 
 // ── Messages ──────────────────────────────────────────
+
+// 본부용: 전체 broadcast 메시지 + 자신이 수신자인 direct 메시지
+export function listenMessagesForHQ(uid: string, isAdmin: boolean, cb: (m: Message[]) => void) {
+  if (isAdmin) {
+    // 관리자: 모든 메시지
+    return onSnapshot(
+      query(collection(db, 'messages'), orderBy('createdAt', 'desc')),
+      snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as Message)))
+    )
+  }
+  // 일반 본부멤버: broadcast + 자신이 targetUid인 direct
+  return onSnapshot(
+    query(collection(db, 'messages'), orderBy('createdAt', 'desc')),
+    snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Message))
+      cb(all.filter(m =>
+        m.type === 'broadcast' ||
+        (m.type === 'direct' && (m.targetUid === uid || m.authorUid === uid))
+      ))
+    }
+  )
+}
+
+// 사업장 대표용: 자기 사업장으로 온 broadcast + 자신이 보내거나 받은 direct
+export function listenMessagesForBiz(bizId: string, uid: string, cb: (m: Message[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'messages'), orderBy('createdAt', 'desc')),
+    snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Message))
+      cb(all.filter(m => {
+        if (m.type === 'broadcast') return m.targetBizIds.includes(bizId)
+        if (m.type === 'direct')   return m.authorUid === uid || m.targetUid === uid
+        return false
+      }))
+    }
+  )
+}
+
+// 하위 호환
 export function listenMessages(cb: (m: Message[]) => void) {
   return onSnapshot(
     query(collection(db, 'messages'), orderBy('createdAt', 'desc')),
@@ -44,55 +82,76 @@ export function listenMessages(cb: (m: Message[]) => void) {
 }
 export function listenMessagesByBiz(bizId: string, cb: (m: Message[]) => void) {
   return onSnapshot(
-    query(
-      collection(db, 'messages'),
-      where('targetBizIds', 'array-contains', bizId),
-      orderBy('createdAt', 'desc')
-    ),
+    query(collection(db, 'messages'), where('targetBizIds', 'array-contains', bizId), orderBy('createdAt', 'desc')),
     snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as Message)))
   )
 }
+
+// broadcast 발송 (본부 → 여러 사업장)
 export async function sendMessage(
-  data: Omit<Message, 'id' | 'createdAt' | 'updatedAt' | 'replies' | 'status'>
+  data: Omit<Message, 'id' | 'createdAt' | 'updatedAt' | 'replies' | 'status' | 'type'>
 ) {
   await addDoc(collection(db, 'messages'), {
     ...data,
-    status: 'open' as MessageStatus,
+    type:    'broadcast' as MessageType,
+    status:  'open' as MessageStatus,
     replies: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
 }
 
-// 사업장이 접수확인
+// direct 발송 (사업장 대표 → 특정 본부 멤버)
+export async function sendDirectMessage(data: {
+  title:        string
+  body:         string
+  priority:     'normal' | 'urgent'
+  authorUid:    string
+  authorName:   string
+  authorBizId:  string
+  targetUid:    string
+  targetName:   string
+}) {
+  await addDoc(collection(db, 'messages'), {
+    ...data,
+    type:         'direct' as MessageType,
+    targetBizIds: [],
+    receipts:     [],
+    replies:      [],
+    status:       'open' as MessageStatus,
+    createdAt:    serverTimestamp(),
+    updatedAt:    serverTimestamp(),
+  })
+}
+
+// 사업장이 broadcast 접수확인
 export async function receiveMessage(msgId: string, bizId: string) {
-  const ref = doc(db, 'messages', msgId)
+  const ref  = doc(db, 'messages', msgId)
   const snap = await getDoc(ref)
   if (!snap.exists()) return
   const receipts: Receipt[] = snap.data().receipts || []
   const updated = receipts.map(r =>
     r.bizId === bizId && r.status === 'pending'
-      ? { ...r, status: 'received' as const, receivedAt: now() }
-      : r
+      ? { ...r, status: 'received' as const, receivedAt: now() } : r
   )
   await updateDoc(ref, { receipts: updated, updatedAt: serverTimestamp() })
 }
 
-// 사업장이 답변 등록
-export async function replyMessage(msgId: string, bizId: string, bizName: string, authorUid: string, authorName: string, body: string) {
-  const ref = doc(db, 'messages', msgId)
+// 사업장이 broadcast 답변
+export async function replyMessage(
+  msgId: string, bizId: string, bizName: string,
+  authorUid: string, authorName: string, body: string
+) {
+  const ref  = doc(db, 'messages', msgId)
   const snap = await getDoc(ref)
   if (!snap.exists()) return
   const receipts: Receipt[] = snap.data().receipts || []
   const newReply: Reply = {
     id: Date.now().toString(),
-    bizId, bizName, authorUid, authorName, body,
-    createdAt: now(),
+    bizId, bizName, authorUid, authorName, body, createdAt: now(),
   }
   const updated = receipts.map(r =>
-    r.bizId === bizId
-      ? { ...r, status: 'replied' as const, repliedAt: now() }
-      : r
+    r.bizId === bizId ? { ...r, status: 'replied' as const, repliedAt: now() } : r
   )
   await updateDoc(ref, {
     replies: arrayUnion(newReply),
@@ -101,25 +160,29 @@ export async function replyMessage(msgId: string, bizId: string, bizName: string
   })
 }
 
-// 본부가 메시지 완결 처리
+// direct 메시지 답변 (본부 → 사업장 대표)
+export async function replyDirect(
+  msgId: string, authorUid: string, authorName: string, body: string
+) {
+  const newReply: Reply = {
+    id: Date.now().toString(),
+    bizId: '', bizName: '', authorUid, authorName, body, createdAt: now(),
+  }
+  await updateDoc(doc(db, 'messages', msgId), {
+    replies:   arrayUnion(newReply),
+    status:    'open' as MessageStatus,
+    updatedAt: serverTimestamp(),
+  })
+}
+
 export async function closeMessage(msgId: string) {
-  await updateDoc(doc(db, 'messages', msgId), {
-    status: 'done' as MessageStatus,
-    updatedAt: serverTimestamp(),
-  })
+  await updateDoc(doc(db, 'messages', msgId), { status: 'done' as MessageStatus, updatedAt: serverTimestamp() })
 }
-
-// 본부가 메시지 재오픈
 export async function reopenMessage(msgId: string) {
-  await updateDoc(doc(db, 'messages', msgId), {
-    status: 'open' as MessageStatus,
-    updatedAt: serverTimestamp(),
-  })
+  await updateDoc(doc(db, 'messages', msgId), { status: 'open' as MessageStatus, updatedAt: serverTimestamp() })
 }
-
-// 사업장에서 메시지 숨기기
 export async function hideMessage(msgId: string, bizId: string) {
-  const ref = doc(db, 'messages', msgId)
+  const ref  = doc(db, 'messages', msgId)
   const snap = await getDoc(ref)
   if (!snap.exists()) return
   const receipts: Receipt[] = snap.data().receipts || []

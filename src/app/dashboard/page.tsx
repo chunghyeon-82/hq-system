@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenMessages, listenMessagesByBiz, listenBusinesses } from '@/lib/db'
+import { listenMessagesForHQ, listenMessagesForBiz, listenBusinesses } from '@/lib/db'
 import type { Message, Business } from '@/types'
-import { Send, CheckCircle2, Clock, AlertCircle, Building2, ChevronRight, ArrowRight } from 'lucide-react'
+import { Send, CheckCircle2, Clock, AlertCircle, Building2, ChevronRight, ArrowRight, MessageSquare, Lock } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function DashboardPage() {
@@ -14,20 +14,22 @@ export default function DashboardPage() {
   const [messages,   setMessages]   = useState<Message[]>([])
   const [businesses, setBusinesses] = useState<Business[]>([])
 
-  const isHQ = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
-  const isBiz = user?.role === 'BIZ_REP'
+  const isAdmin = user?.role === 'ADMIN'
+  const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
+  const isBiz   = user?.role === 'BIZ_REP'
+  const canBroadcast = isAdmin || user?.role === 'HQ_CHIEF' || !!user?.permissions?.canBroadcast
 
   useEffect(() => {
     if (loading) return
     if (!user) { router.replace('/login'); return }
     if (isHQ) {
-      const u1 = listenMessages(setMessages)
+      const u1 = listenMessagesForHQ(user.uid, isAdmin, setMessages)
       const u2 = listenBusinesses(setBusinesses)
       return () => { u1(); u2() }
     } else if (isBiz && user.bizId) {
-      return listenMessagesByBiz(user.bizId, setMessages)
+      return listenMessagesForBiz(user.bizId, user.uid, setMessages)
     }
-  }, [user, loading, isHQ, isBiz, router])
+  }, [user, loading, isHQ, isBiz, isAdmin, router])
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen">
@@ -35,121 +37,97 @@ export default function DashboardPage() {
     </div>
   )
 
-  // ── 본부용 대시보드 ───────────────────────────────────
+  // ── 본부용 ────────────────────────────────────────────
   if (isHQ) {
-    const openMsgs  = messages.filter(m => m.status === 'open')
-    const doneMsgs  = messages.filter(m => m.status === 'done')
-    const urgentMsgs = messages.filter(m => m.priority === 'urgent' && m.status === 'open')
-    const pendingCount = messages.reduce((acc, m) =>
+    const broadcastMsgs = messages.filter(m => m.type === 'broadcast')
+    const directMsgs    = messages.filter(m => m.type === 'direct')
+    const openMsgs      = broadcastMsgs.filter(m => m.status === 'open')
+    const urgentMsgs    = openMsgs.filter(m => m.priority === 'urgent')
+    const pendingCount  = broadcastMsgs.reduce((acc, m) =>
       acc + (m.receipts?.filter(r => r.status === 'pending').length ?? 0), 0)
-
-    // 최근 진행중 메시지 5개
-    const recentOpen = openMsgs.slice(0, 5)
-
-    const summaryCards = [
-      {
-        label: '진행중 전달',
-        value: openMsgs.length,
-        sub: '답변 대기 중',
-        icon: Clock,
-        color: 'bg-amber-50 border-amber-200',
-        iconColor: 'text-amber-500',
-        href: '/businesses',
-        badge: openMsgs.length > 0 ? openMsgs.length : null,
-      },
-      {
-        label: '완결 전달',
-        value: doneMsgs.length,
-        sub: '처리 완료',
-        icon: CheckCircle2,
-        color: 'bg-green-50 border-green-200',
-        iconColor: 'text-green-500',
-        href: '/businesses',
-        badge: null,
-      },
-      {
-        label: '미접수',
-        value: pendingCount,
-        sub: '아직 확인 안 함',
-        icon: AlertCircle,
-        color: pendingCount > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200',
-        iconColor: pendingCount > 0 ? 'text-red-500' : 'text-gray-400',
-        href: '/businesses',
-        badge: null,
-      },
-      {
-        label: '긴급 전달',
-        value: urgentMsgs.length,
-        sub: '즉시 처리 필요',
-        icon: AlertCircle,
-        color: urgentMsgs.length > 0 ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200',
-        iconColor: urgentMsgs.length > 0 ? 'text-red-600' : 'text-gray-400',
-        href: '/businesses',
-        badge: null,
-      },
-      {
-        label: '전체 사업장',
-        value: businesses.length,
-        sub: '등록된 사업장',
-        icon: Building2,
-        color: 'bg-primary-50 border-primary-200',
-        iconColor: 'text-primary-500',
-        href: '/businesses',
-        badge: null,
-      },
-    ]
+    const unreadDirect  = directMsgs.filter(m => m.status === 'open' && m.targetUid === user?.uid).length
 
     return (
       <AppShell title="대시보드">
         <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">
-              안녕하세요, {user?.name}님 👋
-            </h2>
+            <h2 className="text-lg font-bold text-gray-900">안녕하세요, {user?.name}님 👋</h2>
             <p className="text-sm text-gray-500 mt-0.5">오늘도 좋은 하루 되세요.</p>
           </div>
 
-          {/* 요약 카드 — 클릭하면 페이지 이동 */}
+          {/* 요약 카드 */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {summaryCards.map(card => (
-              <button key={card.label}
-                onClick={() => router.push(card.href)}
-                className={clsx(
-                  'relative text-left border rounded-xl p-4 hover:shadow-md active:scale-95 transition-all cursor-pointer',
-                  card.color
-                )}>
+            {[
+              { label: '진행중 전달',  value: openMsgs.length,           icon: Clock,         color: 'bg-amber-50 border-amber-200',   iconColor: 'text-amber-500',   href: '/businesses' },
+              { label: '미접수',       value: pendingCount,              icon: AlertCircle,   color: pendingCount > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200', iconColor: pendingCount > 0 ? 'text-red-500' : 'text-gray-400', href: '/businesses' },
+              { label: '긴급 전달',    value: urgentMsgs.length,         icon: AlertCircle,   color: urgentMsgs.length > 0 ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200', iconColor: urgentMsgs.length > 0 ? 'text-red-600' : 'text-gray-400', href: '/businesses' },
+              { label: '전체 사업장',  value: businesses.length,         icon: Building2,     color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', href: '/businesses' },
+              { label: '1:1 메시지',   value: directMsgs.length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/dashboard' },
+            ].map(card => (
+              <button key={card.label} onClick={() => router.push(card.href)}
+                className={clsx('relative text-left border rounded-xl p-4 hover:shadow-md active:scale-95 transition-all', card.color)}>
                 <div className="flex items-start justify-between">
-                  <card.icon size={20} className={card.iconColor} />
-                  <ChevronRight size={14} className="text-gray-400 mt-0.5" />
+                  <card.icon size={20} className={card.iconColor}/>
+                  <ChevronRight size={14} className="text-gray-400 mt-0.5"/>
                 </div>
                 <div className="mt-2">
                   <p className="text-2xl font-bold text-gray-900">{card.value}</p>
                   <p className="text-xs font-medium text-gray-700 mt-0.5">{card.label}</p>
-                  <p className="text-xs text-gray-400">{card.sub}</p>
                 </div>
-                {card.badge && (
-                  <span className="absolute top-3 right-3 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
-                    {card.badge > 9 ? '9+' : card.badge}
-                  </span>
-                )}
               </button>
             ))}
           </div>
 
-          {/* 바로가기 버튼 */}
+          {/* 바로가기 */}
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => router.push('/compose')}
-              className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
-              <Send size={16}/> 전달 작성하기
-            </button>
+            {canBroadcast && (
+              <button onClick={() => router.push('/compose')}
+                className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
+                <Send size={16}/> 전달 작성
+              </button>
+            )}
             <button onClick={() => router.push('/businesses')}
               className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
               <Building2 size={16}/> 사업장 현황
             </button>
           </div>
 
-          {/* 최근 진행중 전달 */}
-          {recentOpen.length > 0 && (
+          {/* 1:1 메시지 (내게 온 것) */}
+          {directMsgs.filter(m => m.targetUid === user?.uid || isAdmin).length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Lock size={14} className="text-blue-500"/>
+                <h3 className="font-semibold text-gray-900 text-sm">1:1 메시지</h3>
+                <span className="text-xs text-gray-400">(본인 + 관리자만 열람)</span>
+              </div>
+              <div className="space-y-2">
+                {directMsgs.filter(m => isAdmin || m.targetUid === user?.uid).slice(0, 5).map(msg => (
+                  <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
+                    className="w-full text-left bg-white border border-blue-100 rounded-xl p-4 hover:shadow-sm hover:border-blue-200 transition-all group">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="badge-open text-blue-700 bg-blue-50 border-blue-200">1:1</span>
+                          {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
+                          <span className={msg.status === 'done' ? 'badge-done' : 'badge-open'}>
+                            {msg.status === 'done' ? '완결' : '진행중'}
+                          </span>
+                        </div>
+                        <p className="font-medium text-sm text-gray-900 truncate">{msg.title}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {msg.authorName} → {msg.targetName}
+                        </p>
+                      </div>
+                      <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-400 shrink-0"/>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 진행중 broadcast 전달 */}
+          {openMsgs.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-gray-900 text-sm">진행중 전달</h3>
@@ -159,22 +137,18 @@ export default function DashboardPage() {
                 </button>
               </div>
               <div className="space-y-2">
-                {recentOpen.map(msg => {
-                  const total    = msg.receipts?.length ?? 0
-                  const replied  = msg.receipts?.filter(r => r.status === 'replied').length ?? 0
-                  const received = msg.receipts?.filter(r => r.status === 'received').length ?? 0
-                  const pending  = total - replied - received
-
+                {openMsgs.slice(0, 5).map(msg => {
+                  const total   = msg.receipts?.length ?? 0
+                  const replied = msg.receipts?.filter(r => r.status === 'replied').length ?? 0
+                  const received= msg.receipts?.filter(r => r.status === 'received').length ?? 0
+                  const pending = total - replied - received
                   return (
-                    <button key={msg.id}
-                      onClick={() => router.push(`/messages/${msg.id}`)}
+                    <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
                       className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm hover:border-primary-200 transition-all group">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            {msg.priority === 'urgent' && (
-                              <span className="badge-urgent">긴급</span>
-                            )}
+                            {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
                             <span className="badge-open">진행중</span>
                           </div>
                           <p className="font-medium text-gray-900 text-sm truncate">{msg.title}</p>
@@ -182,19 +156,13 @@ export default function DashboardPage() {
                         </div>
                         <ChevronRight size={16} className="text-gray-300 group-hover:text-primary-400 shrink-0 mt-1"/>
                       </div>
-                      {/* 진행 상황 바 */}
                       <div className="mt-3">
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                          <span>답변 현황</span>
-                          <span>{replied}/{total}개 완료</span>
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>답변 현황</span><span>{replied}/{total}개</span>
                         </div>
                         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden flex">
-                          {total > 0 && (
-                            <>
-                              <div className="bg-green-400 h-full transition-all" style={{ width: `${(replied/total)*100}%` }}/>
-                              <div className="bg-blue-400 h-full transition-all" style={{ width: `${(received/total)*100}%` }}/>
-                            </>
-                          )}
+                          <div className="bg-green-400 h-full" style={{ width: total ? `${(replied/total)*100}%` : '0%' }}/>
+                          <div className="bg-blue-400 h-full"  style={{ width: total ? `${(received/total)*100}%` : '0%' }}/>
                         </div>
                         <div className="flex gap-3 mt-1.5 text-xs">
                           {replied  > 0 && <span className="text-green-600">✓ 답변 {replied}</span>}
@@ -215,13 +183,13 @@ export default function DashboardPage() {
 
   // ── 사업장 대표 대시보드 ──────────────────────────────
   if (isBiz) {
-    const myReceipts = messages.map(m => ({
-      msg: m,
-      receipt: m.receipts?.find(r => r.bizId === user?.bizId),
+    const broadcastMsgs = messages.filter(m => m.type === 'broadcast')
+    const directMsgs    = messages.filter(m => m.type === 'direct')
+    const myReceipts = broadcastMsgs.map(m => ({
+      msg: m, receipt: m.receipts?.find(r => r.bizId === user?.bizId)
     })).filter(({ receipt }) => receipt && !receipt.hidden)
 
-    const openItems = myReceipts.filter(({ msg }) => msg.status === 'open')
-    const doneItems = myReceipts.filter(({ msg }) => msg.status === 'done')
+    const openItems    = myReceipts.filter(({ msg }) => msg.status === 'open')
     const pendingItems = myReceipts.filter(({ receipt }) => receipt?.status === 'pending')
 
     return (
@@ -232,12 +200,12 @@ export default function DashboardPage() {
             <p className="text-sm text-gray-500 mt-0.5">오늘도 좋은 하루 되세요.</p>
           </div>
 
-          {/* 요약 카드 - 클릭하면 /dashboard 필터 or 사업장 페이지 */}
+          {/* 요약 카드 */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: '전체 전달', value: myReceipts.length, icon: Send, color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500' },
-              { label: '진행중', value: openItems.length, icon: Clock, color: 'bg-amber-50 border-amber-200', iconColor: 'text-amber-500' },
-              { label: '미확인', value: pendingItems.length, icon: AlertCircle,
+              { label: '전체 전달', value: myReceipts.length, icon: Send,        color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500' },
+              { label: '진행중',    value: openItems.length,  icon: Clock,       color: 'bg-amber-50 border-amber-200',    iconColor: 'text-amber-500' },
+              { label: '미확인',    value: pendingItems.length, icon: AlertCircle,
                 color: pendingItems.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200',
                 iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400' },
             ].map(c => (
@@ -249,20 +217,50 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* 미확인 긴급 전달 */}
-          {pendingItems.filter(({ msg }) => msg.priority === 'urgent').length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <p className="text-sm font-semibold text-red-700 mb-2">🚨 긴급 전달 — 즉시 확인 필요</p>
-              {pendingItems.filter(({ msg }) => msg.priority === 'urgent').map(({ msg }) => (
-                <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
-                  className="w-full text-left text-sm text-red-800 hover:underline flex items-center gap-1">
-                  <ChevronRight size={14}/>{msg.title}
-                </button>
-              ))}
+          {/* 1:1 메시지 바로가기 */}
+          <button onClick={() => router.push('/direct')}
+            className="w-full flex items-center gap-3 bg-white border border-blue-200 rounded-xl p-4 hover:shadow-sm hover:border-blue-300 transition-all">
+            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center shrink-0">
+              <MessageSquare size={18} className="text-blue-500"/>
+            </div>
+            <div className="flex-1 text-left">
+              <p className="font-medium text-sm text-gray-900">담당자에게 1:1 메시지</p>
+              <p className="text-xs text-gray-400 mt-0.5">본부 담당자에게 직접 문의할 수 있습니다</p>
+            </div>
+            <ChevronRight size={16} className="text-gray-300"/>
+          </button>
+
+          {/* 내가 보낸 1:1 메시지 */}
+          {directMsgs.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Lock size={13} className="text-blue-400"/>
+                <h3 className="font-semibold text-gray-900 text-sm">내 1:1 메시지</h3>
+              </div>
+              <div className="space-y-2">
+                {directMsgs.slice(0, 3).map(msg => (
+                  <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
+                    className="w-full text-left bg-white border border-blue-100 rounded-xl p-3 hover:shadow-sm transition-all group">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className={msg.status === 'done' ? 'badge-done' : 'badge-open'}>
+                            {msg.status === 'done' ? '완결' : '진행중'}
+                          </span>
+                          {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
+                        </div>
+                        <p className="text-sm font-medium text-gray-900 truncate">{msg.title}</p>
+                        <p className="text-xs text-gray-400">→ {msg.targetName}</p>
+                      </div>
+                      <ChevronRight size={14} className="text-gray-300 group-hover:text-blue-400 shrink-0"/>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* 진행중 전달 목록 */}
+          {/* 진행중 broadcast */}
           <div>
             <h3 className="font-semibold text-gray-900 text-sm mb-3">진행중 전달</h3>
             {openItems.length === 0 ? (
@@ -294,29 +292,6 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-
-          {/* 완결된 전달 */}
-          {doneItems.length > 0 && (
-            <div>
-              <h3 className="font-semibold text-gray-500 text-sm mb-3">완결된 전달</h3>
-              <div className="space-y-2 opacity-60">
-                {doneItems.slice(0, 3).map(({ msg }) => (
-                  <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
-                    className="w-full text-left bg-white border border-gray-100 rounded-xl p-4 hover:bg-gray-50 transition-all">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="badge-done">완결</span>
-                        </div>
-                        <p className="text-sm text-gray-600 truncate">{msg.title}</p>
-                      </div>
-                      <ChevronRight size={14} className="text-gray-300 shrink-0"/>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </AppShell>
     )
