@@ -41,8 +41,9 @@ export default function BusinessesPage() {
   const normalBizs  = businesses.filter(b => !b.isHQ)
 
   // 운영본부 소속 멤버
+  // 관리자는 노출 제외 (본부장·본부멤버만 표시)
   const hqMembers   = members.filter(m =>
-    m.role === 'ADMIN' || m.role === 'HQ_CHIEF' || m.role === 'HQ_MEMBER'
+    m.role === 'HQ_CHIEF' || m.role === 'HQ_MEMBER'
   )
 
   return (

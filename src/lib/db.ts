@@ -213,19 +213,27 @@ export interface ChatMessage {
   id:         string
   authorUid:  string
   authorName: string
+  authorRole: string
   body:       string
   createdAt:  unknown
 }
 
-export function listenChatMessages(cb: (msgs: ChatMessage[]) => void) {
+export function listenChatMessages(viewerRole: string, cb: (msgs: ChatMessage[]) => void) {
   const { query, collection: col, orderBy: ob, onSnapshot: ons, limit } = require('firebase/firestore')
   return ons(
     query(col(db, 'hq_chat'), ob('createdAt', 'asc'), limit(200)),
-    (snap: any) => cb(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })))
+    (snap: any) => {
+      const all: ChatMessage[] = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }))
+      // 관리자가 아닌 경우 → 관리자가 보낸 메시지 숨김
+      const filtered = viewerRole === 'ADMIN'
+        ? all
+        : all.filter(m => m.authorRole !== 'ADMIN')
+      cb(filtered)
+    }
   )
 }
 
-export async function sendChatMessage(authorUid: string, authorName: string, body: string) {
+export async function sendChatMessage(authorUid: string, authorName: string, authorRole: string, body: string) {
   const { collection: col, addDoc: add, serverTimestamp: sts } = await import('firebase/firestore')
-  await add(col(db, 'hq_chat'), { authorUid, authorName, body, createdAt: sts() })
+  await add(col(db, 'hq_chat'), { authorUid, authorName, authorRole, body, createdAt: sts() })
 }

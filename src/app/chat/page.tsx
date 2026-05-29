@@ -9,7 +9,8 @@ import type { AppUser } from '@/types'
 import { Send, Users } from 'lucide-react'
 import clsx from 'clsx'
 
-const HQ_ROLES = ['ADMIN', 'HQ_CHIEF', 'HQ_MEMBER']
+const HQ_ROLES = ['HQ_CHIEF', 'HQ_MEMBER']  // 관리자는 채팅 참여하되 목록에 미노출
+const HQ_ROLES_ALL = ['ADMIN', 'HQ_CHIEF', 'HQ_MEMBER']  // 접근 권한용
 
 // 멤버별 고정 색상
 const COLORS = [
@@ -33,11 +34,12 @@ export default function ChatPage() {
   const bottomRef  = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLTextAreaElement>(null)
 
-  const isHQ = user && HQ_ROLES.includes(user.role)
+  const isHQ = user && HQ_ROLES_ALL.includes(user.role)
 
   useEffect(() => {
     if (!isHQ) { router.replace('/dashboard'); return }
-    const u1 = listenChatMessages(setMessages)
+    const u1 = listenChatMessages(user!.role, setMessages)
+    // 멤버 목록에는 관리자 제외 (본부장·본부멤버만 표시)
     const u2 = listenUsers(all => setMembers(all.filter(u => HQ_ROLES.includes(u.role))))
     return () => { u1(); u2() }
   }, [isHQ, router])
@@ -50,7 +52,7 @@ export default function ChatPage() {
   const handleSend = async () => {
     if (!text.trim() || !user || sending) return
     setSending(true)
-    await sendChatMessage(user.uid, user.name, text.trim())
+    await sendChatMessage(user.uid, user.name, user.role, text.trim())
     setText('')
     setSending(false)
     inputRef.current?.focus()

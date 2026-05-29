@@ -153,8 +153,11 @@ export default function AdminPage() {
   const hqBiz = businesses.find(b => b.isHQ)
 
   // 멤버를 운영본부 / 사업장 / 기타로 그룹핑
-  const hqMembers  = users.filter(u => HQ_ROLES.includes(u.role))
+  // 운영본부 표시: 본부장·본부멤버만 (관리자 제외)
+  const hqMembers  = users.filter(u => u.role === 'HQ_CHIEF' || u.role === 'HQ_MEMBER')
   const bizMembers = users.filter(u => u.role === 'BIZ_REP')
+  // 관리자는 별도 (자기 자신만 보임)
+  const adminUsers = users.filter(u => u.role === 'ADMIN')
 
   return (
     <AppShell title="멤버 관리">
@@ -166,6 +169,26 @@ export default function AdminPage() {
             <UserPlus size={15}/> 계정 추가
           </button>
         </div>
+
+        {/* 관리자 (본인에게만 보임) */}
+        {adminUsers.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <div className="w-2 h-2 rounded-full bg-purple-500"/>
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                관리자 — {adminUsers.length}명
+              </span>
+              <span className="text-xs text-gray-400">(다른 멤버에게 비노출)</span>
+            </div>
+            <div className="space-y-2">
+              {adminUsers.map(u => <MemberCard key={u.uid} u={u} user={user} businesses={businesses}
+              editUser={editUser} editName={editName} editRole={editRole} editBizId={editBizId} editPerms={editPerms}
+              setEditName={setEditName} setEditRole={setEditRole} setEditBizId={setEditBizId} setEditPerms={setEditPerms}
+              saving={saving} showPerms={showPerms} openEdit={openEdit} handleSaveEdit={handleSaveEdit}
+              handleDelete={handleDelete} setEditUser={setEditUser}/>)}
+            </div>
+          </div>
+        )}
 
         {/* 운영본부 그룹 */}
         <div>
