@@ -13,6 +13,7 @@ export default function DashboardPage() {
   const router = useRouter()
   const [messages,   setMessages]   = useState<Message[]>([])
   const [businesses, setBusinesses] = useState<Business[]>([])
+  const [cardFilter, setCardFilter] = useState<'all' | 'pending' | 'done'>('all')
 
   const isAdmin = user?.role === 'ADMIN'
   const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
@@ -192,6 +193,12 @@ export default function DashboardPage() {
     const openItems    = myReceipts.filter(({ msg }) => msg.status === 'open')
     const pendingItems = myReceipts.filter(({ receipt }) => receipt?.status === 'pending')
 
+    const filteredByCard = cardFilter === 'all'
+      ? myReceipts
+      : cardFilter === 'pending'
+      ? myReceipts.filter(({ receipt }) => receipt?.status === 'pending')
+      : myReceipts.filter(({ msg }) => msg.status === 'done')
+
     return (
       <AppShell title="대시보드">
         <div className="p-4 md:p-6 space-y-6 max-w-2xl mx-auto">
@@ -203,17 +210,21 @@ export default function DashboardPage() {
           {/* 요약 카드 */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: '전체 전달', value: myReceipts.length, icon: Send,        color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500' },
-              { label: '진행중',    value: openItems.length,  icon: Clock,       color: 'bg-amber-50 border-amber-200',    iconColor: 'text-amber-500' },
-              { label: '미확인',    value: pendingItems.length, icon: AlertCircle,
+              { label: '전달받은 건수', value: myReceipts.length,    icon: Send,        color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', filter: 'all' },
+              { label: '미확인',        value: pendingItems.length,  icon: AlertCircle,
                 color: pendingItems.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200',
-                iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400' },
+                iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400', filter: 'pending' },
+              { label: '처리 완료',     value: myReceipts.filter(({msg}) => msg.status === 'done').length, icon: CheckCircle2, color: 'bg-green-50 border-green-200', iconColor: 'text-green-500', filter: 'done' },
             ].map(c => (
-              <div key={c.label} className={clsx('border rounded-xl p-3 text-center', c.color)}>
+              <button key={c.label}
+                onClick={() => setCardFilter(c.filter as 'all' | 'pending' | 'done')}
+                className={clsx('border rounded-xl p-3 text-center hover:shadow-md active:scale-95 transition-all cursor-pointer', c.color,
+                  cardFilter === c.filter ? 'ring-2 ring-primary-400' : ''
+                )}>
                 <c.icon size={18} className={clsx('mx-auto mb-1', c.iconColor)}/>
                 <p className="text-xl font-bold text-gray-900">{c.value}</p>
                 <p className="text-xs text-gray-600">{c.label}</p>
-              </div>
+              </button>
             ))}
           </div>
 
@@ -260,26 +271,43 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {/* 진행중 broadcast */}
+          {/* 전달 목록 (카드 필터 연동) */}
           <div>
-            <h3 className="font-semibold text-gray-900 text-sm mb-3">진행중 전달</h3>
-            {openItems.length === 0 ? (
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900 text-sm">
+                {cardFilter === 'all' ? '전체 전달' : cardFilter === 'pending' ? '미확인 전달' : '처리 완료'}
+              </h3>
+              {cardFilter !== 'all' && (
+                <button onClick={() => setCardFilter('all')}
+                  className="text-xs text-primary-600 hover:underline">전체 보기</button>
+              )}
+            </div>
+            {filteredByCard.length === 0 ? (
               <div className="text-center py-10 text-gray-400 text-sm bg-white border border-gray-100 rounded-xl">
-                현재 진행중인 전달이 없습니다
+                {cardFilter === 'pending' ? '미확인 전달이 없습니다 👍' :
+                 cardFilter === 'done'    ? '처리 완료된 전달이 없습니다' :
+                                           '전달 내역이 없습니다'}
               </div>
             ) : (
               <div className="space-y-2">
-                {openItems.map(({ msg, receipt }) => (
+                {filteredByCard.map(({ msg, receipt }) => (
                   <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
-                    className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm hover:border-primary-200 transition-all group">
+                    className={clsx(
+                      'w-full text-left border rounded-xl p-4 hover:shadow-sm transition-all group',
+                      msg.status === 'done'
+                        ? 'bg-gray-50 border-gray-200 opacity-75'
+                        : 'bg-white border-gray-200 hover:border-primary-200'
+                    )}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-1">
                           {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
-                          <span className={receipt?.status === 'pending' ? 'badge-pending' :
+                          <span className={msg.status === 'done' ? 'badge-done' :
+                            receipt?.status === 'pending'  ? 'badge-pending'  :
                             receipt?.status === 'received' ? 'badge-received' : 'badge-replied'}>
-                            {receipt?.status === 'pending' ? '미확인' :
-                              receipt?.status === 'received' ? '접수확인' : '답변완료'}
+                            {msg.status === 'done'            ? '처리완료'  :
+                             receipt?.status === 'pending'    ? '미확인'    :
+                             receipt?.status === 'received'   ? '접수확인'  : '답변완료'}
                           </span>
                         </div>
                         <p className="font-medium text-sm text-gray-900 truncate">{msg.title}</p>
