@@ -6,7 +6,7 @@ import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenBusinesses, listenMessages } from '@/lib/db'
 import type { Business, Message } from '@/types'
-import { Buildings, Send, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
+import { Building2, Send, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import clsx from 'clsx'
@@ -68,7 +68,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           {isHQ ? (
             <>
-              <StatCard label="관리 사업장" value={businesses.length} Icon={Buildings} color="purple" />
+              <StatCard label="관리 사업장" value={businesses.length} Icon={Building2} color="purple" />
               <StatCard label="전체 전달건" value={messages.length} Icon={Send} color="blue" />
               <StatCard label="미접수" value={totalPending} Icon={AlertCircle} color="red" />
               <StatCard label="답변 완료" value={totalReplied} Icon={CheckCircle2} color="green" />
