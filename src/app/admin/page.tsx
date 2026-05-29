@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenUsers, listenBusinesses, upsertUser } from '@/lib/db'
+import { listenUsers, listenBusinesses, upsertUser, updateBusiness } from '@/lib/db'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
 import { auth, db } from '@/lib/firebase'
 import type { AppUser, Business, UserRole } from '@/types'
-import { UserPlus, Edit2, Check, X, ShieldCheck, ChevronDown } from 'lucide-react'
+import { UserPlus, Edit2, Check, X, ShieldCheck } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function AdminPage() {
@@ -50,8 +50,7 @@ export default function AdminPage() {
       await setDoc(doc(db, 'users', cred.user.uid), newUser)
       // 사업장대표로 지정된 경우 사업장 대표자 정보 자동 연동
       if (newRole === 'BIZ_REP' && newBizId) {
-        const { updateBusiness } = await import('@/lib/db')
-        await updateBusiness(newBizId, { repName: newName, repUid: cred.user.uid })
+        await updateBusiness(newBizId, { repName: newName, repPhone: newEmail, repUid: cred.user.uid })
       }
       setShowAdd(false)
       setNewEmail(''); setNewPw(''); setNewName(''); setNewBizId('')
@@ -63,8 +62,14 @@ export default function AdminPage() {
     }
   }
 
+  // 역할 변경 시 사업장 대표자 정보 자동 연동
   const updateRole = async (u: AppUser, role: UserRole, bizId?: string) => {
-    await upsertUser({ ...u, role, ...(bizId ? { bizId } : { bizId: undefined }) })
+    const updated: AppUser = { ...u, role, ...(bizId ? { bizId } : { bizId: undefined }) }
+    await upsertUser(updated)
+    // 사업장대표로 변경된 경우 사업장 대표자 정보 자동 연동
+    if (role === 'BIZ_REP' && bizId) {
+      await updateBusiness(bizId, { repName: u.name, repUid: u.uid })
+    }
     setEditId(null)
   }
 
@@ -122,28 +127,19 @@ export default function AdminPage() {
           <div className="card p-4 mb-5 flex flex-col gap-4">
             <h2 className="text-sm font-semibold text-gray-900">새 계정 추가</h2>
 
-            {/* 역할 선택 */}
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-2">역할 *</label>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {(['HQ_MEMBER', 'HQ_CHIEF', 'BIZ_REP', 'ADMIN'] as UserRole[]).map(r => (
-                  <button
-                    key={r}
-                    onClick={() => { setNewRole(r); if (r !== 'BIZ_REP') setNewBizId('') }}
-                    className={clsx(
-                      'py-2 rounded-lg border text-xs font-medium transition-all',
-                      newRole === r
-                        ? 'border-primary-400 bg-primary-50 text-primary-800'
-                        : 'border-gray-100 bg-white text-gray-600 hover:bg-gray-50'
-                    )}
-                  >
+                  <button key={r} onClick={() => { setNewRole(r); if (r !== 'BIZ_REP') setNewBizId('') }}
+                    className={clsx('py-2 rounded-lg border text-xs font-medium transition-all',
+                      newRole === r ? 'border-primary-400 bg-primary-50 text-primary-800' : 'border-gray-100 bg-white text-gray-600 hover:bg-gray-50')}>
                     {roleLabel(r)}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* 사업장대표인 경우 사업장 먼저 선택 */}
             {newRole === 'BIZ_REP' && (
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-2">담당 사업장 * (먼저 선택하세요)</label>
@@ -154,57 +150,41 @@ export default function AdminPage() {
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {businesses.map(b => (
-                      <button
-                        key={b.id}
-                        onClick={() => setNewBizId(b.id)}
-                        className={clsx(
-                          'flex flex-col items-start px-3 py-2.5 rounded-lg border text-left transition-all',
-                          newBizId === b.id
-                            ? 'border-primary-400 bg-primary-50'
-                            : 'border-gray-100 bg-white hover:border-gray-200'
-                        )}
-                      >
-                        <span className={clsx('text-sm font-medium', newBizId === b.id ? 'text-primary-800' : 'text-gray-900')}>
-                          {b.name}
-                        </span>
+                      <button key={b.id} onClick={() => setNewBizId(b.id)}
+                        className={clsx('flex flex-col items-start px-3 py-2.5 rounded-lg border text-left transition-all',
+                          newBizId === b.id ? 'border-primary-400 bg-primary-50' : 'border-gray-100 bg-white hover:border-gray-200')}>
+                        <span className={clsx('text-sm font-medium', newBizId === b.id ? 'text-primary-800' : 'text-gray-900')}>{b.name}</span>
                         <span className="text-xs text-gray-400">{b.repName} 대표</span>
                       </button>
                     ))}
                   </div>
                 )}
                 {newBizId && selectedBiz && (
-                  <p className="text-xs text-primary-700 mt-2 font-medium">
-                    ✓ {selectedBiz.name} 선택됨
-                  </p>
+                  <p className="text-xs text-primary-700 mt-2 font-medium">✓ {selectedBiz.name} 선택됨 → 사업장 대표자 정보가 자동 연동됩니다</p>
                 )}
               </div>
             )}
 
-            {/* 기본 정보 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">이름 *</label>
                 <input className="input" value={newName} onChange={e => setNewName(e.target.value)}
-                  placeholder={newRole === 'BIZ_REP' && selectedBiz ? `${selectedBiz.repName}` : '홍길동'} />
+                  placeholder={selectedBiz ? selectedBiz.repName : '홍길동'} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">이메일 *</label>
-                <input className="input" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
-                  placeholder="user@gmail.com" />
+                <input className="input" type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="user@gmail.com" />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">초기 비밀번호 * (6자 이상)</label>
-                <input className="input" type="password" value={newPw} onChange={e => setNewPw(e.target.value)}
-                  placeholder="••••••••" />
+                <input className="input" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="••••••••" />
               </div>
             </div>
 
             {addError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{addError}</p>}
-
             <div className="bg-amber-50 rounded-lg px-3 py-2 text-xs text-amber-700">
               계정 생성 후 이메일과 비밀번호를 해당 사용자에게 직접 전달해주세요.
             </div>
-
             <div className="flex gap-2 justify-end">
               <button onClick={() => { setShowAdd(false); setAddError('') }} className="btn">취소</button>
               <button onClick={handleAddUser} disabled={adding} className="btn btn-primary">
@@ -233,19 +213,13 @@ export default function AdminPage() {
                   <div className="text-xs text-gray-400">{u.email}</div>
                 </div>
                 {editId === u.uid ? (
-                  <EditRoleInline
-                    user={u}
-                    businesses={businesses}
-                    onSave={updateRole}
-                    onCancel={() => setEditId(null)}
-                  />
+                  <EditRoleInline user={u} businesses={businesses} onSave={updateRole} onCancel={() => setEditId(null)} />
                 ) : (
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <span className={clsx('text-xs rounded-full px-2.5 py-0.5 font-medium', roleBadgeClass(u.role))}>
                       {roleLabel(u.role)}
                       {u.role === 'BIZ_REP' && u.bizId && businesses.find(b => b.id === u.bizId)
-                        ? ` · ${businesses.find(b => b.id === u.bizId)?.name}`
-                        : ''}
+                        ? ` · ${businesses.find(b => b.id === u.bizId)?.name}` : ''}
                     </span>
                     {u.uid !== user?.uid && (
                       <button onClick={() => setEditId(u.uid)} className="p-1 text-gray-400 hover:text-gray-600">

@@ -6,7 +6,7 @@ import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenBusinesses, listenMessages } from '@/lib/db'
 import type { Business, Message } from '@/types'
-import { Building2, Send, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
+import { Building2, Send, CheckCircle2, Clock, AlertCircle, Inbox } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ko } from 'date-fns/locale'
 import clsx from 'clsx'
@@ -28,127 +28,172 @@ export default function DashboardPage() {
 
   if (!user) return null
 
-  const isHQ = user.role === 'HQ_CHIEF' || user.role === 'HQ_MEMBER'
+  const isHQ    = user.role === 'HQ_CHIEF' || user.role === 'HQ_MEMBER'
+  const isAdmin = user.role === 'ADMIN'
+  const isBizRep = user.role === 'BIZ_REP'
 
-  const totalPending = messages.reduce(
-    (a, m) => a + m.receipts.filter(r => r.status === 'pending').length, 0
-  )
-  const totalReplied  = messages.reduce(
-    (a, m) => a + m.receipts.filter(r => r.status === 'replied').length, 0
-  )
-  const totalReceived = messages.reduce(
-    (a, m) => a + m.receipts.filter(r => r.status === 'received').length, 0
-  )
+  // 본부/관리자 통계
+  const sentMsgs     = messages.filter(m => m.fromUid === user.uid)
+  const totalPending = messages.reduce((a, m) => a + m.receipts.filter(r => r.status === 'pending').length, 0)
+  const totalReplied = messages.reduce((a, m) => a + m.receipts.filter(r => r.status === 'replied').length, 0)
 
-  // 사업장 대표: 내 메시지 통계
-  const myPending  = messages.filter(m => m.receipts.find(r => r.bizId === user.bizId && r.status === 'pending')).length
-  const myReceived = messages.filter(m => m.receipts.find(r => r.bizId === user.bizId && r.status !== 'pending')).length
+  // 사업장대표 통계
+  const myReceivedMsgs = messages.filter(m => m.receipts.find(r => r.bizId === user.bizId))
+  const myPending      = myReceivedMsgs.filter(m => m.receipts.find(r => r.bizId === user.bizId && r.status === 'pending')).length
+  const myDone         = myReceivedMsgs.filter(m => m.receipts.find(r => r.bizId === user.bizId && r.status !== 'pending')).length
+  const mySentMsgs     = messages.filter(m => m.fromUid === user.uid)
+
+  const relTime = (iso: string) => {
+    try { return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ko }) } catch { return iso }
+  }
 
   const recentMsgs = [...messages]
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 5)
-
-  const relTime = (iso: string) => {
-    try {
-      return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ko })
-    } catch { return iso }
-  }
 
   return (
     <AppShell>
       <div className="p-4 md:p-6 max-w-4xl mx-auto">
         <div className="mb-6">
           <h1 className="text-xl font-semibold text-gray-900">대시보드</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {user.name}님, 안녕하세요.
-          </p>
+          <p className="text-sm text-gray-500 mt-0.5">{user.name}님, 안녕하세요.</p>
         </div>
 
-        {/* 통계 카드 */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          {isHQ ? (
-            <>
-              <StatCard label="관리 사업장" value={businesses.length} Icon={Building2} color="purple" />
-              <StatCard label="전체 전달건" value={messages.length} Icon={Send} color="blue" />
-              <StatCard label="미접수" value={totalPending} Icon={AlertCircle} color="red" />
-              <StatCard label="답변 완료" value={totalReplied} Icon={CheckCircle2} color="green" />
-            </>
-          ) : (
-            <>
-              <StatCard label="전달받은 건수" value={messages.length} Icon={Send} color="blue" />
-              <StatCard label="미확인" value={myPending} Icon={Clock} color="red" />
-              <StatCard label="처리 완료" value={myReceived} Icon={CheckCircle2} color="green" />
-            </>
-          )}
-        </div>
-
-        {/* 최근 전달사항 */}
-        <div className="card overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h2 className="text-sm font-semibold text-gray-900">최근 전달/지시사항</h2>
-            {isHQ && (
-              <Link href="/compose" className="text-xs text-primary-600 hover:underline">
-                + 새 전달
-              </Link>
-            )}
+        {/* 통계 카드 - 본부/관리자 */}
+        {(isHQ || isAdmin) && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <StatCard label="관리 사업장"  value={businesses.length}  Icon={Building2}    color="purple" />
+            <StatCard label="보낸 메시지"  value={sentMsgs.length}    Icon={Send}         color="blue" />
+            <StatCard label="미접수"       value={totalPending}       Icon={AlertCircle}  color="red" />
+            <StatCard label="답변 완료"    value={totalReplied}       Icon={CheckCircle2} color="green" />
           </div>
-          {recentMsgs.length === 0 ? (
-            <div className="py-12 text-center text-sm text-gray-400">전달사항이 없습니다</div>
-          ) : (
+        )}
+
+        {/* 통계 카드 - 사업장대표 */}
+        {isBizRep && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            <StatCard label="받은 메시지"  value={myReceivedMsgs.length} Icon={Inbox}        color="blue" />
+            <StatCard label="미확인"       value={myPending}              Icon={Clock}        color="red" />
+            <StatCard label="처리 완료"    value={myDone}                 Icon={CheckCircle2} color="green" />
+            <StatCard label="보낸 메시지"  value={mySentMsgs.length}      Icon={Send}         color="purple" />
+          </div>
+        )}
+
+        {/* 최근 받은 메시지 (사업장대표) */}
+        {isBizRep && myReceivedMsgs.length > 0 && (
+          <div className="card overflow-hidden mb-4">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-900">받은 메시지</h2>
+            </div>
             <ul className="divide-y divide-gray-50">
-              {recentMsgs.map(m => {
-                const myReceipt = m.receipts.find(r => r.bizId === user.bizId)
-                const pendingCnt = m.receipts.filter(r => r.status === 'pending').length
-                const biz = businesses.find(b => b.id === m.targetBizIds[0])
+              {myReceivedMsgs.slice(0, 5).map(m => {
+                const receipt = m.receipts.find(r => r.bizId === user.bizId)
                 return (
                   <li key={m.id}>
-                    <Link
-                      href={isHQ ? `/messages/${m.id}` : `/businesses/${user.bizId}?msg=${m.id}`}
-                      className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
-                    >
+                    <Link href={`/businesses/${user.bizId}?msg=${m.id}`}
+                      className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
                           <span className={m.priority === 'urgent' ? 'badge-urgent' : 'badge-normal'}>
                             {m.priority === 'urgent' ? '긴급' : '일반'}
                           </span>
-                          {isHQ && m.targetBizIds.length > 1 && (
-                            <span className="text-[11px] text-gray-400">{m.targetBizIds.length}개 사업장</span>
-                          )}
-                          {isHQ && m.targetBizIds.length === 1 && biz && (
-                            <span className="text-[11px] text-gray-400">{biz.name}</span>
-                          )}
-                          {isHQ && pendingCnt > 0 && (
-                            <span className="text-[10px] font-semibold text-red-600 bg-red-50 rounded-full px-1.5 py-0.5">
-                              미접수 {pendingCnt}
-                            </span>
-                          )}
-                          {!isHQ && myReceipt && (
+                          {receipt && (
                             <span className={clsx(
-                              myReceipt.status === 'pending'  ? 'badge-pending'  :
-                              myReceipt.status === 'received' ? 'badge-received' : 'badge-replied'
+                              receipt.status === 'pending'  ? 'badge-pending'  :
+                              receipt.status === 'received' ? 'badge-received' : 'badge-replied'
                             )}>
-                              {myReceipt.status === 'pending' ? '미접수' : myReceipt.status === 'received' ? '접수' : '답변완료'}
+                              {receipt.status === 'pending' ? '미접수' : receipt.status === 'received' ? '접수확인' : '답변완료'}
                             </span>
                           )}
+                          <span className="text-[10px] text-gray-400 ml-auto">{relTime(m.createdAt)}</span>
                         </div>
                         <p className="text-sm font-medium text-gray-900 truncate">{m.title}</p>
-                        <p className="text-xs text-gray-400 truncate mt-0.5">{m.fromName} · {relTime(m.createdAt)}</p>
+                        <p className="text-xs text-gray-400 truncate mt-0.5">{m.fromName}</p>
                       </div>
                     </Link>
                   </li>
                 )
               })}
             </ul>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* 보낸 메시지 (사업장대표) */}
+        {isBizRep && mySentMsgs.length > 0 && (
+          <div className="card overflow-hidden mb-4">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-900">보낸 메시지</h2>
+            </div>
+            <ul className="divide-y divide-gray-50">
+              {mySentMsgs.slice(0, 3).map(m => (
+                <li key={m.id} className="flex items-start gap-3 px-4 py-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{m.title}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{relTime(m.createdAt)}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* 최근 전달사항 (본부/관리자) */}
+        {(isHQ || isAdmin) && (
+          <div className="card overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-900">최근 전달/지시사항</h2>
+              <Link href="/compose" className="text-xs text-primary-600 hover:underline">+ 새 전달</Link>
+            </div>
+            {recentMsgs.length === 0
+              ? <div className="py-12 text-center text-sm text-gray-400">전달사항이 없습니다</div>
+              : <ul className="divide-y divide-gray-50">
+                  {recentMsgs.map(m => {
+                    const pendingCnt = m.receipts.filter(r => r.status === 'pending').length
+                    const biz = businesses.find(b => b.id === m.targetBizIds[0])
+                    const isMine = m.fromUid === user.uid
+                    return (
+                      <li key={m.id}>
+                        <Link href={`/messages/${m.id}`}
+                          className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                              <span className={clsx('text-[10px] font-medium px-1.5 py-0.5 rounded-full',
+                                isMine ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600')}>
+                                {isMine ? '내가 보냄' : m.fromName}
+                              </span>
+                              <span className={m.priority === 'urgent' ? 'badge-urgent' : 'badge-normal'}>
+                                {m.priority === 'urgent' ? '긴급' : '일반'}
+                              </span>
+                              {m.targetBizIds.length === 1 && biz && (
+                                <span className="text-[11px] text-gray-400">→ {biz.name}</span>
+                              )}
+                              {m.targetBizIds.length > 1 && (
+                                <span className="text-[11px] text-gray-400">→ {m.targetBizIds.length}개 사업장</span>
+                              )}
+                              {pendingCnt > 0 && (
+                                <span className="text-[10px] font-semibold text-red-600 bg-red-50 rounded-full px-1.5 py-0.5">
+                                  미접수 {pendingCnt}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-gray-400 ml-auto">{relTime(m.createdAt)}</span>
+                            </div>
+                            <p className="text-sm font-medium text-gray-900 truncate">{m.title}</p>
+                          </div>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ul>
+            }
+          </div>
+        )}
       </div>
     </AppShell>
   )
 }
 
 function StatCard({ label, value, Icon, color }: {
-  label: string; value: number
-  Icon: React.ElementType; color: string
+  label: string; value: number; Icon: React.ElementType; color: string
 }) {
   const colors: Record<string, string> = {
     purple: 'bg-primary-50 text-primary-600',
