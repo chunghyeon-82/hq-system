@@ -207,3 +207,25 @@ export async function ensureHQBusiness(): Promise<string> {
   })
   return ref.id
 }
+
+// ── 운영본부 단체채팅 ──────────────────────────────────
+export interface ChatMessage {
+  id:         string
+  authorUid:  string
+  authorName: string
+  body:       string
+  createdAt:  unknown
+}
+
+export function listenChatMessages(cb: (msgs: ChatMessage[]) => void) {
+  const { query, collection: col, orderBy: ob, onSnapshot: ons, limit } = require('firebase/firestore')
+  return ons(
+    query(col(db, 'hq_chat'), ob('createdAt', 'asc'), limit(200)),
+    (snap: any) => cb(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })))
+  )
+}
+
+export async function sendChatMessage(authorUid: string, authorName: string, body: string) {
+  const { collection: col, addDoc: add, serverTimestamp: sts } = await import('firebase/firestore')
+  await add(col(db, 'hq_chat'), { authorUid, authorName, body, createdAt: sts() })
+}

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/auth-context'
-import { LayoutDashboard, Building2, Send, Users, LogOut, Menu, X, ChevronRight, MessageSquare } from 'lucide-react'
+import { LayoutDashboard, Building2, Send, Users, LogOut, Menu, X, ChevronRight, MessageSquare, MessageCircle } from 'lucide-react'
 import clsx from 'clsx'
 
 interface Props { children: ReactNode; title?: string; back?: string }
@@ -16,21 +16,19 @@ export default function AppShell({ children, title, back }: Props) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
 
-  const isAdmin   = user?.role === 'ADMIN'
-  const isHQChief = user?.role === 'HQ_CHIEF'
-  const isHQMember= user?.role === 'HQ_MEMBER'
-  const isBiz     = user?.role === 'BIZ_REP'
-  const isHQ      = isAdmin || isHQChief || isHQMember
+  const isAdmin    = user?.role === 'ADMIN'
+  const isHQChief  = user?.role === 'HQ_CHIEF'
+  const isHQMember = user?.role === 'HQ_MEMBER'
+  const isBiz      = user?.role === 'BIZ_REP'
+  const isHQ       = isAdmin || isHQChief || isHQMember
 
-  // 전체 발송 권한: 관리자, 본부장은 기본, 본부멤버/사업장대표는 권한 있을 때
   const canBroadcast = isAdmin || isHQChief || !!user?.permissions?.canBroadcast
-  // 사업장 정보 수정 권한
-  const canEditBiz   = isAdmin || isHQChief || !!user?.permissions?.canEditBusiness
 
   const nav = [
     { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true },
     { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ },
     { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast },
+    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ },
     { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: isBiz },
     { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin },
   ].filter(n => n.show)
