@@ -8,23 +8,33 @@ export interface AppUser {
   bizId?: string
 }
 
+export interface Shareholder {
+  name:   string
+  shares: number   // 주식수
+  ratio?: number   // 지분율 (자동계산)
+}
+
 export interface Business {
-  id: string
-  name: string
-  address?: string
-  repName?: string
-  repUid?: string
-  phone?: string
+  id:           string
+  name:         string
+  address?:     string
+  repName?:     string
+  repUid?:      string
+  phone?:       string
+  totalShares?: number         // 발행 총 주식수
+  shareholders?: Shareholder[] // 주주 현황
+  employeeCount?: number       // 총 직원수
+  annualRevenue?: number       // 연매출 (만원)
   createdAt?: unknown
 }
 
 export type MessagePriority = 'normal' | 'urgent'
-export type MessageStatus   = 'open' | 'done'   // open=진행중, done=완결
+export type MessageStatus   = 'open' | 'done'
 
 export interface Receipt {
-  bizId:      string
-  bizName:    string
-  status:     'pending' | 'received' | 'replied'
+  bizId:       string
+  bizName:     string
+  status:      'pending' | 'received' | 'replied'
   receivedAt?: string
   repliedAt?:  string
   hidden?:     boolean
