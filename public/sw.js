@@ -1,12 +1,21 @@
-const CACHE_NAME = 'hq-system-v1'
-const urlsToCache = ['/', '/dashboard', '/businesses', '/login']
+const CACHE = 'hq-v2'
+const OFFLINE_URLS = ['/', '/dashboard', '/login']
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache)))
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(OFFLINE_URLS)).then(() => self.skipWaiting())
+  )
 })
-
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  )
+})
 self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return
   e.respondWith(
-    caches.match(e.request).then(response => response || fetch(e.request))
+    fetch(e.request).catch(() => caches.match(e.request))
   )
 })

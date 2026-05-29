@@ -1,5 +1,3 @@
-// src/lib/firebase.ts
-// 아래 값을 Firebase 콘솔 > 프로젝트 설정 > 앱 추가(Web)에서 복사해 붙여넣으세요.
 import { initializeApp, getApps } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
@@ -14,7 +12,5 @@ const firebaseConfig = {
 }
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
-
 export const auth = getAuth(app)
-export const db   = getFirestore(app)
-export default app
+export const db = getFirestore(app)

@@ -1,5 +1,3 @@
-// src/types/index.ts
-
 export type UserRole = 'ADMIN' | 'HQ_CHIEF' | 'HQ_MEMBER' | 'BIZ_REP'
 
 export interface AppUser {
@@ -10,56 +8,37 @@ export interface AppUser {
   bizId?: string
 }
 
-export interface Shareholder {
-  name:   string
-  shares: number
-  pct:    number
-}
-
-export interface Officer {
-  name:      string
-  title:     string
-  termStart: string
-  termEnd:   string
-}
-
 export interface Business {
-  id:           string
-  name:         string
-  repName:      string
-  repPhone:     string
-  repUid?:      string
-  employees:    number
-  established:  string
-  address:      string
-  businessType: string
-  shareholders: Shareholder[]
-  officers:     Officer[]
-  createdAt:    string
-  updatedAt:    string
+  id: string
+  name: string
+  address?: string
+  repName?: string
+  repUid?: string
+  phone?: string
+  createdAt?: unknown
 }
 
 export type MessagePriority = 'normal' | 'urgent'
-export type MessageStatus   = 'pending' | 'received' | 'replied'
+export type MessageStatus   = 'open' | 'done'   // open=진행중, done=완결
 
 export interface Receipt {
   bizId:      string
   bizName:    string
-  status:     MessageStatus
+  status:     'pending' | 'received' | 'replied'
   receivedAt?: string
   repliedAt?:  string
-  hiddenAt?:   string  // 숨김 처리 시각
-  hidden?:     boolean // 해당 사업장에서 숨김 여부
+  hidden?:     boolean
+  hiddenAt?:   string
 }
 
 export interface Reply {
-  id:        string
-  fromUid:   string
-  fromName:  string
-  role:      UserRole
-  bizId?:    string  // 발신 사업장 (대표자 간 메시지용)
-  text:      string
-  createdAt: string
+  id:         string
+  bizId:      string
+  bizName:    string
+  authorUid:  string
+  authorName: string
+  body:       string
+  createdAt:  string
 }
 
 export interface Message {
@@ -67,13 +46,12 @@ export interface Message {
   title:        string
   body:         string
   priority:     MessagePriority
-  fromUid:      string
-  fromName:     string
-  fromRole:     UserRole
-  fromBizId?:   string  // 대표자 간 메시지용
+  authorUid:    string
+  authorName:   string
   targetBizIds: string[]
+  status:       MessageStatus
   receipts:     Receipt[]
   replies:      Reply[]
-  createdAt:    string
-  updatedAt:    string
+  createdAt:    unknown
+  updatedAt:    unknown
 }
