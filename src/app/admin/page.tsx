@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenUsers, listenBusinesses } from '@/lib/db'
-import { createUserWithEmailAndPassword, deleteUser as fbDeleteUser } from 'firebase/auth'
+import { listenUsers, listenBusinesses, updateBusiness } from '@/lib/db'
+import { createUserWithEmailAndPassword } from 'firebase/auth'
 import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { auth, db } from '@/lib/firebase'
 import type { AppUser, Business, UserRole } from '@/types'
@@ -63,22 +63,37 @@ export default function AdminPage() {
     if (!editUser || !editName.trim()) return
     if (editRole === 'BIZ_REP' && !editBizId) return
     setSaving(true)
-    const data: Partial<AppUser> = { name: editName, role: editRole }
-    if (editRole === 'BIZ_REP') data.bizId = editBizId
-    else delete data.bizId
-    await updateDoc(doc(db, 'users', editUser.uid), editRole === 'BIZ_REP'
-      ? { name: editName, role: editRole, bizId: editBizId }
-      : { name: editName, role: editRole, bizId: null }
-    )
+
+    // 1) users 컬렉션 업데이트
+    const userData: Record<string, unknown> = { name: editName, role: editRole }
+    if (editRole === 'BIZ_REP' && editBizId) {
+      userData.bizId = editBizId
+    } else {
+      userData.bizId = null
+    }
+    await updateDoc(doc(db, 'users', editUser.uid), userData)
+
+    // 2) 이전에 담당하던 사업장 대표자 정보 지우기
+    if (editUser.bizId && editUser.bizId !== editBizId) {
+      await updateBusiness(editUser.bizId, { repName: '', repUid: '' })
+    }
+
+    // 3) 새로 BIZ_REP로 지정된 경우 사업장 대표자 정보 자동 연동
+    if (editRole === 'BIZ_REP' && editBizId) {
+      await updateBusiness(editBizId, { repName: editName, repUid: editUser.uid })
+    }
+
     setSaving(false)
     setEditUser(null)
   }
 
   const handleDelete = async (u: AppUser) => {
     if (!confirm(`'${u.name}' 계정을 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) return
+    // 담당 사업장 대표자 정보도 함께 지우기
+    if (u.bizId) {
+      await updateBusiness(u.bizId, { repName: '', repUid: '' })
+    }
     await deleteDoc(doc(db, 'users', u.uid))
-    // Firebase Auth 삭제는 해당 유저가 로그인된 상태에서만 가능하므로 Firestore만 삭제
-    // (실제 운영시 Admin SDK 또는 Cloud Function으로 처리 권장)
   }
 
   const handleAddUser = async () => {
@@ -92,6 +107,12 @@ export default function AdminPage() {
         ...(newRole === 'BIZ_REP' && newBizId ? { bizId: newBizId } : {}),
       }
       await setDoc(doc(db, 'users', cred.user.uid), newUser)
+
+      // 사업장대표로 추가 시 사업장 repName 자동 연동
+      if (newRole === 'BIZ_REP' && newBizId) {
+        await updateBusiness(newBizId, { repName: newName, repUid: cred.user.uid })
+      }
+
       setShowAdd(false)
       setNewEmail(''); setNewPw(''); setNewName(''); setNewBizId(''); setNewRole('HQ_MEMBER')
     } catch (e: unknown) {
@@ -133,8 +154,7 @@ export default function AdminPage() {
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">{u.email}</p>
                 </div>
-                {/* 수정/삭제 버튼 (자기 자신 제외) */}
-                {u.uid !== user?.uid && (
+                {u.uid !== user?.uid ? (
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={() => openEdit(u)}
                       className="p-2 text-gray-400 hover:text-primary-600 rounded-lg hover:bg-primary-50 transition-colors"
@@ -147,8 +167,7 @@ export default function AdminPage() {
                       <Trash2 size={15}/>
                     </button>
                   </div>
-                )}
-                {u.uid === user?.uid && (
+                ) : (
                   <span className="text-xs text-gray-400 shrink-0">내 계정</span>
                 )}
               </div>
@@ -156,7 +175,7 @@ export default function AdminPage() {
               {/* 인라인 수정 폼 */}
               {editUser?.uid === u.uid && (
                 <div className="border-t border-gray-100 bg-gray-50 p-4 space-y-3">
-                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">정보 수정</p>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">정보 수정</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">이름</label>
@@ -178,13 +197,24 @@ export default function AdminPage() {
                         <select value={editBizId} onChange={e => setEditBizId(e.target.value)}
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
                           <option value="">선택하세요</option>
-                          {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          {businesses.map(b => (
+                            <option key={b.id} value={b.id}>{b.name}</option>
+                          ))}
                         </select>
                       </div>
                     )}
                   </div>
+
+                  {/* BIZ_REP 선택 시 안내 메시지 */}
+                  {editRole === 'BIZ_REP' && editBizId && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700">
+                      저장하면 <strong>{businesses.find(b => b.id === editBizId)?.name}</strong>의 대표자가 <strong>{editName}</strong>으로 자동 등록됩니다.
+                    </div>
+                  )}
+
                   <div className="flex gap-2 pt-1">
-                    <button onClick={handleSaveEdit} disabled={saving || !editName.trim() || (editRole === 'BIZ_REP' && !editBizId)}
+                    <button onClick={handleSaveEdit}
+                      disabled={saving || !editName.trim() || (editRole === 'BIZ_REP' && !editBizId)}
                       className="flex items-center gap-1.5 bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary-800 disabled:opacity-50 transition-colors">
                       <Check size={14}/> {saving ? '저장 중...' : '저장'}
                     </button>
@@ -238,6 +268,11 @@ export default function AdminPage() {
                     <option value="">선택하세요</option>
                     {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
+                </div>
+              )}
+              {newRole === 'BIZ_REP' && newBizId && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-700">
+                  저장하면 <strong>{businesses.find(b => b.id === newBizId)?.name}</strong>의 대표자가 <strong>{newName || '(이름 입력 필요)'}</strong>으로 자동 등록됩니다.
                 </div>
               )}
               {addError && <p className="text-red-500 text-sm">{addError}</p>}
