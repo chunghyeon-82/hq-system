@@ -110,7 +110,7 @@ export default function SettingsPage() {
   // ── 계정 설정 섹션 ─────────────────────────────────
   if (section === 'account') return (
     <AppShell title="계정 설정">
-      <div className="max-w-lg mx-auto p-4 space-y-4">
+      <div className="max-w-3xl mx-auto p-4 space-y-4">
         <SectionHeader label="계정 설정"/>
         <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
           <div>
@@ -150,7 +150,7 @@ export default function SettingsPage() {
   // ── 비밀번호 변경 섹션 ────────────────────────────
   if (section === 'password') return (
     <AppShell title="비밀번호 변경">
-      <div className="max-w-lg mx-auto p-4 space-y-4">
+      <div className="max-w-3xl mx-auto p-4 space-y-4">
         <SectionHeader label="비밀번호 변경"/>
         <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
           {[
@@ -190,7 +190,7 @@ export default function SettingsPage() {
   // ── 앱 정보 섹션 ──────────────────────────────────
   if (section === 'appinfo') return (
     <AppShell title="앱 정보">
-      <div className="max-w-lg mx-auto p-4 space-y-4">
+      <div className="max-w-3xl mx-auto p-4 space-y-4">
         <SectionHeader label="앱 정보"/>
         <div className="bg-white border border-gray-200 rounded-2xl divide-y divide-gray-100">
           {[
@@ -223,7 +223,7 @@ export default function SettingsPage() {
   // ── 메인 설정 화면 ─────────────────────────────────
   return (
     <AppShell title="설정">
-      <div className="max-w-lg mx-auto p-4 space-y-4">
+      <div className="max-w-3xl mx-auto p-4 space-y-4">
 
         {/* 알림 */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">

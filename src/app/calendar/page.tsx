@@ -120,7 +120,7 @@ export default function CalendarPage() {
 
   return (
     <AppShell title="캘린더">
-      <div className="max-w-2xl mx-auto p-4 space-y-4">
+      <div className="max-w-4xl mx-auto p-4 space-y-4">
 
         {/* 추가 버튼 */}
         {!showForm && (

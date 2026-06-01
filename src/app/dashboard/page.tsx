@@ -50,7 +50,7 @@ export default function DashboardPage() {
 
     return (
       <AppShell title="대시보드">
-        <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
+        <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
           <div>
             <h2 className="text-lg font-bold text-gray-900">안녕하세요, {user?.name}님 👋</h2>
             <p className="text-sm text-gray-500 mt-0.5">오늘도 좋은 하루 되세요.</p>
@@ -63,7 +63,7 @@ export default function DashboardPage() {
               { label: '미접수',       value: pendingCount,              icon: AlertCircle,   color: pendingCount > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200', iconColor: pendingCount > 0 ? 'text-red-500' : 'text-gray-400', href: '/businesses' },
               { label: '긴급 전달',    value: urgentMsgs.length,         icon: AlertCircle,   color: urgentMsgs.length > 0 ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200', iconColor: urgentMsgs.length > 0 ? 'text-red-600' : 'text-gray-400', href: '/businesses' },
               { label: '전체 사업장',  value: businesses.length,         icon: Building2,     color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', href: '/businesses' },
-              { label: '1:1 메시지',   value: directMsgs.length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/dashboard' },
+              { label: '1:1 메시지',   value: directMsgs.length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/direct' },
             ].map(card => (
               <button key={card.label} onClick={() => router.push(card.href)}
                 className={clsx('relative text-left border rounded-xl p-4 hover:shadow-md active:scale-95 transition-all', card.color)}>
@@ -215,7 +215,7 @@ export default function DashboardPage() {
               { label: '전달받은 건수', value: myReceipts.length,    icon: Send,        color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', filter: 'all' },
               { label: '미접수',        value: pendingItems.length,  icon: AlertCircle,
                 color: pendingItems.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200',
-                iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400', filter: 'pending' },
+                iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400', filter: 'pending', href: '/dashboard' },
               { label: '처리 완료',     value: myReceipts.filter(({msg}) => msg.status === 'done').length, icon: CheckCircle2, color: 'bg-green-50 border-green-200', iconColor: 'text-green-500', filter: 'done' },
             ].map(c => (
               <button key={c.label}
@@ -228,6 +228,24 @@ export default function DashboardPage() {
                 <p className="text-xs text-gray-600">{c.label}</p>
               </button>
             ))}
+          </div>
+
+          {/* 바로가기 버튼 */}
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => router.push('/notices')}
+              className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-3 hover:shadow-sm hover:border-primary-200 transition-all">
+              <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
+                <span className="text-amber-600 text-sm">📢</span>
+              </div>
+              <span className="text-sm font-medium text-gray-700">공지사항</span>
+            </button>
+            <button onClick={() => router.push('/calendar')}
+              className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-3 hover:shadow-sm hover:border-primary-200 transition-all">
+              <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
+                <span className="text-blue-600 text-sm">📅</span>
+              </div>
+              <span className="text-sm font-medium text-gray-700">캘린더</span>
+            </button>
           </div>
 
           {/* 1:1 메시지 바로가기 */}

@@ -116,7 +116,7 @@ export default function MessageDetailPage() {
 
   return (
     <AppShell title="전달 상세" back={isHQ ? '/businesses' : '/dashboard'}>
-      <div className="max-w-2xl mx-auto p-4 space-y-4">
+      <div className="max-w-4xl mx-auto p-4 space-y-4">
 
         {/* 메시지 헤더 */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">

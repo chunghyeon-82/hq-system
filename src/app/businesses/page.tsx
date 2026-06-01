@@ -48,7 +48,7 @@ export default function BusinessesPage() {
 
   return (
     <AppShell title="사업장 현황">
-      <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-5">
+      <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
 
         {/* ── 운영본부 카드 ── */}
         {hqBiz && (

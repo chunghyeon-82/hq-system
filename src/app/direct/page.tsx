@@ -92,7 +92,7 @@ export default function DirectPage() {
 
   return (
     <AppShell title="1:1 메시지" back="/dashboard">
-      <div className="max-w-lg mx-auto p-4 md:p-6 space-y-4">
+      <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-4">
 
         {/* 비공개 안내 */}
         <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
