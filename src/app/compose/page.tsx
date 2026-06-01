@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenBusinesses, sendMessage, listenTemplates, addTemplate, deleteTemplate } from '@/lib/db'
-import type { Business, Receipt, MessageTemplate } from '@/types'
+import type { Business, Receipt, MessageTemplate, MessageCategory } from '@/types'
 import {
   Send, CheckSquare, Square, AlertCircle, Calendar, Link2,
   BookTemplate, Plus, Trash2, X, ChevronDown
@@ -20,6 +20,7 @@ function ComposeContent() {
   const [selected,   setSelected]   = useState<Set<string>>(new Set())
   const [title,      setTitle]      = useState('')
   const [body,       setBody]       = useState('')
+  const [category,   setCategory]   = useState<'instruction' | 'confirm' | 'notice'>('instruction')
   const [priority,   setPriority]   = useState<'normal' | 'urgent'>('normal')
   const [sending,    setSending]    = useState(false)
   const [sent,       setSent]       = useState(false)
@@ -80,7 +81,7 @@ function ComposeContent() {
       status: 'pending' as const,
     }))
     await sendMessage({
-      title: title.trim(), body: body.trim(), priority,
+      title: title.trim(), body: body.trim(), category, priority,
       authorUid: user.uid, authorName: user.name,
       targetBizIds: Array.from(selected),
       receipts,
@@ -130,7 +131,25 @@ function ComposeContent() {
     <AppShell title="전달 작성">
       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
 
-        {/* 우선순위 */}
+        {/* 전달 종류 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">전달 종류</label>
+          <div className="flex gap-2">
+            {([
+              { value: 'instruction', label: '업무지시', color: 'bg-amber-50 border-amber-300 text-amber-700' },
+              { value: 'confirm',     label: '확인요청', color: 'bg-blue-50 border-blue-300 text-blue-700' },
+              { value: 'notice',      label: '단순공지', color: 'bg-gray-50 border-gray-300 text-gray-600' },
+            ] as const).map(c => (
+              <button key={c.value} onClick={() => setCategory(c.value)}
+                className={clsx('flex-1 py-2 rounded-xl text-sm font-medium border transition-colors',
+                  category === c.value ? c.color : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50')}>
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+                {/* 우선순위 */}
         <div className="flex gap-2">
           {(['normal', 'urgent'] as const).map(p => (
             <button key={p} onClick={() => setPriority(p)}

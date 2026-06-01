@@ -36,14 +36,24 @@ export type MessagePriority = 'normal' | 'urgent'
 export type MessageStatus   = 'open' | 'done'
 export type MessageType     = 'broadcast' | 'direct'
 
+// 전달 종류 (업무지시 / 확인요청 / 단순공지)
+export type MessageCategory = 'instruction' | 'confirm' | 'notice'
+
+// 사업장별 처리 상태
+// pending   = 미접수
+// processing = 처리하겠습니다 (처리중)
+// done      = 처리했습니다 (완료)
+export type ReceiptStatus = 'pending' | 'processing' | 'done'
+
 export interface Receipt {
-  bizId:       string
-  bizName:     string
-  status:      'pending' | 'received' | 'replied'
-  receivedAt?: string
-  repliedAt?:  string
-  hidden?:     boolean
-  hiddenAt?:   string
+  bizId:        string
+  bizName:      string
+  status:       ReceiptStatus
+  processedAt?: string   // 처리하겠습니다 누른 시각
+  doneAt?:      string   // 처리했습니다 시각
+  doneNote?:    string   // 완료 보고 내용
+  hidden?:      boolean
+  hiddenAt?:    string
 }
 
 export interface Reply {
@@ -60,6 +70,7 @@ export interface Message {
   id:            string
   title:         string
   body:          string
+  category:      MessageCategory
   priority:      MessagePriority
   type:          MessageType
   authorUid:     string
@@ -71,15 +82,13 @@ export interface Message {
   status:        MessageStatus
   receipts:      Receipt[]
   replies:       Reply[]
-  // 일정 첨부
-  eventDate?:    string   // ISO 날짜 "YYYY-MM-DD"
-  eventTime?:    string   // "HH:MM"
+  eventDate?:    string
+  eventTime?:    string
   eventTitle?:   string
-  createdAt:     unknown
-  updatedAt:     unknown
-  // 링크 첨부
   linkUrl?:      string
   linkLabel?:    string
+  createdAt:     unknown
+  updatedAt:     unknown
 }
 
 // ── 공지사항 ──────────────────────────────────────────
@@ -92,7 +101,7 @@ export interface Notice {
   body:        string
   authorUid:   string
   authorName:  string
-  expiresAt:   string   // ISO datetime
+  expiresAt:   string
   createdAt:   unknown
   updatedAt?:  unknown
 }
@@ -108,16 +117,16 @@ export interface EventReminder {
 export interface CalendarEvent {
   id:            string
   title:         string
-  date:          string   // "YYYY-MM-DD"
-  time?:         string   // "HH:MM"
+  date:          string
+  time?:         string
   memo?:         string
   ownerUid:      string
   ownerName:     string
-  targetBizIds?: string[]   // 사업장에 공유된 경우
+  targetBizIds?: string[]
   reminder?:     EventReminder
   isDone:        boolean
   doneAt?:       string
-  addedBy?:      Record<string, string>   // bizId → addedAt ISO
+  addedBy?:      Record<string, string>
   createdAt:     unknown
   updatedAt?:    unknown
 }

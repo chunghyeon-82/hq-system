@@ -1,9 +1,13 @@
 import {
   collection, doc, addDoc, getDocs, getDoc, updateDoc, setDoc, deleteDoc,
-  query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion, or, limit,
+  query, where, orderBy, onSnapshot, serverTimestamp, arrayUnion, limit,
 } from 'firebase/firestore'
 import { db } from './firebase'
-import type { AppUser, Business, Message, Receipt, Reply, MessageStatus, MessageType } from '@/types'
+import type {
+  AppUser, Business, Message, Receipt, Reply,
+  MessageStatus, MessageType, MessageCategory,
+  Notice, CalendarEvent, MessageTemplate
+} from '@/types'
 
 const now = () => new Date().toISOString()
 
@@ -35,21 +39,12 @@ export async function deleteBusiness(id: string) {
 }
 
 // ── Messages ──────────────────────────────────────────
-
-// 본부용: 전체 broadcast 메시지 + 자신이 수신자인 direct 메시지
 export function listenMessagesForHQ(uid: string, isAdmin: boolean, cb: (m: Message[]) => void) {
-  if (isAdmin) {
-    // 관리자: 모든 메시지
-    return onSnapshot(
-      query(collection(db, 'messages'), orderBy('createdAt', 'desc')),
-      snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as Message)))
-    )
-  }
-  // 일반 본부멤버: broadcast + 자신이 targetUid인 direct
   return onSnapshot(
     query(collection(db, 'messages'), orderBy('createdAt', 'desc')),
     snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Message))
+      if (isAdmin) { cb(all); return }
       cb(all.filter(m =>
         m.type === 'broadcast' ||
         (m.type === 'direct' && (m.targetUid === uid || m.authorUid === uid))
@@ -58,7 +53,6 @@ export function listenMessagesForHQ(uid: string, isAdmin: boolean, cb: (m: Messa
   )
 }
 
-// 사업장 대표용: 자기 사업장으로 온 broadcast + 자신이 보내거나 받은 direct
 export function listenMessagesForBiz(bizId: string, uid: string, cb: (m: Message[]) => void) {
   return onSnapshot(
     query(collection(db, 'messages'), orderBy('createdAt', 'desc')),
@@ -73,21 +67,14 @@ export function listenMessagesForBiz(bizId: string, uid: string, cb: (m: Message
   )
 }
 
-// 하위 호환
 export function listenMessages(cb: (m: Message[]) => void) {
   return onSnapshot(
     query(collection(db, 'messages'), orderBy('createdAt', 'desc')),
     snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as Message)))
   )
 }
-export function listenMessagesByBiz(bizId: string, cb: (m: Message[]) => void) {
-  return onSnapshot(
-    query(collection(db, 'messages'), where('targetBizIds', 'array-contains', bizId), orderBy('createdAt', 'desc')),
-    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as Message)))
-  )
-}
 
-// broadcast 발송 (본부 → 여러 사업장)
+// broadcast 발송
 export async function sendMessage(
   data: Omit<Message, 'id' | 'createdAt' | 'updatedAt' | 'replies' | 'status' | 'type'>
 ) {
@@ -101,10 +88,11 @@ export async function sendMessage(
   })
 }
 
-// direct 발송 (사업장 대표 → 특정 본부 멤버)
+// direct 발송
 export async function sendDirectMessage(data: {
   title:        string
   body:         string
+  category:     MessageCategory
   priority:     'normal' | 'urgent'
   authorUid:    string
   authorName:   string
@@ -124,53 +112,46 @@ export async function sendDirectMessage(data: {
   })
 }
 
-// 사업장이 broadcast 접수확인
-export async function receiveMessage(msgId: string, bizId: string) {
+// ── 처리하겠습니다 (미접수 → 처리중) ─────────────────
+export async function processMessage(msgId: string, bizId: string) {
   const ref  = doc(db, 'messages', msgId)
   const snap = await getDoc(ref)
   if (!snap.exists()) return
   const receipts: Receipt[] = snap.data().receipts || []
   const updated = receipts.map(r =>
     r.bizId === bizId && r.status === 'pending'
-      ? { ...r, status: 'received' as const, receivedAt: now() } : r
+      ? { ...r, status: 'processing' as const, processedAt: now() } : r
   )
   await updateDoc(ref, { receipts: updated, updatedAt: serverTimestamp() })
 }
 
-// 사업장이 broadcast 답변
-export async function replyMessage(
-  msgId: string, bizId: string, bizName: string,
-  authorUid: string, authorName: string, body: string
-) {
+// ── 처리했습니다 (미접수/처리중 → 완료) ──────────────
+export async function completeMessage(msgId: string, bizId: string, note?: string) {
   const ref  = doc(db, 'messages', msgId)
   const snap = await getDoc(ref)
   if (!snap.exists()) return
   const receipts: Receipt[] = snap.data().receipts || []
-  const newReply: Reply = {
-    id: Date.now().toString(),
-    bizId, bizName, authorUid, authorName, body, createdAt: now(),
-  }
   const updated = receipts.map(r =>
-    r.bizId === bizId ? { ...r, status: 'replied' as const, repliedAt: now() } : r
+    r.bizId === bizId
+      ? { ...r, status: 'done' as const, doneAt: now(), doneNote: note ?? '' } : r
   )
+  // 모든 사업장이 완료되면 메시지도 done 처리
+  const allDone = updated.every(r => r.status === 'done')
   await updateDoc(ref, {
-    replies: arrayUnion(newReply),
     receipts: updated,
+    ...(allDone ? { status: 'done' as MessageStatus } : {}),
     updatedAt: serverTimestamp(),
   })
 }
 
-// direct 메시지 답변 (본부 → 사업장 대표)
-export async function replyDirect(
-  msgId: string, authorUid: string, authorName: string, body: string
-) {
+// direct 답변
+export async function replyDirect(msgId: string, authorUid: string, authorName: string, body: string) {
   const newReply: Reply = {
     id: Date.now().toString(),
     bizId: '', bizName: '', authorUid, authorName, body, createdAt: now(),
   }
   await updateDoc(doc(db, 'messages', msgId), {
     replies:   arrayUnion(newReply),
-    status:    'open' as MessageStatus,
     updatedAt: serverTimestamp(),
   })
 }
@@ -192,9 +173,8 @@ export async function hideMessage(msgId: string, bizId: string) {
   await updateDoc(ref, { receipts: updated, updatedAt: serverTimestamp() })
 }
 
-// ── 운영본부 자동 생성/조회 ────────────────────────────
+// ── HQ 채팅 ───────────────────────────────────────────
 const HQ_BIZ_NAME = '운영본부'
-
 export async function ensureHQBusiness(): Promise<string> {
   const snap = await getDocs(query(collection(db, 'businesses'), where('isHQ', '==', true)))
   if (!snap.empty) return snap.docs[0].id
@@ -204,7 +184,6 @@ export async function ensureHQBusiness(): Promise<string> {
   return ref.id
 }
 
-// ── 운영본부 단체채팅 ──────────────────────────────────
 export interface ChatMessage {
   id:         string
   authorUid:  string
@@ -213,80 +192,56 @@ export interface ChatMessage {
   body:       string
   createdAt:  unknown
 }
-
 export function listenChatMessages(viewerRole: string, cb: (msgs: ChatMessage[]) => void) {
   return onSnapshot(
     query(collection(db, 'hq_chat'), orderBy('createdAt', 'asc'), limit(200)),
-    (snap) => {
-      const all: ChatMessage[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ChatMessage))
-      const filtered = viewerRole === 'ADMIN'
-        ? all
-        : all.filter(m => m.authorRole !== 'ADMIN')
-      cb(filtered)
+    snap => {
+      const all: ChatMessage[] = snap.docs.map(d => ({ id: d.id, ...d.data() } as ChatMessage))
+      cb(viewerRole === 'ADMIN' ? all : all.filter(m => m.authorRole !== 'ADMIN'))
     }
   )
 }
-
 export async function sendChatMessage(authorUid: string, authorName: string, authorRole: string, body: string) {
-  await addDoc(collection(db, 'hq_chat'), {
-    authorUid, authorName, authorRole, body, createdAt: serverTimestamp()
-  })
+  await addDoc(collection(db, 'hq_chat'), { authorUid, authorName, authorRole, body, createdAt: serverTimestamp() })
 }
 
-// ══════════════════════════════════════════════════════
-// 공지사항
-// ══════════════════════════════════════════════════════
-import type { Notice, CalendarEvent, MessageTemplate } from '@/types'
-import { Timestamp } from 'firebase/firestore'
-
+// ── 공지사항 ──────────────────────────────────────────
 export function listenNotices(cb: (n: Notice[]) => void) {
-  const now = new Date().toISOString()
+  const n = new Date().toISOString()
   return onSnapshot(
     query(collection(db, 'notices'), orderBy('createdAt', 'desc')),
     snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice))
-      cb(all.filter(n => n.expiresAt > now))
+      cb(all.filter(x => x.expiresAt > n))
     }
   )
 }
-
 export async function addNotice(data: Omit<Notice, 'id' | 'createdAt'>) {
   return addDoc(collection(db, 'notices'), { ...data, createdAt: serverTimestamp() })
 }
-
 export async function deleteNotice(id: string) {
   await deleteDoc(doc(db, 'notices', id))
 }
 
-// ══════════════════════════════════════════════════════
-// 캘린더 일정
-// ══════════════════════════════════════════════════════
+// ── 캘린더 ────────────────────────────────────────────
 export function listenEvents(uid: string, bizId: string | undefined, cb: (e: CalendarEvent[]) => void) {
   return onSnapshot(
     query(collection(db, 'events'), orderBy('date', 'asc')),
     snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent))
-      cb(all.filter(e =>
-        e.ownerUid === uid ||
-        (bizId && e.targetBizIds?.includes(bizId))
-      ))
+      cb(all.filter(e => e.ownerUid === uid || (bizId && e.targetBizIds?.includes(bizId))))
     }
   )
 }
-
 export async function addEvent(data: Omit<CalendarEvent, 'id' | 'createdAt'>) {
   return addDoc(collection(db, 'events'), { ...data, createdAt: serverTimestamp() })
 }
-
 export async function updateEvent(id: string, data: Partial<CalendarEvent>) {
   await updateDoc(doc(db, 'events', id), { ...data, updatedAt: serverTimestamp() })
 }
-
 export async function deleteEvent(id: string) {
   await deleteDoc(doc(db, 'events', id))
 }
-
-// 사업장 대표가 캘린더에 추가
 export async function addEventToMyCalendar(eventId: string, bizId: string) {
   await updateDoc(doc(db, 'events', eventId), {
     [`addedBy.${bizId}`]: new Date().toISOString(),
@@ -294,32 +249,25 @@ export async function addEventToMyCalendar(eventId: string, bizId: string) {
   })
 }
 
-// ══════════════════════════════════════════════════════
-// 메시지 템플릿
-// ══════════════════════════════════════════════════════
+// ── 템플릿 ────────────────────────────────────────────
 export function listenTemplates(uid: string, cb: (t: MessageTemplate[]) => void) {
   return onSnapshot(
     query(collection(db, 'templates'), where('ownerUid', '==', uid), orderBy('createdAt', 'desc')),
     snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as MessageTemplate)))
   )
 }
-
 export async function addTemplate(data: Omit<MessageTemplate, 'id' | 'createdAt'>) {
   return addDoc(collection(db, 'templates'), { ...data, createdAt: serverTimestamp() })
 }
-
 export async function deleteTemplate(id: string) {
   await deleteDoc(doc(db, 'templates', id))
 }
 
-// ══════════════════════════════════════════════════════
-// 사업장 순서 (개인별)
-// ══════════════════════════════════════════════════════
+// ── 사업장 순서 ───────────────────────────────────────
 export async function getBizOrder(uid: string): Promise<string[]> {
   const snap = await getDoc(doc(db, 'bizOrder', uid))
   return snap.exists() ? (snap.data().order as string[]) : []
 }
-
 export async function saveBizOrder(uid: string, order: string[]) {
   await setDoc(doc(db, 'bizOrder', uid), { order, updatedAt: serverTimestamp() })
 }

@@ -139,10 +139,10 @@ export default function DashboardPage() {
               </div>
               <div className="space-y-2">
                 {openMsgs.slice(0, 5).map(msg => {
-                  const total   = msg.receipts?.length ?? 0
-                  const replied = msg.receipts?.filter(r => r.status === 'replied').length ?? 0
-                  const received= msg.receipts?.filter(r => r.status === 'received').length ?? 0
-                  const pending = total - replied - received
+                  const total      = msg.receipts?.length ?? 0
+                  const doneCount  = msg.receipts?.filter(r => r.status === 'done').length ?? 0
+                  const procCount  = msg.receipts?.filter(r => r.status === 'processing').length ?? 0
+                  const pendCount  = msg.receipts?.filter(r => r.status === 'pending').length ?? 0
                   return (
                     <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
                       className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm hover:border-primary-200 transition-all group">
@@ -303,11 +303,11 @@ export default function DashboardPage() {
                         <div className="flex items-center gap-1.5 mb-1">
                           {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
                           <span className={msg.status === 'done' ? 'badge-done' :
-                            receipt?.status === 'pending'  ? 'badge-pending'  :
-                            receipt?.status === 'received' ? 'badge-received' : 'badge-replied'}>
+                            receipt?.status === 'pending'  ? 'badge-pending' :
+                            receipt?.status === 'processing' ? 'badge-received' : 'badge-replied'}>
                             {msg.status === 'done'            ? '처리완료'  :
-                             receipt?.status === 'pending'    ? '미확인'    :
-                             receipt?.status === 'received'   ? '접수확인'  : '답변완료'}
+                             receipt?.status === 'pending'    ? '미접수'    :
+                             receipt?.status === 'processing' ? '처리중'  : '답변완료'}
                           </span>
                         </div>
                         <p className="font-medium text-sm text-gray-900 truncate">{msg.title}</p>
