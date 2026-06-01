@@ -64,8 +64,8 @@ export default function DashboardPage() {
               { label: '진행중 전달',  value: openMsgs.length,           icon: Clock,         color: 'bg-amber-50 border-amber-200',   iconColor: 'text-amber-500',   href: '/businesses' },
               { label: '미접수',       value: pendingCount,              icon: AlertCircle,   color: pendingCount > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200', iconColor: pendingCount > 0 ? 'text-red-500' : 'text-gray-400', href: '/businesses' },
               { label: '긴급 전달',    value: urgentMsgs.length,         icon: AlertCircle,   color: urgentMsgs.length > 0 ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200', iconColor: urgentMsgs.length > 0 ? 'text-red-600' : 'text-gray-400', href: '/businesses' },
-              { label: '전체 사업장',  value: businesses.length,         icon: Building2,     color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', href: '/businesses' },
-              { label: '1:1 메시지',   value: directMsgs.length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/direct' },
+              { label: '전체 사업장',  value: businesses.filter(b => !b.isHQ).length,         icon: Building2,     color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', href: '/businesses' },
+              { label: '1:1 메시지',   value: directMsgs.filter(m => m.targetUid === user?.uid || m.authorUid === user?.uid || isAdmin).length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/direct' },
             ].map(card => (
               <button key={card.label} onClick={() => router.push(card.href)}
                 className={clsx('relative text-left border rounded-xl p-4 hover:shadow-md active:scale-95 transition-all', card.color)}>
@@ -96,7 +96,7 @@ export default function DashboardPage() {
           </div>
 
           {/* 1:1 메시지 (내게 온 것) */}
-          {directMsgs.filter(m => m.targetUid === user?.uid || isAdmin).length > 0 && (
+          {directMsgs.filter(m => m.targetUid === user?.uid || m.authorUid === user?.uid || isAdmin).length > 0 && (
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <Lock size={14} className="text-blue-500"/>
@@ -104,7 +104,7 @@ export default function DashboardPage() {
                 <span className="text-xs text-gray-400">(본인 + 관리자만 열람)</span>
               </div>
               <div className="space-y-2">
-                {directMsgs.filter(m => isAdmin || m.targetUid === user?.uid).slice(0, 5).map(msg => (
+                {directMsgs.filter(m => isAdmin || m.targetUid === user?.uid || m.authorUid === user?.uid).slice(0, 5).map(msg => (
                   <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
                     className="w-full text-left bg-white border border-blue-100 rounded-xl p-4 hover:shadow-sm hover:border-blue-200 transition-all group">
                     <div className="flex items-center justify-between gap-2">
