@@ -170,7 +170,7 @@ export default function DashboardPage() {
                           {doneCount > 0 && <span className="text-green-600">✓ 완료 {doneCount}</span>}
                           {procCount > 0 && <span className="text-blue-600">● 처리중 {procCount}</span>}
                           {pendCount > 0 && <span className="text-red-400">○ 미접수 {pendCount}</span>}
-                          {pending  > 0 && <span className="text-gray-400">○ 미접수 {pending}</span>}
+
                         </div>
                       </div>
                     </button>
