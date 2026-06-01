@@ -232,3 +232,94 @@ export async function sendChatMessage(authorUid: string, authorName: string, aut
     authorUid, authorName, authorRole, body, createdAt: serverTimestamp()
   })
 }
+
+// ══════════════════════════════════════════════════════
+// 공지사항
+// ══════════════════════════════════════════════════════
+import type { Notice, CalendarEvent, MessageTemplate } from '@/types'
+import { Timestamp } from 'firebase/firestore'
+
+export function listenNotices(cb: (n: Notice[]) => void) {
+  const now = new Date().toISOString()
+  return onSnapshot(
+    query(collection(db, 'notices'), orderBy('createdAt', 'desc')),
+    snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice))
+      cb(all.filter(n => n.expiresAt > now))
+    }
+  )
+}
+
+export async function addNotice(data: Omit<Notice, 'id' | 'createdAt'>) {
+  return addDoc(collection(db, 'notices'), { ...data, createdAt: serverTimestamp() })
+}
+
+export async function deleteNotice(id: string) {
+  await deleteDoc(doc(db, 'notices', id))
+}
+
+// ══════════════════════════════════════════════════════
+// 캘린더 일정
+// ══════════════════════════════════════════════════════
+export function listenEvents(uid: string, bizId: string | undefined, cb: (e: CalendarEvent[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'events'), orderBy('date', 'asc')),
+    snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent))
+      cb(all.filter(e =>
+        e.ownerUid === uid ||
+        (bizId && e.targetBizIds?.includes(bizId))
+      ))
+    }
+  )
+}
+
+export async function addEvent(data: Omit<CalendarEvent, 'id' | 'createdAt'>) {
+  return addDoc(collection(db, 'events'), { ...data, createdAt: serverTimestamp() })
+}
+
+export async function updateEvent(id: string, data: Partial<CalendarEvent>) {
+  await updateDoc(doc(db, 'events', id), { ...data, updatedAt: serverTimestamp() })
+}
+
+export async function deleteEvent(id: string) {
+  await deleteDoc(doc(db, 'events', id))
+}
+
+// 사업장 대표가 캘린더에 추가
+export async function addEventToMyCalendar(eventId: string, bizId: string) {
+  await updateDoc(doc(db, 'events', eventId), {
+    [`addedBy.${bizId}`]: new Date().toISOString(),
+    updatedAt: serverTimestamp(),
+  })
+}
+
+// ══════════════════════════════════════════════════════
+// 메시지 템플릿
+// ══════════════════════════════════════════════════════
+export function listenTemplates(uid: string, cb: (t: MessageTemplate[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'templates'), where('ownerUid', '==', uid), orderBy('createdAt', 'desc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as MessageTemplate)))
+  )
+}
+
+export async function addTemplate(data: Omit<MessageTemplate, 'id' | 'createdAt'>) {
+  return addDoc(collection(db, 'templates'), { ...data, createdAt: serverTimestamp() })
+}
+
+export async function deleteTemplate(id: string) {
+  await deleteDoc(doc(db, 'templates', id))
+}
+
+// ══════════════════════════════════════════════════════
+// 사업장 순서 (개인별)
+// ══════════════════════════════════════════════════════
+export async function getBizOrder(uid: string): Promise<string[]> {
+  const snap = await getDoc(doc(db, 'bizOrder', uid))
+  return snap.exists() ? (snap.data().order as string[]) : []
+}
+
+export async function saveBizOrder(uid: string, order: string[]) {
+  await setDoc(doc(db, 'bizOrder', uid), { order, updatedAt: serverTimestamp() })
+}

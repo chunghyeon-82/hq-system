@@ -3,9 +3,13 @@ import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenBusinesses, sendMessage } from '@/lib/db'
-import type { Business, Receipt } from '@/types'
-import { Send, CheckSquare, Square, AlertCircle } from 'lucide-react'
+import { listenBusinesses, sendMessage, listenTemplates, addTemplate, deleteTemplate } from '@/lib/db'
+import type { Business, Receipt, MessageTemplate } from '@/types'
+import {
+  Send, CheckSquare, Square, AlertCircle, Calendar, Link2,
+  BookTemplate, Plus, Trash2, X, ChevronDown
+} from 'lucide-react'
+import clsx from 'clsx'
 
 function ComposeContent() {
   const { user }     = useAuth()
@@ -20,17 +24,42 @@ function ComposeContent() {
   const [sending,    setSending]    = useState(false)
   const [sent,       setSent]       = useState(false)
 
+  // 일정 첨부
+  const [showEvent,  setShowEvent]  = useState(false)
+  const [eventDate,  setEventDate]  = useState('')
+  const [eventTime,  setEventTime]  = useState('')
+  const [eventTitle, setEventTitle] = useState('')
+
+  // 링크 첨부
+  const [showLink,   setShowLink]   = useState(false)
+  const [linkUrl,    setLinkUrl]    = useState('')
+  const [linkLabel,  setLinkLabel]  = useState('')
+
+  // 템플릿
+  const [templates,    setTemplates]    = useState<MessageTemplate[]>([])
+  const [showTpl,      setShowTpl]      = useState(false)
+  const [tplTitle,     setTplTitle]     = useState('')
+  const [showSaveTpl,  setShowSaveTpl]  = useState(false)
+
   const canSend = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
 
   useEffect(() => {
     if (!canSend) { router.replace('/dashboard'); return }
-    const unsub = listenBusinesses(setBusinesses)
-    return unsub
-  }, [canSend, router])
+    const u1 = listenBusinesses(setBusinesses)
+    const u2 = user ? listenTemplates(user.uid, setTemplates) : () => {}
+    return () => { u1(); u2() }
+  }, [canSend, router, user])
 
   useEffect(() => {
     const bizId = searchParams.get('biz')
     if (bizId) setSelected(new Set([bizId]))
+    // 전달에서 일정 첨부로 넘어온 경우
+    const ed = searchParams.get('eventDate')
+    const et = searchParams.get('eventTime')
+    const etl = searchParams.get('eventTitle')
+    if (ed) { setEventDate(ed); setShowEvent(true) }
+    if (et) setEventTime(et)
+    if (etl) setEventTitle(etl)
   }, [searchParams])
 
   const toggleAll = () => setSelected(
@@ -55,9 +84,22 @@ function ComposeContent() {
       authorUid: user.uid, authorName: user.name,
       targetBizIds: Array.from(selected),
       receipts,
+      ...(showEvent && eventDate ? { eventDate, eventTime, eventTitle: eventTitle || title } : {}),
+      ...(showLink && linkUrl    ? { linkUrl, linkLabel: linkLabel || linkUrl }             : {}),
     })
     setSent(true)
     setSending(false)
+  }
+
+  const applyTemplate = (tpl: MessageTemplate) => {
+    setTitle(tpl.title); setBody(tpl.body)
+    setShowTpl(false)
+  }
+
+  const saveTemplate = async () => {
+    if (!user || !title.trim() || !body.trim()) return
+    await addTemplate({ ownerUid: user.uid, title: tplTitle || title, body })
+    setShowSaveTpl(false); setTplTitle('')
   }
 
   if (sent) return (
@@ -87,19 +129,44 @@ function ComposeContent() {
   return (
     <AppShell title="전달 작성">
       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
+
         {/* 우선순위 */}
         <div className="flex gap-2">
           {(['normal', 'urgent'] as const).map(p => (
             <button key={p} onClick={() => setPriority(p)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
+              className={clsx('flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors',
                 priority === p
                   ? p === 'urgent' ? 'bg-red-50 border-red-300 text-red-700' : 'bg-primary-50 border-primary-300 text-primary-700'
-                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
-              }`}>
+                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')}>
               {p === 'urgent' && <AlertCircle size={15}/>}
               {p === 'normal' ? '일반' : '긴급'}
             </button>
           ))}
+          {/* 템플릿 불러오기 */}
+          <div className="ml-auto relative">
+            <button onClick={() => setShowTpl(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+              <BookTemplate size={15}/> 템플릿
+              <ChevronDown size={12}/>
+            </button>
+            {showTpl && (
+              <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
+                {templates.length === 0 ? (
+                  <p className="text-xs text-gray-400 p-4 text-center">저장된 템플릿이 없습니다</p>
+                ) : templates.map(tpl => (
+                  <button key={tpl.id}
+                    onClick={() => applyTemplate(tpl)}
+                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0">
+                    <span className="text-sm text-gray-800 truncate">{tpl.title}</span>
+                    <button onClick={async (e) => { e.stopPropagation(); await deleteTemplate(tpl.id) }}
+                      className="text-gray-300 hover:text-red-400 ml-2 shrink-0">
+                      <Trash2 size={13}/>
+                    </button>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* 제목 */}
@@ -114,10 +181,81 @@ function ComposeContent() {
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">내용</label>
           <textarea value={body} onChange={e => setBody(e.target.value)}
-            placeholder="전달 내용을 입력하세요"
-            rows={6}
+            placeholder="전달 내용을 입력하세요" rows={6}
             className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
+          {/* 템플릿 저장 */}
+          {(title.trim() || body.trim()) && !showSaveTpl && (
+            <button onClick={() => setShowSaveTpl(true)}
+              className="mt-1.5 text-xs text-primary-500 hover:underline flex items-center gap-1">
+              <Plus size={11}/> 템플릿으로 저장
+            </button>
+          )}
+          {showSaveTpl && (
+            <div className="mt-2 flex gap-2">
+              <input value={tplTitle} onChange={e => setTplTitle(e.target.value)}
+                placeholder={title || '템플릿 이름'}
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-400"/>
+              <button onClick={saveTemplate}
+                className="px-3 py-2 bg-primary-600 text-white rounded-lg text-xs hover:bg-primary-800">저장</button>
+              <button onClick={() => setShowSaveTpl(false)}
+                className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-500">취소</button>
+            </div>
+          )}
         </div>
+
+        {/* 첨부 옵션 */}
+        <div className="flex gap-2">
+          <button onClick={() => setShowEvent(v => !v)}
+            className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors',
+              showEvent ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')}>
+            <Calendar size={13}/> 일정 첨부
+          </button>
+          <button onClick={() => setShowLink(v => !v)}
+            className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors',
+              showLink ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')}>
+            <Link2 size={13}/> 링크 첨부
+          </button>
+        </div>
+
+        {/* 일정 첨부 폼 */}
+        {showEvent && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-blue-700">일정 첨부</span>
+              <button onClick={() => { setShowEvent(false); setEventDate(''); setEventTime('') }}>
+                <X size={14} className="text-blue-400"/>
+              </button>
+            </div>
+            <input value={eventTitle} onChange={e => setEventTitle(e.target.value)}
+              placeholder="일정 제목 (비우면 전달 제목 사용)"
+              className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"/>
+            <div className="flex gap-2">
+              <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)}
+                className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white"/>
+              <input type="time" value={eventTime} onChange={e => setEventTime(e.target.value)}
+                className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white"/>
+            </div>
+            <p className="text-xs text-blue-500">수신자가 캘린더에 추가할 수 있습니다</p>
+          </div>
+        )}
+
+        {/* 링크 첨부 폼 */}
+        {showLink && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-green-700">링크 첨부</span>
+              <button onClick={() => { setShowLink(false); setLinkUrl(''); setLinkLabel('') }}>
+                <X size={14} className="text-green-400"/>
+              </button>
+            </div>
+            <input value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
+              placeholder="https://..." type="url"
+              className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 bg-white"/>
+            <input value={linkLabel} onChange={e => setLinkLabel(e.target.value)}
+              placeholder="링크 표시 이름 (선택)"
+              className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 bg-white"/>
+          </div>
+        )}
 
         {/* 수신 사업장 */}
         <div>
@@ -130,9 +268,8 @@ function ComposeContent() {
           <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
             {businesses.map(biz => (
               <button key={biz.id} onClick={() => toggle(biz.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
-                  selected.has(biz.id) ? 'bg-primary-50' : 'bg-white'
-                }`}>
+                className={clsx('w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors',
+                  selected.has(biz.id) ? 'bg-primary-50' : 'bg-white')}>
                 {selected.has(biz.id)
                   ? <CheckSquare size={18} className="text-primary-600 shrink-0"/>
                   : <Square size={18} className="text-gray-300 shrink-0"/>}

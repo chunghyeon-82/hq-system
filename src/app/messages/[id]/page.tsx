@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenMessages, receiveMessage, replyMessage, replyDirect, closeMessage, reopenMessage, hideMessage } from '@/lib/db'
+import { listenMessages, receiveMessage, replyMessage, replyDirect, closeMessage, reopenMessage, hideMessage, addEventToMyCalendar, addEvent } from '@/lib/db'
 import type { Message } from '@/types'
 import {
   CheckCircle2, Clock, AlertCircle, Send, CheckSquare,
-  EyeOff, RotateCcw, MessageSquare, Building2, User, Lock, ChevronDown, ChevronUp
+  EyeOff, RotateCcw, MessageSquare, Building2, User, Lock,
+  Calendar, Link2, Bell, ExternalLink
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -21,6 +22,7 @@ export default function MessageDetailPage() {
   const [sending,   setSending]   = useState(false)
   const [closing,   setClosing]   = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'detail'>('overview')
+  const [addedCal,  setAddedCal]  = useState(false)
 
   const isAdmin = user?.role === 'ADMIN'
   const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
@@ -48,7 +50,6 @@ export default function MessageDetailPage() {
   const received = receipts.filter(r => r.status === 'received').length
   const pending  = receipts.filter(r => r.status === 'pending').length
 
-  // direct 열람 권한
   if (isDirect && !isAdmin && message.authorUid !== user?.uid && message.targetUid !== user?.uid) {
     return (
       <AppShell title="메시지 상세" back="/dashboard">
@@ -86,22 +87,43 @@ export default function MessageDetailPage() {
     router.push('/dashboard')
   }
 
+  // 캘린더 추가
+  const handleAddToCalendar = async () => {
+    if (!user || !message.eventDate) return
+    if (isBiz && user.bizId) {
+      await addEventToMyCalendar(message.id, user.bizId)
+    } else {
+      await addEvent({
+        title:    message.eventTitle || message.title,
+        date:     message.eventDate,
+        time:     message.eventTime,
+        ownerUid: user.uid,
+        ownerName: user.name,
+        isDone:   false,
+      })
+    }
+    setAddedCal(true)
+  }
+
+  // 첨부 정보 표시
+  const hasEvent = !!message.eventDate
+  const hasLink  = !!message.linkUrl
+
   return (
     <AppShell title="메시지 상세" back={isHQ ? '/businesses' : '/dashboard'}>
       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
 
-        {/* ── 메시지 헤더 ── */}
+        {/* 메시지 헤더 */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          {/* 상태 배너 */}
           <div className={clsx(
             'px-4 py-2.5 flex items-center gap-2 text-sm font-medium',
-            isDone    ? 'bg-slate-100 text-slate-600'  :
-            isDirect  ? 'bg-blue-50 text-blue-700'     :
-                        'bg-amber-50 text-amber-700'
+            isDone   ? 'bg-slate-100 text-slate-600' :
+            isDirect ? 'bg-blue-50 text-blue-700'    :
+                       'bg-amber-50 text-amber-700'
           )}>
-            {isDirect   ? <><Lock size={14}/> 1:1 메시지 (비공개)</> :
-             isDone     ? <><CheckCircle2 size={16}/> 완결</> :
-                          <><Clock size={16}/> 진행중</>}
+            {isDirect  ? <><Lock size={14}/> 1:1 메시지 (비공개)</> :
+             isDone    ? <><CheckCircle2 size={16}/> 완결</> :
+                         <><Clock size={16}/> 진행중</>}
             {message.priority === 'urgent' && (
               <span className="ml-auto badge-urgent flex items-center gap-1">
                 <AlertCircle size={12}/> 긴급
@@ -117,16 +139,49 @@ export default function MessageDetailPage() {
               <span className="flex items-center gap-1"><User size={12}/>{message.authorName}</span>
               {isDirect && <span>→ {message.targetName}</span>}
             </div>
+
+            {/* 일정 첨부 */}
+            {hasEvent && (
+              <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar size={15} className="text-blue-500"/>
+                  <div>
+                    <p className="text-xs font-semibold text-blue-800">{message.eventTitle || message.title}</p>
+                    <p className="text-xs text-blue-600">
+                      {message.eventDate}{message.eventTime ? ` ${message.eventTime}` : ''}
+                    </p>
+                  </div>
+                </div>
+                {!addedCal ? (
+                  <button onClick={handleAddToCalendar}
+                    className="flex items-center gap-1 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
+                    <Bell size={11}/> 캘린더에 추가
+                  </button>
+                ) : (
+                  <span className="text-xs text-green-600 flex items-center gap-1">
+                    <CheckCircle2 size={11}/> 추가됨
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* 링크 첨부 */}
+            {hasLink && (
+              <a href={message.linkUrl} target="_blank" rel="noopener noreferrer"
+                className="mt-3 flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl p-3 hover:bg-green-100 transition-colors">
+                <Link2 size={15} className="text-green-600 shrink-0"/>
+                <span className="text-xs text-green-800 flex-1 truncate">
+                  {message.linkLabel || message.linkUrl}
+                </span>
+                <ExternalLink size={12} className="text-green-500 shrink-0"/>
+              </a>
+            )}
           </div>
         </div>
 
-        {/* ══════════════════════════════════════
-            사업장 대표 화면
-        ══════════════════════════════════════ */}
+        {/* 사업장 대표 화면 */}
         {isBiz && !isDirect && myReceipt && (
           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-
-            {/* Step 1: 미접수 */}
             {myReceipt.status === 'pending' && (
               <div className="p-5 space-y-4">
                 <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
@@ -142,12 +197,8 @@ export default function MessageDetailPage() {
                 </button>
               </div>
             )}
-
-            {/* Step 2 & 3: 접수 이후 */}
             {myReceipt.status !== 'pending' && (
               <div className="p-5 space-y-4">
-
-                {/* 접수 완료 타임스탬프 */}
                 <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
                   <CheckCircle2 size={16} className="text-blue-500 shrink-0"/>
                   <div>
@@ -155,15 +206,12 @@ export default function MessageDetailPage() {
                     {myReceipt.receivedAt && (
                       <p className="text-xs text-blue-600">
                         {new Date(myReceipt.receivedAt).toLocaleDateString('ko-KR', {
-                          year:'numeric', month:'2-digit', day:'2-digit',
-                          hour:'2-digit', minute:'2-digit'
+                          year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'
                         })}
                       </p>
                     )}
                   </div>
                 </div>
-
-                {/* 기존 진행상황 답변 목록 */}
                 {myReplies.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-semibold text-gray-500">진행상황 전송 내역</p>
@@ -177,17 +225,11 @@ export default function MessageDetailPage() {
                     ))}
                   </div>
                 )}
-
-                {/* 진행상황 입력 (완결 전) */}
                 {!isDone && (
                   <div className="space-y-2">
-                    <p className="text-xs font-semibold text-gray-700">
-                      진행상황 전송 <span className="text-gray-400 font-normal">— 발신자에게 전달됩니다</span>
-                    </p>
-                    <textarea
-                      value={replyText} onChange={e => setReplyText(e.target.value)}
-                      placeholder="진행 내용을 입력하세요..."
-                      rows={4}
+                    <p className="text-xs font-semibold text-gray-700">진행상황 전송</p>
+                    <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
+                      placeholder="진행 내용을 입력하세요..." rows={4}
                       className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
                     <button onClick={handleReply} disabled={!replyText.trim() || sending}
                       className="w-full flex items-center justify-center gap-2 bg-primary-600 text-white rounded-xl py-3 font-medium text-sm hover:bg-primary-800 disabled:opacity-50 transition-colors">
@@ -195,16 +237,12 @@ export default function MessageDetailPage() {
                     </button>
                   </div>
                 )}
-
-                {/* 완결 상태 표시 */}
                 {isDone && (
                   <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
                     <CheckSquare size={16} className="text-slate-500 shrink-0"/>
                     <p className="text-sm text-slate-600">본부에서 완결 처리한 메시지입니다</p>
                   </div>
                 )}
-
-                {/* 숨기기 (완결된 경우) */}
                 {isDone && (
                   <button onClick={handleHide}
                     className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-500 rounded-xl py-2.5 text-sm hover:bg-gray-50 transition-colors">
@@ -216,46 +254,34 @@ export default function MessageDetailPage() {
           </div>
         )}
 
-        {/* ══════════════════════════════════════
-            본부 화면 (broadcast)
-        ══════════════════════════════════════ */}
+        {/* 본부 화면 */}
         {isHQ && !isDirect && (
           <>
-            {/* 탭 */}
             <div className="flex border-b border-gray-200 bg-white rounded-t-xl overflow-hidden">
               {(['overview', 'detail'] as const).map(tab => (
                 <button key={tab} onClick={() => setActiveTab(tab)}
-                  className={clsx(
-                    'flex-1 py-3 text-sm font-medium transition-colors',
-                    activeTab === tab
-                      ? 'text-primary-700 border-b-2 border-primary-600 bg-white'
-                      : 'text-gray-500 hover:text-gray-700'
-                  )}>
+                  className={clsx('flex-1 py-3 text-sm font-medium transition-colors',
+                    activeTab === tab ? 'text-primary-700 border-b-2 border-primary-600 bg-white' : 'text-gray-500 hover:text-gray-700')}>
                   {tab === 'overview' ? '📊 진행 현황' : '📋 사업장별 답변'}
                 </button>
               ))}
             </div>
-
             {activeTab === 'overview' && (
               <div className="bg-white border border-gray-200 rounded-b-xl rounded-tr-xl p-5 space-y-4">
-                {/* 진행률 */}
                 <div>
                   <div className="flex justify-between text-xs text-gray-500 mb-2">
-                    <span>전체 진행률</span>
-                    <span className="font-medium">{replied}/{total} 완료</span>
+                    <span>전체 진행률</span><span className="font-medium">{replied}/{total} 완료</span>
                   </div>
                   <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden flex">
                     <div className="bg-green-400 h-full transition-all" style={{ width: total ? `${(replied/total)*100}%` : '0%' }}/>
                     <div className="bg-blue-300 h-full transition-all" style={{ width: total ? `${(received/total)*100}%` : '0%' }}/>
                   </div>
                 </div>
-
-                {/* 통계 (미접수/진행중/완료 순서) */}
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { label: '미접수',   value: pending,  bg: pending > 0 ? 'bg-red-50'   : 'bg-gray-50', color: pending > 0 ? 'text-red-600'   : 'text-gray-400', dot: pending > 0 ? 'bg-red-400'   : 'bg-gray-300' },
-                    { label: '진행중',   value: received, bg: 'bg-blue-50',  color: 'text-blue-600',  dot: 'bg-blue-400'  },
-                    { label: '답변완료', value: replied,  bg: 'bg-green-50', color: 'text-green-600', dot: 'bg-green-400' },
+                    { label:'미접수',   value:pending,  bg:pending>0?'bg-red-50':'bg-gray-50',   color:pending>0?'text-red-600':'text-gray-400',   dot:pending>0?'bg-red-400':'bg-gray-300' },
+                    { label:'진행중',   value:received, bg:'bg-blue-50',  color:'text-blue-600',  dot:'bg-blue-400'  },
+                    { label:'답변완료', value:replied,  bg:'bg-green-50', color:'text-green-600', dot:'bg-green-400' },
                   ].map(s => (
                     <div key={s.label} className={clsx('rounded-xl p-3 text-center', s.bg)}>
                       <div className={clsx('w-2 h-2 rounded-full mx-auto mb-1', s.dot)}/>
@@ -264,8 +290,6 @@ export default function MessageDetailPage() {
                     </div>
                   ))}
                 </div>
-
-                {/* 완결/재오픈 버튼 */}
                 <div className="flex gap-2 pt-2 border-t border-gray-100">
                   {!isDone ? (
                     <button onClick={handleClose} disabled={closing}
@@ -281,12 +305,8 @@ export default function MessageDetailPage() {
                 </div>
               </div>
             )}
-
             {activeTab === 'detail' && (
               <div className="bg-white border border-gray-200 rounded-b-xl rounded-tr-xl divide-y divide-gray-100">
-                {receipts.length === 0 && (
-                  <div className="p-8 text-center text-gray-400 text-sm">발송된 사업장이 없습니다</div>
-                )}
                 {receipts.map(receipt => {
                   const bizReplies = replies.filter(r => r.bizId === receipt.bizId)
                   return (
@@ -298,44 +318,20 @@ export default function MessageDetailPage() {
                           </div>
                           <span className="font-medium text-sm text-gray-900">{receipt.bizName}</span>
                         </div>
-                        <div className="flex flex-col items-end gap-0.5">
-                          <span className={clsx(
-                            receipt.status === 'replied'  ? 'badge-replied' :
-                            receipt.status === 'received' ? 'badge-received' : 'badge-pending'
-                          )}>
-                            {receipt.status === 'replied'  ? '✓ 답변완료' :
-                             receipt.status === 'received' ? '● 진행중'   : '○ 미접수'}
-                          </span>
-                          {receipt.receivedAt && (
-                            <span className="text-xs text-gray-400">
-                              접수 {new Date(receipt.receivedAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
-                            </span>
-                          )}
-                        </div>
+                        <span className={clsx(
+                          receipt.status==='replied' ? 'badge-replied' :
+                          receipt.status==='received' ? 'badge-received' : 'badge-pending')}>
+                          {receipt.status==='replied'?'✓ 답변완료':receipt.status==='received'?'● 진행중':'○ 미접수'}
+                        </span>
                       </div>
-                      {/* 진행상황 답변 */}
-                      {bizReplies.length > 0 ? (
-                        <div className="ml-9 space-y-2 mt-2">
-                          {bizReplies.map(reply => (
-                            <div key={reply.id} className="bg-primary-50 border border-primary-100 rounded-xl p-3">
-                              <div className="flex items-center gap-2 mb-1.5">
-                                <div className="w-5 h-5 rounded-full bg-primary-200 flex items-center justify-center text-xs font-bold text-primary-700">
-                                  {reply.authorName?.[0]}
-                                </div>
-                                <span className="text-xs font-medium text-primary-800">{reply.authorName}</span>
-                                <span className="text-xs text-gray-400 ml-auto">
-                                  {reply.createdAt ? new Date(reply.createdAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
-                                </span>
-                              </div>
-                              <p className="text-sm text-gray-800 whitespace-pre-wrap">{reply.body}</p>
-                            </div>
-                          ))}
+                      {bizReplies.map(reply => (
+                        <div key={reply.id} className="ml-9 mt-2 bg-primary-50 border border-primary-100 rounded-xl p-3">
+                          <p className="text-sm text-gray-800 whitespace-pre-wrap">{reply.body}</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {reply.authorName} · {reply.createdAt ? new Date(reply.createdAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                          </p>
                         </div>
-                      ) : (
-                        receipt.status !== 'pending' && (
-                          <p className="ml-9 text-xs text-gray-400 italic mt-1">진행상황 미전송</p>
-                        )
-                      )}
+                      ))}
                     </div>
                   )
                 })}
@@ -344,9 +340,7 @@ export default function MessageDetailPage() {
           </>
         )}
 
-        {/* ══════════════════════════════════════
-            Direct 메시지 (1:1 채팅)
-        ══════════════════════════════════════ */}
+        {/* 1:1 Direct 채팅 */}
         {isDirect && (
           <div className="bg-white border border-blue-100 rounded-2xl p-5 space-y-4">
             <div className="flex items-center gap-2">
@@ -355,35 +349,27 @@ export default function MessageDetailPage() {
               <span className="text-xs text-gray-400 flex items-center gap-1 ml-1"><Lock size={10}/>비공개</span>
             </div>
             <div className="space-y-3">
-              {/* 원본 */}
-              <div className={clsx('flex gap-2', message.authorUid === user?.uid ? 'flex-row-reverse' : '')}>
+              <div className={clsx('flex gap-2', message.authorUid===user?.uid ? 'flex-row-reverse' : '')}>
                 <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
                   {message.authorName?.[0]}
                 </div>
-                <div className={clsx('max-w-[75%] flex flex-col gap-1', message.authorUid === user?.uid ? 'items-end' : 'items-start')}>
+                <div className={clsx('max-w-[75%] flex flex-col gap-1', message.authorUid===user?.uid ? 'items-end' : 'items-start')}>
                   <span className="text-xs text-gray-400">{message.authorName}</span>
                   <div className={clsx('rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap',
-                    message.authorUid === user?.uid
-                      ? 'bg-primary-600 text-white rounded-tr-sm'
-                      : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
+                    message.authorUid===user?.uid ? 'bg-primary-600 text-white rounded-tr-sm' : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
                     {message.body}
                   </div>
                 </div>
               </div>
-              {/* 답변들 */}
               {replies.map(reply => (
-                <div key={reply.id} className={clsx('flex gap-2', reply.authorUid === user?.uid ? 'flex-row-reverse' : '')}>
+                <div key={reply.id} className={clsx('flex gap-2', reply.authorUid===user?.uid ? 'flex-row-reverse' : '')}>
                   <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
                     {reply.authorName?.[0]}
                   </div>
-                  <div className={clsx('max-w-[75%] flex flex-col gap-1', reply.authorUid === user?.uid ? 'items-end' : 'items-start')}>
-                    <span className="text-xs text-gray-400">
-                      {reply.authorName} · {reply.createdAt ? new Date(reply.createdAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
-                    </span>
+                  <div className={clsx('max-w-[75%] flex flex-col gap-1', reply.authorUid===user?.uid ? 'items-end' : 'items-start')}>
+                    <span className="text-xs text-gray-400">{reply.authorName}</span>
                     <div className={clsx('rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap',
-                      reply.authorUid === user?.uid
-                        ? 'bg-primary-600 text-white rounded-tr-sm'
-                        : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
+                      reply.authorUid===user?.uid ? 'bg-primary-600 text-white rounded-tr-sm' : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
                       {reply.body}
                     </div>
                   </div>
@@ -395,9 +381,9 @@ export default function MessageDetailPage() {
                 <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
                   placeholder="답변을 입력하세요..." rows={2}
                   className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
-                <button onClick={handleReply} disabled={!replyText.trim() || sending}
-                  className="bg-primary-600 text-white rounded-xl px-4 flex items-center gap-1.5 text-sm font-medium hover:bg-primary-800 disabled:opacity-50 transition-colors shrink-0">
-                  <Send size={14}/> {sending ? '...' : '전송'}
+                <button onClick={handleReply} disabled={!replyText.trim()||sending}
+                  className="bg-primary-600 text-white rounded-xl px-4 flex items-center gap-1.5 text-sm font-medium hover:bg-primary-800 disabled:opacity-50 shrink-0">
+                  <Send size={14}/> {sending?'...':'전송'}
                 </button>
               </div>
             )}
@@ -405,11 +391,11 @@ export default function MessageDetailPage() {
               <div className="flex gap-2 pt-1 border-t border-gray-100">
                 {!isDone
                   ? <button onClick={handleClose} disabled={closing}
-                      className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-60 transition-colors">
-                      <CheckSquare size={14}/> {closing ? '처리 중...' : '완결 처리'}
+                      className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-60">
+                      <CheckSquare size={14}/> {closing?'처리 중...':'완결 처리'}
                     </button>
                   : <button onClick={handleReopen}
-                      className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
+                      className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600">
                       <RotateCcw size={14}/> 재오픈
                     </button>
                 }

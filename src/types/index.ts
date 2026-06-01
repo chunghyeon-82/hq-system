@@ -10,15 +10,12 @@ export interface AppUser {
   email:        string
   name:         string
   role:         UserRole
-  customRole?:  string   // ETC 역할일 때 직접 입력한 직책명
+  customRole?:  string
   bizId?:       string
   permissions?: UserPermissions
 }
 
-export interface Shareholder {
-  name:   string
-  shares: number
-}
+export interface Shareholder { name: string; shares: number }
 
 export interface Business {
   id:             string
@@ -31,7 +28,7 @@ export interface Business {
   shareholders?:  Shareholder[]
   employeeCount?: number
   annualRevenue?: number
-  isHQ?:          boolean   // 운영본부 여부 (본부 멤버 소속)
+  isHQ?:          boolean
   createdAt?:     unknown
 }
 
@@ -60,20 +57,76 @@ export interface Reply {
 }
 
 export interface Message {
-  id:           string
-  title:        string
-  body:         string
-  priority:     MessagePriority
-  type:         MessageType
-  authorUid:    string
-  authorName:   string
-  authorBizId?: string
-  targetBizIds: string[]
-  targetUid?:   string
-  targetName?:  string
-  status:       MessageStatus
-  receipts:     Receipt[]
-  replies:      Reply[]
-  createdAt:    unknown
-  updatedAt:    unknown
+  id:            string
+  title:         string
+  body:          string
+  priority:      MessagePriority
+  type:          MessageType
+  authorUid:     string
+  authorName:    string
+  authorBizId?:  string
+  targetBizIds:  string[]
+  targetUid?:    string
+  targetName?:   string
+  status:        MessageStatus
+  receipts:      Receipt[]
+  replies:       Reply[]
+  // 일정 첨부
+  eventDate?:    string   // ISO 날짜 "YYYY-MM-DD"
+  eventTime?:    string   // "HH:MM"
+  eventTitle?:   string
+  createdAt:     unknown
+  updatedAt:     unknown
+  // 링크 첨부
+  linkUrl?:      string
+  linkLabel?:    string
+}
+
+// ── 공지사항 ──────────────────────────────────────────
+export type NoticePrefix = '본부' | '사업장'
+
+export interface Notice {
+  id:          string
+  prefix:      NoticePrefix
+  title:       string
+  body:        string
+  authorUid:   string
+  authorName:  string
+  expiresAt:   string   // ISO datetime
+  createdAt:   unknown
+  updatedAt?:  unknown
+}
+
+// ── 캘린더 일정 ───────────────────────────────────────
+export type ReminderUnit = 'minutes' | 'hours' | 'days'
+
+export interface EventReminder {
+  value: number
+  unit:  ReminderUnit
+}
+
+export interface CalendarEvent {
+  id:            string
+  title:         string
+  date:          string   // "YYYY-MM-DD"
+  time?:         string   // "HH:MM"
+  memo?:         string
+  ownerUid:      string
+  ownerName:     string
+  targetBizIds?: string[]   // 사업장에 공유된 경우
+  reminder?:     EventReminder
+  isDone:        boolean
+  doneAt?:       string
+  addedBy?:      Record<string, string>   // bizId → addedAt ISO
+  createdAt:     unknown
+  updatedAt?:    unknown
+}
+
+// ── 메시지 템플릿 ─────────────────────────────────────
+export interface MessageTemplate {
+  id:        string
+  ownerUid:  string
+  title:     string
+  body:      string
+  createdAt: unknown
 }

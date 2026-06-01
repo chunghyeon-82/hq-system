@@ -5,15 +5,21 @@ import { usePathname, useRouter } from 'next/navigation'
 import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/auth-context'
-import { LayoutDashboard, Building2, Send, Users, LogOut, Menu, X, ChevronRight, MessageSquare, MessageCircle } from 'lucide-react'
+import { useSettings } from '@/lib/settings-context'
+import {
+  LayoutDashboard, Building2, Send, Users, LogOut, Menu, X,
+  ChevronRight, MessageSquare, MessageCircle, Settings,
+  Megaphone, Calendar, Search
+} from 'lucide-react'
 import clsx from 'clsx'
 
 interface Props { children: ReactNode; title?: string; back?: string }
 
 export default function AppShell({ children, title, back }: Props) {
-  const { user } = useAuth()
-  const router   = useRouter()
-  const pathname = usePathname()
+  const { user }     = useAuth()
+  const { settings } = useSettings()
+  const router       = useRouter()
+  const pathname     = usePathname()
   const [open, setOpen] = useState(false)
 
   const isAdmin    = user?.role === 'ADMIN'
@@ -21,29 +27,32 @@ export default function AppShell({ children, title, back }: Props) {
   const isHQMember = user?.role === 'HQ_MEMBER'
   const isBiz      = user?.role === 'BIZ_REP'
   const isHQ       = isAdmin || isHQChief || isHQMember
-
   const canBroadcast = isAdmin || isHQChief || !!user?.permissions?.canBroadcast
 
+  const fontClass = settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
+
   const nav = [
-    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true },
-    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ },
-    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast },
-    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ },
-    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: isBiz },
-    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin },
+    { href: '/dashboard',  label: '대시보드',     icon: LayoutDashboard, show: true },
+    { href: '/businesses', label: '사업장 현황',   icon: Building2,       show: isHQ },
+    { href: '/compose',    label: '전달 작성',     icon: Send,            show: canBroadcast },
+    { href: '/notices',    label: '공지사항',      icon: Megaphone,       show: true },
+    { href: '/calendar',   label: '캘린더',        icon: Calendar,        show: true },
+    { href: '/search',     label: '메시지 검색',   icon: Search,          show: true },
+    { href: '/chat',       label: '운영본부 채팅',  icon: MessageCircle,   show: isHQ },
+    { href: '/direct',     label: '1:1 메시지',    icon: MessageSquare,   show: true },
+    { href: '/admin',      label: '멤버 관리',     icon: Users,           show: isAdmin },
+    { href: '/settings',   label: '설정',          icon: Settings,        show: true },
   ].filter(n => n.show)
 
   const handleLogout = async () => { await signOut(auth); router.replace('/login') }
   const roleLabel: Record<string, string> = {
-    ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표', ETC: '기타'
+    ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타'
   }
-  // ETC는 customRole 표시
   const displayRole = user?.role === 'ETC' && user?.customRole
-    ? user.customRole
-    : roleLabel[user?.role ?? '']
+    ? user.customRole : roleLabel[user?.role ?? '']
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className={clsx('flex h-screen bg-gray-50', fontClass)}>
       <aside className={clsx(
         'fixed inset-y-0 left-0 z-40 w-60 bg-primary-900 text-white flex flex-col transition-transform duration-200',
         open ? 'translate-x-0' : '-translate-x-full', 'lg:relative lg:translate-x-0'

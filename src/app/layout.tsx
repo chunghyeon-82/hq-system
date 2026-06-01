@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
+import { SettingsProvider } from '@/lib/settings-context'
 import InstallPrompt from '@/components/InstallPrompt'
+import PushInit from '@/components/PushInit'
 import Script from 'next/script'
 
 export const metadata: Metadata = {
@@ -25,8 +27,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <AuthProvider>
-          {children}
-          <InstallPrompt/>
+          <SettingsProvider>
+            {children}
+            <InstallPrompt/>
+            <PushInit/>
+          </SettingsProvider>
         </AuthProvider>
         <Script id="sw" strategy="afterInteractive">{`
           if ('serviceWorker' in navigator) {
