@@ -24,7 +24,7 @@ export default function NoticesPage() {
 
   const isHQ = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
   const canWrite = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' ||
-                   (user?.role === 'HQ_MEMBER' && !!user?.permissions?.canBroadcast) ||
+                   user?.role === 'HQ_MEMBER' ||
                    user?.role === 'BIZ_REP'
 
   // 사업장 대표는 [사업장] 말머리만

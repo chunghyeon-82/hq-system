@@ -27,6 +27,9 @@ export default function CalendarPage() {
   const [title,    setTitle]    = useState('')
   const [date,     setDate]     = useState(new Date().toISOString().slice(0, 10))
   const [time,     setTime]     = useState('')
+  const [timeHour, setTimeHour] = useState('09')
+  const [timeMin,  setTimeMin]  = useState('00')
+  const [timeAmPm, setTimeAmPm] = useState<'AM'|'PM'>('AM')
   const [memo,     setMemo]     = useState('')
   const [reminder, setReminder] = useState<EventReminder | undefined>(undefined)
   const [saving,   setSaving]   = useState(false)
@@ -40,7 +43,13 @@ export default function CalendarPage() {
     if (!user || !title.trim() || !date) return
     setSaving(true)
     await addEvent({
-      title: title.trim(), date, time, memo,
+      title: title.trim(), date,
+      time: time ? (() => {
+        const h = parseInt(timeHour)
+        const hour24 = timeAmPm === 'AM' ? (h === 12 ? 0 : h) : (h === 12 ? 12 : h + 12)
+        return `${String(hour24).padStart(2,'0')}:${timeMin}`
+      })() : undefined,
+      memo,
       ownerUid: user.uid, ownerName: user.name,
       reminder, isDone: false,
     })
@@ -148,8 +157,39 @@ export default function CalendarPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-gray-500 block mb-1">시간 (선택)</label>
-                <input type="time" value={time} onChange={e => setTime(e.target.value)}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
+                <div className="flex gap-1">
+                  <button onClick={() => setTime(t => t ? '' : '09:00')}
+                    className={clsx('px-2 py-2 rounded-lg text-xs border transition-colors',
+                      time ? 'bg-primary-50 border-primary-300 text-primary-700' : 'bg-white border-gray-200 text-gray-400')}>
+                    {time ? '✓' : '+'} 시간
+                  </button>
+                  {time !== '' && (
+                    <>
+                      <button onClick={() => setTimeAmPm('AM')}
+                        className={clsx('px-3 py-2 rounded-lg text-xs border font-medium transition-colors',
+                          timeAmPm==='AM' ? 'bg-primary-600 text-white border-primary-600' : 'bg-white border-gray-200 text-gray-600')}>
+                        오전
+                      </button>
+                      <button onClick={() => setTimeAmPm('PM')}
+                        className={clsx('px-3 py-2 rounded-lg text-xs border font-medium transition-colors',
+                          timeAmPm==='PM' ? 'bg-primary-600 text-white border-primary-600' : 'bg-white border-gray-200 text-gray-600')}>
+                        오후
+                      </button>
+                      <select value={timeHour} onChange={e => setTimeHour(e.target.value)}
+                        className="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                        {Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0')).map(h=>(
+                          <option key={h} value={h}>{h}시</option>
+                        ))}
+                      </select>
+                      <select value={timeMin} onChange={e => setTimeMin(e.target.value)}
+                        className="flex-1 border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                        {['00','10','20','30','40','50'].map(m=>(
+                          <option key={m} value={m}>{m}분</option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
             <div>
