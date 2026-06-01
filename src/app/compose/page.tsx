@@ -7,7 +7,7 @@ import { listenBusinesses, sendMessage, listenTemplates, addTemplate, deleteTemp
 import type { Business, Receipt, MessageTemplate, MessageCategory } from '@/types'
 import {
   Send, CheckSquare, Square, AlertCircle, Calendar, Link2,
-  BookTemplate, Plus, Trash2, X, ChevronDown
+  FileText, Plus, Trash2, X, ChevronDown
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -165,7 +165,7 @@ function ComposeContent() {
           <div className="ml-auto relative">
             <button onClick={() => setShowTpl(v => !v)}
               className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
-              <BookTemplate size={15}/> 템플릿
+              <FileText size={15}/> 템플릿
               <ChevronDown size={12}/>
             </button>
             {showTpl && (

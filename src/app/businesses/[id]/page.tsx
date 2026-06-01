@@ -322,8 +322,8 @@ export default function BusinessDetailPage() {
               const myReceipt  = msg.receipts?.find(r => r.bizId === id)
               const isDone     = msg.status === 'done'
               const isPending  = myReceipt?.status === 'pending'
-              const isReceived = myReceipt?.status === 'received'
-              const isReplied  = myReceipt?.status === 'replied'
+              const isProcessing = myReceipt?.status === 'processing'
+              const isDoneReceipt = myReceipt?.status === 'done'
 
               return (
                 <button key={msg.id}
@@ -338,9 +338,9 @@ export default function BusinessDetailPage() {
                       <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
                         {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
                         {isDone    && <span className="badge-done">완결</span>}
-                        {!isDone && isPending  && <span className="badge-pending">미접수</span>}
-                        {!isDone && isReceived && <span className="badge-received">진행중</span>}
-                        {!isDone && isReplied  && <span className="badge-replied">답변완료</span>}
+                        {!isDone && isPending     && <span className="badge-pending">미접수</span>}
+                        {!isDone && isProcessing  && <span className="badge-received">처리중</span>}
+                        {!isDone && isDoneReceipt && <span className="badge-replied">처리완료</span>}
                       </div>
 
                       {/* 제목 */}
@@ -349,14 +349,14 @@ export default function BusinessDetailPage() {
                       {/* 발신자 + 접수시간 */}
                       <div className="flex items-center gap-3 mt-1">
                         <span className="text-xs text-gray-400">{msg.authorName}</span>
-                        {myReceipt?.receivedAt && (
+                        {myReceipt?.processedAt && (
                           <span className="text-xs text-blue-500">
-                            접수 {new Date(myReceipt.receivedAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                            처리중 {new Date(myReceipt.processedAt!).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
                           </span>
                         )}
-                        {myReceipt?.repliedAt && (
+                        {myReceipt?.doneAt && (
                           <span className="text-xs text-green-500">
-                            답변 {new Date(myReceipt.repliedAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                            완료 {new Date(myReceipt.doneAt!).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
                           </span>
                         )}
                       </div>

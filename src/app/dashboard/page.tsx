@@ -159,15 +159,17 @@ export default function DashboardPage() {
                       </div>
                       <div className="mt-3">
                         <div className="flex justify-between text-xs text-gray-500 mb-1">
-                          <span>답변 현황</span><span>{replied}/{total}개</span>
+                          <span>처리 현황</span><span>{doneCount}/{total}개 완료</span>
                         </div>
                         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden flex">
-                          <div className="bg-green-400 h-full" style={{ width: total ? `${(replied/total)*100}%` : '0%' }}/>
-                          <div className="bg-blue-400 h-full"  style={{ width: total ? `${(received/total)*100}%` : '0%' }}/>
+                          <div className="bg-green-400 h-full transition-all" style={{ width: total ? `${(doneCount/total)*100}%` : '0%' }}/>
+                          <div className="bg-blue-400 h-full transition-all"  style={{ width: total ? `${(procCount/total)*100}%` : '0%' }}/>
+                          <div className="bg-red-300 h-full transition-all"   style={{ width: total ? `${(pendCount/total)*100}%` : '0%' }}/>
                         </div>
                         <div className="flex gap-3 mt-1.5 text-xs">
-                          {replied  > 0 && <span className="text-green-600">✓ 답변 {replied}</span>}
-                          {received > 0 && <span className="text-blue-600">● 접수 {received}</span>}
+                          {doneCount > 0 && <span className="text-green-600">✓ 완료 {doneCount}</span>}
+                          {procCount > 0 && <span className="text-blue-600">● 처리중 {procCount}</span>}
+                          {pendCount > 0 && <span className="text-red-400">○ 미접수 {pendCount}</span>}
                           {pending  > 0 && <span className="text-gray-400">○ 미접수 {pending}</span>}
                         </div>
                       </div>
@@ -211,7 +213,7 @@ export default function DashboardPage() {
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: '전달받은 건수', value: myReceipts.length,    icon: Send,        color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', filter: 'all' },
-              { label: '미확인',        value: pendingItems.length,  icon: AlertCircle,
+              { label: '미접수',        value: pendingItems.length,  icon: AlertCircle,
                 color: pendingItems.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200',
                 iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400', filter: 'pending' },
               { label: '처리 완료',     value: myReceipts.filter(({msg}) => msg.status === 'done').length, icon: CheckCircle2, color: 'bg-green-50 border-green-200', iconColor: 'text-green-500', filter: 'done' },
