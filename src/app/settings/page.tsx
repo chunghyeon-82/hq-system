@@ -126,7 +126,7 @@ export default function SettingsPage() {
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1.5">역할</label>
             <input value={user?.role === 'ETC' && user?.customRole ? user.customRole : (
-              { ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타' }[user?.role ?? ''] ?? ''
+              ({ ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타' } as Record<string, string>)[user?.role ?? ''] ?? ''
             )} disabled
               className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 text-gray-400"/>
           </div>
