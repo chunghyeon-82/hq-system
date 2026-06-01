@@ -38,9 +38,31 @@ export default function MessageDetailPage() {
     return listenMessages(msgs => setMessage(msgs.find(m => m.id === id) ?? null))
   }, [id])
 
+  // 5초 후에도 메시지가 없으면 존재하지 않는 메시지로 판단
+  const [notFound, setNotFound] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => { if (!message) setNotFound(true) }, 5000)
+    return () => clearTimeout(t)
+  }, [message])
+
   if (!message) return (
     <AppShell title="전달 상세" back={isHQ ? '/businesses' : '/dashboard'}>
-      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">불러오는 중...</div>
+      {notFound ? (
+        <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
+          <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center text-2xl">🗑</div>
+          <p className="text-sm font-medium text-gray-600">삭제된 메시지입니다</p>
+          <p className="text-xs text-gray-400">사업장이 삭제되어 메시지를 불러올 수 없습니다</p>
+          <button onClick={() => router.push(isHQ ? '/businesses' : '/dashboard')}
+            className="mt-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800">
+            돌아가기
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
+          <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary-600 border-t-transparent mr-2"/>
+          불러오는 중...
+        </div>
+      )}
     </AppShell>
   )
 

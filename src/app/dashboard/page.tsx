@@ -44,8 +44,10 @@ export default function DashboardPage() {
     const directMsgs    = messages.filter(m => m.type === 'direct')
     const openMsgs      = broadcastMsgs.filter(m => m.status === 'open')
     const urgentMsgs    = openMsgs.filter(m => m.priority === 'urgent')
-    const pendingCount  = broadcastMsgs.reduce((acc, m) =>
-      acc + (m.receipts?.filter(r => r.status === 'pending').length ?? 0), 0)
+    const pendingCount  = broadcastMsgs
+      .filter(m => m.targetBizIds?.length > 0)  // 수신 사업장 없는 고아 메시지 제외
+      .reduce((acc, m) =>
+        acc + (m.receipts?.filter(r => r.status === 'pending').length ?? 0), 0)
     const unreadDirect  = directMsgs.filter(m => m.status === 'open' && m.targetUid === user?.uid).length
 
     return (
@@ -190,7 +192,7 @@ export default function DashboardPage() {
     const directMsgs    = messages.filter(m => m.type === 'direct')
     const myReceipts = broadcastMsgs.map(m => ({
       msg: m, receipt: m.receipts?.find(r => r.bizId === user?.bizId)
-    })).filter(({ receipt }) => receipt && !receipt.hidden)
+    })).filter(({ receipt, msg }) => receipt && !receipt.hidden && msg.targetBizIds?.length > 0)
 
     const openItems    = myReceipts.filter(({ msg }) => msg.status === 'open')
     const pendingItems = myReceipts.filter(({ receipt }) => receipt?.status === 'pending')

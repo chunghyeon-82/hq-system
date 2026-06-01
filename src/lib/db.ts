@@ -35,7 +35,26 @@ export async function updateBusiness(id: string, data: Partial<Business>) {
   await updateDoc(doc(db, 'businesses', id), data)
 }
 export async function deleteBusiness(id: string) {
+  // 1. 사업장 삭제
   await deleteDoc(doc(db, 'businesses', id))
+  // 2. 해당 사업장이 수신자인 메시지 receipts에서 제거 (고아 메시지 방지)
+  const msgsSnap = await getDocs(query(collection(db, 'messages'), where('targetBizIds', 'array-contains', id)))
+  for (const msgDoc of msgsSnap.docs) {
+    const data = msgDoc.data()
+    const receipts = (data.receipts ?? []).filter((r: Receipt) => r.bizId !== id)
+    const targetBizIds = (data.targetBizIds ?? []).filter((bid: string) => bid !== id)
+    // 수신자가 아무도 없으면 메시지 삭제, 아니면 업데이트
+    if (targetBizIds.length === 0 && data.type === 'broadcast') {
+      await deleteDoc(msgDoc.ref)
+    } else {
+      await updateDoc(msgDoc.ref, { receipts, targetBizIds, updatedAt: serverTimestamp() })
+    }
+  }
+  // 3. 해당 사업장 소속 유저의 bizId 초기화
+  const usersSnap = await getDocs(query(collection(db, 'users'), where('bizId', '==', id)))
+  for (const userDoc of usersSnap.docs) {
+    await updateDoc(userDoc.ref, { bizId: null })
+  }
 }
 
 // ── Messages ──────────────────────────────────────────
