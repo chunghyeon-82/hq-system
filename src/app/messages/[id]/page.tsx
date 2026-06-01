@@ -379,7 +379,7 @@ export default function MessageDetailPage() {
                       <RotateCcw size={15}/> 재오픈
                     </button>
                 }
-                {(isAdmin || message.authorUid === user?.uid) && (
+                {(isAdmin || message.authorUid === user?.uid || message.targetUid === user?.uid || (user?.bizId && message.targetBizIds?.includes(user.bizId))) && (
                   <button onClick={handleDelete}
                     className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
                     <Trash2 size={15}/> 삭제
@@ -437,7 +437,7 @@ export default function MessageDetailPage() {
                   }
                 </>
               )}
-              {(isAdmin || message.authorUid === user?.uid) && (
+              {(isAdmin || message.authorUid === user?.uid || message.targetUid === user?.uid || (user?.bizId && message.targetBizIds?.includes(user.bizId))) && (
                 <button onClick={handleDelete}
                   className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
                   <Trash2 size={14}/> 삭제
