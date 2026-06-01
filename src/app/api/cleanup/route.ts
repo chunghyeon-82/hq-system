@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { initializeApp, cert, getApps } from 'firebase-admin/app'
-import { getFirestore, Timestamp } from 'firebase-admin/firestore'
+import { getFirestore } from 'firebase-admin/firestore'
 
 // Firebase Admin 초기화
 function getAdminDb() {

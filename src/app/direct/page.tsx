@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenUsers, sendDirectMessage } from '@/lib/db'
-import type { AppUser } from '@/types'
+import type { AppUser, MessageCategory } from '@/types'
 import { Send, MessageSquare, Lock, ShieldAlert } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -16,6 +16,7 @@ export default function DirectPage() {
   const [targetUid, setTargetUid] = useState('')
   const [title,     setTitle]     = useState('')
   const [body,      setBody]      = useState('')
+  const [category,  setCategory]  = useState<'instruction' | 'confirm' | 'notice'>('instruction')
   const [priority,  setPriority]  = useState<'normal' | 'urgent'>('normal')
   const [sending,   setSending]   = useState(false)
   const [sent,      setSent]      = useState(false)
@@ -46,6 +47,7 @@ export default function DirectPage() {
     await sendDirectMessage({
       title:       title.trim(),
       body:        body.trim(),
+      category,
       priority,
       authorUid:   user.uid,
       authorName:  user.name,
