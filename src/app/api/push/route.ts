@@ -17,14 +17,13 @@ function getAdminDb() {
   return getFirestore()
 }
 
-// VAPID 설정
-webpush.setVapidDetails(
-  'mailto:admin@hq-system.app',
-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-  process.env.VAPID_PRIVATE_KEY!
-)
-
 export async function POST(req: NextRequest) {
+  // VAPID 설정 (요청 시점에 환경변수 읽기)
+  webpush.setVapidDetails(
+    'mailto:admin@hq-system.app',
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '',
+    process.env.VAPID_PRIVATE_KEY ?? ''
+  )
   try {
     const { title, body, url, targetUids } = await req.json()
 
