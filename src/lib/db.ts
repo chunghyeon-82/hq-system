@@ -175,6 +175,10 @@ export async function replyDirect(msgId: string, authorUid: string, authorName: 
   })
 }
 
+export async function deleteMessageDoc(msgId: string) {
+  await deleteDoc(doc(db, 'messages', msgId))
+}
+
 export async function closeMessage(msgId: string) {
   await updateDoc(doc(db, 'messages', msgId), { status: 'done' as MessageStatus, updatedAt: serverTimestamp() })
 }

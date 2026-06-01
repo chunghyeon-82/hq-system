@@ -3,11 +3,11 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenMessages, processMessage, completeMessage, closeMessage, reopenMessage, hideMessage, replyDirect, addEventToMyCalendar, addEvent } from '@/lib/db'
+import { listenMessages, processMessage, completeMessage, closeMessage, reopenMessage, hideMessage, replyDirect, addEventToMyCalendar, addEvent, deleteMessageDoc } from '@/lib/db'
 import type { Message, Receipt } from '@/types'
 import {
   CheckCircle2, Clock, AlertCircle, Send, CheckSquare,
-  RotateCcw, Lock, Calendar, Link2, ExternalLink, ChevronDown, ChevronUp, EyeOff
+  RotateCcw, Lock, Calendar, Link2, ExternalLink, ChevronDown, ChevronUp, EyeOff, Trash2
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -96,6 +96,13 @@ export default function MessageDetailPage() {
     setSending(false)
     setShowNote(false)
     setDoneNote('')
+  }
+
+  // 메시지 삭제
+  const handleDelete = async () => {
+    if (!confirm('이 메시지를 완전히 삭제하시겠습니까?\n삭제된 메시지는 복구할 수 없습니다.')) return
+    await deleteMessageDoc(message.id)
+    router.push(isHQ ? '/businesses' : '/dashboard')
   }
 
   // 본부 완결 처리
@@ -292,10 +299,18 @@ export default function MessageDetailPage() {
               )}
 
               {myReceipt.status === 'done' && (
-                <button onClick={handleHide}
-                  className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-400 rounded-xl py-2.5 text-sm hover:bg-gray-50 transition-colors">
-                  <EyeOff size={14}/> 목록에서 숨기기
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={handleHide}
+                    className="flex-1 flex items-center justify-center gap-2 border border-gray-200 text-gray-400 rounded-xl py-2.5 text-sm hover:bg-gray-50 transition-colors">
+                    <EyeOff size={14}/> 목록에서 숨기기
+                  </button>
+                  {message.authorUid === user?.uid && (
+                    <button onClick={handleDelete}
+                      className="flex items-center gap-2 border border-red-200 text-red-400 rounded-xl px-4 py-2.5 text-sm hover:bg-red-50 transition-colors">
+                      <Trash2 size={14}/> 삭제
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -364,6 +379,12 @@ export default function MessageDetailPage() {
                       <RotateCcw size={15}/> 재오픈
                     </button>
                 }
+                {(isAdmin || message.authorUid === user?.uid) && (
+                  <button onClick={handleDelete}
+                    className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
+                    <Trash2 size={15}/> 삭제
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -403,18 +424,26 @@ export default function MessageDetailPage() {
                 </button>
               </div>
             )}
-            {isHQ && (
-              <div className="pt-1 border-t border-gray-100">
-                {!isDone
-                  ? <button onClick={handleClose} className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800">
-                      <CheckSquare size={14}/> 완결 처리
-                    </button>
-                  : <button onClick={handleReopen} className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600">
-                      <RotateCcw size={14}/> 재오픈
-                    </button>
-                }
-              </div>
-            )}
+            <div className="pt-1 border-t border-gray-100 flex gap-2">
+              {isHQ && (
+                <>
+                  {!isDone
+                    ? <button onClick={handleClose} className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800">
+                        <CheckSquare size={14}/> 완결 처리
+                      </button>
+                    : <button onClick={handleReopen} className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600">
+                        <RotateCcw size={14}/> 재오픈
+                      </button>
+                  }
+                </>
+              )}
+              {(isAdmin || message.authorUid === user?.uid) && (
+                <button onClick={handleDelete}
+                  className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
+                  <Trash2 size={14}/> 삭제
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
