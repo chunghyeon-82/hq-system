@@ -46,6 +46,16 @@ export default function NoticesPage() {
       authorName: user.name,
       expiresAt:  new Date(expiresAt).toISOString(),
     })
+    // 전체 푸시 발송
+    fetch('/api/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CLEANUP_SECRET}` },
+      body: JSON.stringify({
+        title: `[공지] ${title.trim()}`,
+        body:  body.trim().slice(0, 100),
+        url:   '/notices',
+      }),
+    }).catch(() => {})
     setTitle(''); setBody(''); setExpiresAt('')
     setShowForm(false)
     setSaving(false)

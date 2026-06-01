@@ -88,6 +88,17 @@ function ComposeContent() {
       ...(showEvent && eventDate ? { eventDate, eventTime, eventTitle: eventTitle || title } : {}),
       ...(showLink && linkUrl    ? { linkUrl, linkLabel: linkLabel || linkUrl }             : {}),
     })
+    // 수신 사업장 대표에게 푸시 발송
+    const categoryLabel = { instruction: '업무지시', confirm: '확인요청', notice: '단순공지' }[category]
+    fetch('/api/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CLEANUP_SECRET}` },
+      body: JSON.stringify({
+        title: `[${categoryLabel}] ${title.trim()}`,
+        body:  body.trim().slice(0, 100),
+        url:   '/dashboard',
+      }),
+    }).catch(() => {})
     setSent(true)
     setSending(false)
   }
