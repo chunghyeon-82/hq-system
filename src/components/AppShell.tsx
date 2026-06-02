@@ -22,9 +22,16 @@ export default function AppShell({ children, title, back }: Props) {
   const { settings } = useSettings()
   const router       = useRouter()
   const pathname     = usePathname()
-  const [open,       setOpen]       = useState(false)
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [open,        setOpen]        = useState(false)
+  const [unreadCount,  setUnreadCount]  = useState(0)
   const [unreadDirect, setUnreadDirect] = useState(0)
+
+  const isAdmin      = user?.role === 'ADMIN'
+  const isHQChief    = user?.role === 'HQ_CHIEF'
+  const isHQMember   = user?.role === 'HQ_MEMBER'
+  const isHQ         = isAdmin || isHQChief || isHQMember
+  const isBiz        = user?.role === 'BIZ_REP'
+  const canBroadcast = isAdmin || isHQChief || !!user?.permissions?.canBroadcast
 
   useEffect(() => {
     if (!user) return
@@ -57,12 +64,6 @@ export default function AppShell({ children, title, back }: Props) {
       })
     }
   }, [user, isHQ, isAdmin, isBiz])
-
-  const isAdmin      = user?.role === 'ADMIN'
-  const isHQChief    = user?.role === 'HQ_CHIEF'
-  const isHQMember   = user?.role === 'HQ_MEMBER'
-  const isHQ         = isAdmin || isHQChief || isHQMember
-  const canBroadcast = isAdmin || isHQChief || !!user?.permissions?.canBroadcast
 
   const fontClass = settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
 
