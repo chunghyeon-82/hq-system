@@ -9,11 +9,22 @@ export function urlBase64ToUint8Array(base64String: string) {
   return Uint8Array.from(Array.from(rawData).map(c => c.charCodeAt(0)))
 }
 
-export async function subscribePush(uid: string): Promise<boolean> {
+export async function subscribePush(uid: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const reg = await navigator.serviceWorker.ready
     const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-    if (!vapidKey) return false
+    if (!vapidKey) return { ok: false, error: 'VAPID 키가 설정되지 않았습니다' }
+
+    // Service Worker 준비 대기 (최대 10초)
+    const reg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Service Worker 준비 시간 초과')), 10000)
+      )
+    ]) as ServiceWorkerRegistration
+
+    // 기존 구독 확인
+    const existingSub = await reg.pushManager.getSubscription()
+    if (existingSub) await existingSub.unsubscribe()
 
     const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
@@ -24,9 +35,11 @@ export async function subscribePush(uid: string): Promise<boolean> {
       subscription: JSON.parse(JSON.stringify(sub)),
       updatedAt: serverTimestamp(),
     })
-    return true
-  } catch {
-    return false
+    return { ok: true }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '알 수 없는 오류'
+    console.error('Push subscribe error:', msg)
+    return { ok: false, error: msg }
   }
 }
 
