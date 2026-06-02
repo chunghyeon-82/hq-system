@@ -9,7 +9,7 @@ import { Send, MessageSquare, Lock, ShieldAlert } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function DirectPage() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const router   = useRouter()
 
   const [allUsers,  setAllUsers]  = useState<AppUser[]>([])
@@ -35,6 +35,7 @@ export default function DirectPage() {
   const isBizToBiz    = isBiz && target?.role === 'BIZ_REP'
 
   useEffect(() => {
+    if (loading) return
     if (!user) { router.replace('/login'); return }
     if (!isBiz && !isHQ) { router.replace('/dashboard'); return }
     return listenUsers(setAllUsers)

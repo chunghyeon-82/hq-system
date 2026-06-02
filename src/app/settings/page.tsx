@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 
 export default function SettingsPage() {
-  const { user }                   = useAuth()
+  const { user, loading }                   = useAuth()
   const { settings, updateSettings } = useSettings()
   const router                     = useRouter()
 
@@ -36,6 +36,7 @@ export default function SettingsPage() {
   const [pwError, setPwError] = useState(false)
 
   useEffect(() => {
+    if (loading) return
     if (!user) { router.replace('/login'); return }
     setName(user.name)
     getPushPermission().then(setPushPerm)

@@ -9,7 +9,7 @@ import { Search, X, ChevronRight } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function SearchPage() {
-  const { user }  = useAuth()
+  const { user, loading }  = useAuth()
   const router    = useRouter()
   const [all,     setAll]     = useState<Message[]>([])
   const [query,   setQuery]   = useState('')
@@ -19,6 +19,7 @@ export default function SearchPage() {
   const isBiz = user?.role === 'BIZ_REP'
 
   useEffect(() => {
+    if (loading) return
     if (!user) { router.replace('/login'); return }
     if (isHQ) return listenMessagesForHQ(user.uid, user.role === 'ADMIN', setAll)
     if (isBiz && user.bizId) return listenMessagesForBiz(user.bizId, user.uid, setAll)

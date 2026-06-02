@@ -9,7 +9,7 @@ import { Megaphone, Plus, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react
 import clsx from 'clsx'
 
 export default function NoticesPage() {
-  const { user }   = useAuth()
+  const { user, loading }   = useAuth()
   const router     = useRouter()
   const [notices, setNotices]       = useState<Notice[]>([])
   const [showForm, setShowForm]     = useState(false)
@@ -37,6 +37,7 @@ export default function NoticesPage() {
   const prefixes: NoticePrefix[] = user?.role === 'BIZ_REP' ? ['사업장'] : ['본부', '사업장']
 
   useEffect(() => {
+    if (loading) return
     if (!user) { router.replace('/login'); return }
     return listenNotices(setNotices)
   }, [user, router])

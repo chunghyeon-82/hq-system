@@ -35,7 +35,7 @@ const ROLE_LABEL: Record<string, string> = {
 }
 
 export default function CalendarPage() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const router   = useRouter()
 
   const [events,   setEvents]   = useState<CalendarEvent[]>([])
@@ -70,6 +70,7 @@ export default function CalendarPage() {
   const dragId = useRef<string | null>(null)
 
   useEffect(() => {
+    if (loading) return
     if (!user) { router.replace('/login'); return }
     const u1 = listenEvents(user.uid, user.bizId, setEvents)
     const u2 = listenPendingSharedEvents(user.uid, setPending)
