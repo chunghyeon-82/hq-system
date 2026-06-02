@@ -185,18 +185,66 @@ export default function AppShell({ children, title, back }: Props) {
         </button>
       </div>
       {/* 네비게이션 */}
-      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-        {nav.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} onClick={() => setOpen(false)}
-            className={clsx(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-              (pathname === href || (pathname.startsWith(href) && href !== '/dashboard'))
-                ? 'bg-primary-600 text-white'
-                : 'text-primary-100 hover:bg-primary-800'
-            )}>
-            <Icon size={18}/>{label}
-          </Link>
-        ))}
+      <nav className="flex-1 p-3 overflow-y-auto">
+        {/* 편집 모드 버튼 */}
+        <button onClick={() => setEditMode(v => !v)}
+          className="w-full text-left px-3 py-1.5 mb-1 text-xs text-primary-400 hover:text-primary-200 flex items-center gap-1.5">
+          <GripVertical size={12}/>
+          {editMode ? '순서 변경 완료 ✓' : '메뉴 순서 변경'}
+        </button>
+        <div className="space-y-0.5">
+          {sortedNav.map(({ href, label, icon: Icon, badge, group }, idx) => {
+            const prevGroup = idx > 0 ? sortedNav[idx - 1].group : null
+            const showGroup = !editMode && group && group !== prevGroup && group !== ''
+            const isActive  = pathname === href || (pathname.startsWith(href) && href !== '/dashboard')
+            return (
+              <div key={href}>
+                {showGroup && (
+                  <div className="px-3 pt-4 pb-1">
+                    <span className="text-xs font-semibold text-primary-400 uppercase tracking-wider">{group}</span>
+                  </div>
+                )}
+                {editMode ? (
+                  <div
+                    draggable
+                    onDragStart={() => setDragIdx(idx)}
+                    onDragOver={e => { e.preventDefault(); setDragOver(idx) }}
+                    onDrop={() => handleDrop(idx)}
+                    className={clsx(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium cursor-grab active:cursor-grabbing',
+                      dragOver === idx ? 'bg-primary-500' : 'bg-primary-800/50 text-primary-100'
+                    )}>
+                    <GripVertical size={16} className="text-primary-400 shrink-0"/>
+                    <Icon size={18}/>
+                    <span className="flex-1">{label}</span>
+                  </div>
+                ) : (
+                  <Link href={href} onClick={() => {
+                    setOpen(false)
+                    const ms = Date.now().toString()
+                    if (href === '/chat')    { localStorage.setItem('lastSeenChat',   ms); setLastSeenChat(ms);   setUnreadChat(0) }
+                    if (href === '/notices') { localStorage.setItem('lastSeenNotice', ms); setLastSeenNotice(ms); setUnreadNotice(0) }
+                    if (href === '/calendar'){ localStorage.setItem('lastSeenCal',    ms); setLastSeenCal(ms);    setUnreadCal(0) }
+                    if (href === '/direct')  { setUnreadDirect(0) }
+                  }}
+                    className={clsx(
+                      'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                      isActive ? 'bg-primary-600 text-white' : 'text-primary-100 hover:bg-primary-800'
+                    )}>
+                    <Icon size={18}/>
+                    <span className="flex-1">{label}</span>
+                    {badge > 0 && (
+                      <span className="bg-red-500 text-white font-bold rounded-full flex items-center justify-center"
+                        style={{ fontSize:'11px', minWidth:'18px', height:'18px', padding:'0 4px' }}>
+                        {badge > 99 ? '99+' : badge}
+                      </span>
+                    )}
+                  </Link>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </nav>
       {/* 유저 정보 */}
       <div className="p-4 border-t border-primary-800 shrink-0">
