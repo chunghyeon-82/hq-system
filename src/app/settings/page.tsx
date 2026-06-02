@@ -243,12 +243,25 @@ export default function SettingsPage() {
               </div>
             </div>
             <button onClick={togglePush} disabled={pushLoading || pushPerm === 'denied'}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-200 disabled:opacity-40 ${
-                settings.pushEnabled ? 'bg-primary-600' : 'bg-gray-300'
-              }`}>
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
-                settings.pushEnabled ? 'translate-x-6' : 'translate-x-0.5'
-              }`}/>
+              style={{
+                position:'relative', width:'52px', height:'28px',
+                borderRadius:'99px', border:'none', cursor:'pointer',
+                backgroundColor: settings.pushEnabled ? '#534AB7' : '#D1D5DB',
+                transition:'background-color .2s',
+                opacity: (pushLoading || pushPerm === 'denied') ? 0.4 : 1,
+                flexShrink: 0,
+              }}>
+              <span style={{
+                position:'absolute',
+                top:'3px',
+                left: settings.pushEnabled ? '27px' : '3px',
+                width:'22px', height:'22px',
+                backgroundColor:'white',
+                borderRadius:'50%',
+                boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
+                transition:'left .2s',
+                display:'block',
+              }}/>
             </button>
           </div>
           {/* 무음 모드 */}
@@ -261,12 +274,24 @@ export default function SettingsPage() {
               </div>
             </div>
             <button onClick={toggleSilent}
-              className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
-                settings.silentMode ? 'bg-primary-600' : 'bg-gray-300'
-              }`}>
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
-                settings.silentMode ? 'translate-x-6' : 'translate-x-0.5'
-              }`}/>
+              style={{
+                position:'relative', width:'52px', height:'28px',
+                borderRadius:'99px', border:'none', cursor:'pointer',
+                backgroundColor: settings.silentMode ? '#534AB7' : '#D1D5DB',
+                transition:'background-color .2s',
+                flexShrink: 0,
+              }}>
+              <span style={{
+                position:'absolute',
+                top:'3px',
+                left: settings.silentMode ? '27px' : '3px',
+                width:'22px', height:'22px',
+                backgroundColor:'white',
+                borderRadius:'50%',
+                boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
+                transition:'left .2s',
+                display:'block',
+              }}/>
             </button>
           </div>
         </div>
