@@ -616,8 +616,12 @@ export default function CalendarPage() {
                           <p className="text-xs text-gray-400">{ROLE_LABEL[u.role] ?? u.role}</p>
                         </div>
                         <div className={clsx('w-5 h-5 rounded border-2 flex items-center justify-center shrink-0',
-                          sharedUids.includes(u.uid) ? 'border-primary-500 bg-primary-500' : 'border-gray-300')}>
-                          {sharedUids.includes(u.uid) && <span className="text-white text-xs font-bold">✓</span>}
+                          sharedUids.includes(u.uid) ? 'border-primary-600 bg-primary-600' : 'border-gray-400 bg-white')}>
+                          {sharedUids.includes(u.uid) && (
+                            <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+                              <path d="M1 4L4.5 7.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          )}
                         </div>
                       </button>
                     ))}

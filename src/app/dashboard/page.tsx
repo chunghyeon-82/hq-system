@@ -69,8 +69,11 @@ export default function DashboardPage() {
     const { days, todayStr, sunStr, satStr } = getThisWeek()
     const weekEvents = events
       .filter(e => e.date >= sunStr && e.date <= satStr && !e.isDone)
-      .sort((a, b) => a.date.localeCompare(b.date))
-    const DOW = ['일', '월', '화', '수', '목', '금', '토']
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date)
+        return (a.time ?? '99:99').localeCompare(b.time ?? '99:99')
+      })
+    const DOW_KO = ['일','월','화','수','목','금','토']
     return (
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -83,59 +86,42 @@ export default function DashboardPage() {
             전체 보기 <ArrowUpRight size={11}/>
           </button>
         </div>
-        {/* 달력 */}
-        <div className="px-4 pt-3 pb-2">
-          <div className="grid grid-cols-7 mb-2">
-            {DOW.map((d, i) => (
-              <div key={d} className={clsx('text-center text-xs font-medium',
-                i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-400')}>
-                {d}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {days.map((d, i) => {
-              const dStr    = d.toISOString().slice(0, 10)
-              const isToday = dStr === todayStr
-              const hasEv   = weekEvents.some(e => e.date === dStr)
-              return (
-                <div key={i} className="flex flex-col items-center">
-                  <div className={clsx(
-                    'w-7 h-7 flex items-center justify-center text-xs rounded-full relative',
-                    isToday ? 'bg-primary-600 text-white font-medium' : 'text-gray-700'
-                  )}>
-                    {d.getDate()}
-                    {hasEv && !isToday && (
-                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400"/>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-        {/* 일정 목록 */}
         {weekEvents.length > 0 ? (
-          <div className="px-4 pb-3 space-y-1.5 border-t border-gray-50 pt-2">
-            {weekEvents.slice(0, 4).map(e => {
+          <div className="divide-y divide-gray-50">
+            {weekEvents.slice(0, 5).map(e => {
               const d = new Date(e.date + 'T00:00:00')
-              const label = d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })
+              const dow = DOW_KO[d.getDay()]
+              const isToday = e.date === todayStr
               return (
                 <button key={e.id} onClick={() => router.push('/calendar')}
-                  className="w-full flex items-center gap-2.5 py-1.5 hover:bg-gray-50 rounded-lg px-1 transition-colors">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary-500 shrink-0"/>
-                  <span className="text-sm text-gray-800 flex-1 text-left truncate">{e.title}</span>
-                  <span className="text-xs text-gray-400 shrink-0">{label}{e.time ? ` ${e.time}` : ''}</span>
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                  <div className={clsx('w-10 text-center shrink-0', isToday ? 'text-primary-600' : 'text-gray-400')}>
+                    <div className="text-xs font-medium">{dow}</div>
+                    <div className={clsx('text-lg font-bold leading-tight',
+                      isToday ? 'text-primary-600' : 'text-gray-700')}>{d.getDate()}</div>
+                  </div>
+                  <div className={clsx('w-0.5 h-8 rounded-full shrink-0',
+                    isToday ? 'bg-primary-400' : 'bg-gray-200')}/>
+                  <div className="flex-1 min-w-0 text-left">
+                    <p className={clsx('text-sm font-medium truncate',
+                      isToday ? 'text-primary-800' : 'text-gray-900')}>{e.title}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {e.time ? e.time : '종일'}
+                      {(e as CalendarEvent & {location?:string}).location
+                        ? ` · ${(e as CalendarEvent & {location?:string}).location}` : ''}
+                    </p>
+                  </div>
                 </button>
               )
             })}
           </div>
         ) : (
-          <p className="text-center text-xs text-gray-400 py-4">이번 주 일정이 없습니다</p>
+          <p className="text-center text-xs text-gray-400 py-6">이번 주 일정이 없습니다</p>
         )}
       </div>
     )
   }
+
 
   // ── 본부용 대시보드 ────────────────────────────────────
   if (isHQ) {
