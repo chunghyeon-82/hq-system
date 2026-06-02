@@ -5,6 +5,7 @@ import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenUsers, listenBusinesses, updateBusiness, ensureHQBusiness } from '@/lib/db'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
+import { secondaryAuth } from '@/lib/firebase'
 import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import { auth, db } from '@/lib/firebase'
 import type { AppUser, Business, UserRole, UserPermissions } from '@/types'
@@ -152,7 +153,10 @@ export default function AdminPage() {
         assignedBizId = newBizId || null
       }
 
-      const cred = await createUserWithEmailAndPassword(auth, newEmail, newPw)
+      // Secondary App으로 생성 — 현재 관리자 로그인 세션 유지
+      const cred = await createUserWithEmailAndPassword(secondaryAuth, newEmail, newPw)
+      // 생성 후 Secondary App 로그아웃 (세션 정리)
+      await secondaryAuth.signOut()
       const newUser: AppUser = {
         uid: cred.user.uid, email: newEmail, name: newName,
         role: newRole, permissions: newPerms,

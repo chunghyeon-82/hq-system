@@ -13,4 +13,10 @@ const firebaseConfig = {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
 export const auth = getAuth(app)
-export const db = getFirestore(app)
+export const db   = getFirestore(app)
+
+// Secondary App — 계정 생성 시 현재 로그인 세션 유지용
+const SECONDARY = 'secondary'
+const secondaryApp = getApps().find(a => a.name === SECONDARY)
+  || initializeApp(firebaseConfig, SECONDARY)
+export const secondaryAuth = getAuth(secondaryApp)
