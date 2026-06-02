@@ -19,7 +19,13 @@ export default function NoticesPage() {
   const [prefix,    setPrefix]    = useState<NoticePrefix>('본부')
   const [title,     setTitle]     = useState('')
   const [body,      setBody]      = useState('')
-  const [expiresAt, setExpiresAt] = useState('')
+  const [expiresAt,   setExpiresAt]   = useState('')
+  const [showPicker,  setShowPicker]  = useState(false)
+  const [pickYear,    setPickYear]    = useState(new Date().getFullYear())
+  const [pickMonth,   setPickMonth]   = useState(new Date().getMonth() + 1)
+  const [pickDay,     setPickDay]     = useState(new Date().getDate())
+  const [pickHour,    setPickHour]    = useState(23)
+  const [pickMin,     setPickMin]     = useState(59)
   const [saving,    setSaving]    = useState(false)
 
   const isHQ = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
@@ -58,7 +64,7 @@ export default function NoticesPage() {
         }),
       }).catch(() => {})
     }, 0)
-    setTitle(''); setBody(''); setExpiresAt('')
+    setTitle(''); setBody(''); setExpiresAt(''); setShowPicker(false)
     setShowForm(false)
     setSaving(false)
   }
@@ -122,9 +128,86 @@ export default function NoticesPage() {
               <label className="text-sm font-medium text-gray-700 block mb-1.5">
                 게시 종료일 <span className="text-red-500">*</span>
               </label>
-              <input type="datetime-local" value={expiresAt} onChange={e => setExpiresAt(e.target.value)}
-                min={new Date().toISOString().slice(0, 16)}
-                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
+              {/* 날짜 표시 버튼 */}
+              <button type="button" onClick={() => setShowPicker(v => !v)}
+                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm text-left focus:outline-none focus:ring-2 focus:ring-primary-400 flex items-center justify-between">
+                <span className={expiresAt ? 'text-gray-900' : 'text-gray-400'}>
+                  {expiresAt
+                    ? `${pickYear}년 ${pickMonth}월 ${pickDay}일 ${pickHour}:${String(pickMin).padStart(2,'0')}`
+                    : '종료일을 선택하세요'}
+                </span>
+                <span className="text-gray-400">📅</span>
+              </button>
+
+              {/* 날짜 피커 팝업 */}
+              {showPicker && (() => {
+                const daysInMonth = new Date(pickYear, pickMonth, 0).getDate()
+                const years = Array.from({length: 5}, (_, i) => new Date().getFullYear() + i)
+                const months = Array.from({length: 12}, (_, i) => i + 1)
+                const days = Array.from({length: daysInMonth}, (_, i) => i + 1)
+                const hours = Array.from({length: 24}, (_, i) => i)
+                const mins = [0, 10, 20, 30, 40, 50, 59]
+
+                const applyDate = (y: number, mo: number, d: number, h: number, mi: number) => {
+                  const dt = new Date(y, mo-1, d, h, mi)
+                  setExpiresAt(dt.toISOString())
+                }
+
+                return (
+                  <div className="mt-2 border border-primary-200 rounded-xl p-4 bg-white shadow-lg space-y-3">
+                    {/* 연도/월/일 */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">연도</label>
+                        <select value={pickYear}
+                          onChange={e => { const y=+e.target.value; setPickYear(y); applyDate(y,pickMonth,pickDay,pickHour,pickMin) }}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                          {years.map(y => <option key={y} value={y}>{y}년</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">월</label>
+                        <select value={pickMonth}
+                          onChange={e => { const mo=+e.target.value; setPickMonth(mo); applyDate(pickYear,mo,pickDay,pickHour,pickMin) }}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                          {months.map(m => <option key={m} value={m}>{m}월</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">일</label>
+                        <select value={pickDay}
+                          onChange={e => { const d=+e.target.value; setPickDay(d); applyDate(pickYear,pickMonth,d,pickHour,pickMin) }}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                          {days.map(d => <option key={d} value={d}>{d}일</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    {/* 시간 */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">시</label>
+                        <select value={pickHour}
+                          onChange={e => { const h=+e.target.value; setPickHour(h); applyDate(pickYear,pickMonth,pickDay,h,pickMin) }}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                          {hours.map(h => <option key={h} value={h}>{h}시</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">분</label>
+                        <select value={pickMin}
+                          onChange={e => { const mi=+e.target.value; setPickMin(mi); applyDate(pickYear,pickMonth,pickDay,pickHour,mi) }}
+                          className="w-full border border-gray-300 rounded-lg px-2 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+                          {mins.map(m => <option key={m} value={m}>{String(m).padStart(2,'0')}분</option>)}
+                        </select>
+                      </div>
+                    </div>
+                    <button type="button" onClick={() => setShowPicker(false)}
+                      className="w-full py-2.5 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800">
+                      확인
+                    </button>
+                  </div>
+                )
+              })()}
               <p className="text-xs text-gray-400 mt-1">종료일 이후 자동으로 삭제됩니다</p>
             </div>
             <button onClick={handleSubmit}
