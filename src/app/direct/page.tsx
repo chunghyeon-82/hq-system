@@ -55,6 +55,19 @@ export default function DirectPage() {
       targetUid:   target.uid,
       targetName:  target.name,
     })
+    // 수신자에게 푸시 알림 발송
+    setTimeout(() => {
+      fetch('/api/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
+        body: JSON.stringify({
+          title: `💬 ${user.name}님의 1:1 메시지`,
+          body:  title.trim(),
+          url:   '/dashboard',
+          targetUids: [target.uid],
+        }),
+      }).catch(() => {})
+    }, 0)
     setSent(true)
     setSending(false)
   }

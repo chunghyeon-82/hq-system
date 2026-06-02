@@ -3,8 +3,8 @@ import { ReactNode, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { signOut } from 'firebase/auth'
-import { listenMessagesForHQ, listenMessagesForBiz } from '@/lib/db'
-import type { Message } from '@/types'
+import { listenMessagesForHQ, listenMessagesForBiz, listenNotices, listenChatMessages, listenEvents } from '@/lib/db'
+import type { Message, Notice, CalendarEvent } from '@/types'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/auth-context'
 import { useSettings } from '@/lib/settings-context'
@@ -25,6 +25,18 @@ export default function AppShell({ children, title, back }: Props) {
   const [open,        setOpen]        = useState(false)
   const [unreadCount,  setUnreadCount]  = useState(0)
   const [unreadDirect, setUnreadDirect] = useState(0)
+  const [unreadChat,   setUnreadChat]   = useState(0)
+  const [unreadNotice, setUnreadNotice] = useState(0)
+  const [unreadCal,    setUnreadCal]    = useState(0)
+  const [lastSeenChat, setLastSeenChat] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('lastSeenChat') || '') : ''
+  )
+  const [lastSeenNotice, setLastSeenNotice] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('lastSeenNotice') || '') : ''
+  )
+  const [lastSeenCal, setLastSeenCal] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('lastSeenCal') || '') : ''
+  )
 
   const isAdmin      = user?.role === 'ADMIN'
   const isHQChief    = user?.role === 'HQ_CHIEF'
@@ -65,19 +77,62 @@ export default function AppShell({ children, title, back }: Props) {
     }
   }, [user, isHQ, isAdmin, isBiz])
 
+  // 운영본부 채팅 미읽음
+  useEffect(() => {
+    if (!user || !isHQ) return
+    return listenChatMessages(user.role, (msgs) => {
+      const unseen = msgs.filter(m => {
+        const t = typeof m.createdAt === 'object' && (m.createdAt as {toMillis?:()=>number})?.toMillis
+          ? (m.createdAt as {toMillis:()=>number}).toMillis().toString()
+          : String(m.createdAt)
+        return t > lastSeenChat && m.authorUid !== user.uid
+      }).length
+      setUnreadChat(unseen)
+    })
+  }, [user, isHQ, lastSeenChat])
+
+  // 공지사항 미읽음
+  useEffect(() => {
+    if (!user) return
+    return listenNotices((notices: Notice[]) => {
+      const unseen = notices.filter(n => {
+        const t = typeof n.createdAt === 'object' && (n.createdAt as {toMillis?:()=>number})?.toMillis
+          ? (n.createdAt as {toMillis:()=>number}).toMillis().toString()
+          : String(n.createdAt)
+        return t > lastSeenNotice && n.authorUid !== user.uid
+      }).length
+      setUnreadNotice(unseen)
+    })
+  }, [user, lastSeenNotice])
+
+  // 캘린더 미읽음 (오늘 이후 일정 중 내가 등록 안 한 것)
+  useEffect(() => {
+    if (!user) return
+    const today = new Date().toISOString().slice(0, 10)
+    return listenEvents(user.uid, user.bizId, (events: CalendarEvent[]) => {
+      const unseen = events.filter(e => {
+        const t = typeof e.createdAt === 'object' && (e.createdAt as {toMillis?:()=>number})?.toMillis
+          ? (e.createdAt as {toMillis:()=>number}).toMillis().toString()
+          : String(e.createdAt)
+        return e.date >= today && t > lastSeenCal && e.ownerUid !== user.uid
+      }).length
+      setUnreadCal(unseen)
+    })
+  }, [user, lastSeenCal])
+
   const fontClass = settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
 
   const nav = [
-    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true },
-    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ },
-    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast },
-    { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true },
-    { href: '/calendar',   label: '캘린더',       icon: Calendar,        show: true },
-    { href: '/search',     label: '메시지 검색',  icon: Search,          show: true },
-    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ },
-    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true },
-    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin },
-    { href: '/settings',   label: '설정',         icon: Settings,        show: true },
+    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true,          badge: 0 },
+    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ,          badge: unreadCount },
+    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast,  badge: 0 },
+    { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true,          badge: unreadNotice },
+    { href: '/calendar',   label: '캘린더',       icon: Calendar,        show: true,          badge: unreadCal },
+    { href: '/search',     label: '메시지 검색',  icon: Search,          show: true,          badge: 0 },
+    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ,          badge: unreadChat },
+    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true,          badge: unreadDirect },
+    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin,       badge: 0 },
+    { href: '/settings',   label: '설정',         icon: Settings,        show: true,          badge: 0 },
   ].filter(n => n.show)
 
   const handleLogout = async () => { await signOut(auth); router.replace('/login') }
