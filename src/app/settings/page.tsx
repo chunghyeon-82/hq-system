@@ -196,7 +196,7 @@ export default function SettingsPage() {
           {[
             { label: '앱 이름',   value: '본부관리시스템' },
             { label: '버전',      value: 'v1.0.0' },
-            { label: '개발',      value: '운영본부' },
+            { label: '개발',      value: '조충현' },
           ].map(({ label, value }) => (
             <div key={label} className="flex justify-between items-center px-5 py-4">
               <span className="text-sm text-gray-600">{label}</span>

@@ -77,16 +77,21 @@ export default function AppShell({ children, title, back }: Props) {
     }
   }, [user, isHQ, isAdmin, isBiz])
 
+  // Firestore Timestamp → ms 변환
+  const toMs = (t: unknown): number => {
+    if (!t) return 0
+    if (typeof t === 'object' && t !== null && 'toMillis' in t) return (t as {toMillis:()=>number}).toMillis()
+    if (typeof t === 'number') return t
+    return 0
+  }
+
   // 운영본부 채팅 미읽음
   useEffect(() => {
     if (!user || !isHQ) return
     return listenChatMessages(user.role, (msgs) => {
-      const unseen = msgs.filter(m => {
-        const t = typeof m.createdAt === 'object' && (m.createdAt as {toMillis?:()=>number})?.toMillis
-          ? (m.createdAt as {toMillis:()=>number}).toMillis().toString()
-          : String(m.createdAt)
-        return t > lastSeenChat && m.authorUid !== user.uid
-      }).length
+      const unseen = msgs.filter(m =>
+        toMs(m.createdAt) > parseInt(lastSeenChat || '0') && m.authorUid !== user.uid
+      ).length
       setUnreadChat(unseen)
     })
   }, [user, isHQ, lastSeenChat])
@@ -95,12 +100,9 @@ export default function AppShell({ children, title, back }: Props) {
   useEffect(() => {
     if (!user) return
     return listenNotices((notices: Notice[]) => {
-      const unseen = notices.filter(n => {
-        const t = typeof n.createdAt === 'object' && (n.createdAt as {toMillis?:()=>number})?.toMillis
-          ? (n.createdAt as {toMillis:()=>number}).toMillis().toString()
-          : String(n.createdAt)
-        return t > lastSeenNotice && n.authorUid !== user.uid
-      }).length
+      const unseen = notices.filter(n =>
+        toMs(n.createdAt) > parseInt(lastSeenNotice || '0') && n.authorUid !== user.uid
+      ).length
       setUnreadNotice(unseen)
     })
   }, [user, lastSeenNotice])
@@ -110,12 +112,9 @@ export default function AppShell({ children, title, back }: Props) {
     if (!user) return
     const today = new Date().toISOString().slice(0, 10)
     return listenEvents(user.uid, user.bizId, (events: CalendarEvent[]) => {
-      const unseen = events.filter(e => {
-        const t = typeof e.createdAt === 'object' && (e.createdAt as {toMillis?:()=>number})?.toMillis
-          ? (e.createdAt as {toMillis:()=>number}).toMillis().toString()
-          : String(e.createdAt)
-        return e.date >= today && t > lastSeenCal && e.ownerUid !== user.uid
-      }).length
+      const unseen = events.filter(e =>
+        e.date >= today && toMs(e.createdAt) > parseInt(lastSeenCal || '0') && e.ownerUid !== user.uid
+      ).length
       setUnreadCal(unseen)
     })
   }, [user, lastSeenCal])
