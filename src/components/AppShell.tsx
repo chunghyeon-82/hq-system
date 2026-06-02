@@ -130,16 +130,16 @@ export default function AppShell({ children, title, back }: Props) {
   const fontClass = settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
 
   const nav = [
-    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true,          badge: 0 },
-    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ,          badge: unreadCount },
-    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast,  badge: 0 },
-    { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true,          badge: unreadNotice },
-    { href: '/calendar',   label: '캘린더',       icon: Calendar,        show: true,          badge: unreadCal },
-    { href: '/search',     label: '메시지 검색',  icon: Search,          show: true,          badge: 0 },
-    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ,          badge: unreadChat },
-    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true,          badge: unreadDirect },
-    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin,       badge: 0 },
-    { href: '/settings',   label: '설정',         icon: Settings,        show: true,          badge: 0 },
+    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true,          badge: 0,            group: '' },
+    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ,          badge: unreadCount,  group: '업무' },
+    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast,  badge: 0,            group: '업무' },
+    { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true,          badge: unreadNotice, group: '업무' },
+    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ,          badge: unreadChat,   group: '메시지' },
+    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true,          badge: unreadDirect, group: '메시지' },
+    { href: '/search',     label: '메시지 검색',  icon: Search,          show: true,          badge: 0,            group: '메시지' },
+    { href: '/calendar',   label: '캘린더',       icon: Calendar,        show: true,          badge: unreadCal,    group: '일정' },
+    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin,       badge: 0,            group: '관리' },
+    { href: '/settings',   label: '설정',         icon: Settings,        show: true,          badge: 0,            group: '관리' },
   ].filter(n => n.show)
 
   // 저장된 순서 적용

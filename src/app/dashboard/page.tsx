@@ -3,16 +3,39 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenMessagesForHQ, listenMessagesForBiz, listenBusinesses } from '@/lib/db'
-import type { Message, Business } from '@/types'
-import { Send, CheckCircle2, Clock, AlertCircle, Building2, ChevronRight, ArrowRight, MessageSquare, Lock } from 'lucide-react'
+import { listenMessagesForHQ, listenMessagesForBiz, listenBusinesses, listenEvents } from '@/lib/db'
+import type { Message, Business, CalendarEvent } from '@/types'
+import { Send, CheckCircle2, AlertCircle, ChevronRight, MessageSquare, Lock, Calendar, Inbox, ArrowUpRight } from 'lucide-react'
 import clsx from 'clsx'
+
+const CATEGORY_LABEL: Record<string, string> = {
+  instruction: '업무지시', confirm: '확인요청', notice: '단순공지'
+}
+
+// 이번 주 월~일 범위
+function getThisWeek() {
+  const today = new Date()
+  const dow   = today.getDay()
+  const sun   = new Date(today); sun.setDate(today.getDate() - dow)
+  const sat   = new Date(sun);   sat.setDate(sun.getDate() + 6)
+  return {
+    sun, sat,
+    todayStr: today.toISOString().slice(0, 10),
+    sunStr:   sun.toISOString().slice(0, 10),
+    satStr:   sat.toISOString().slice(0, 10),
+    days: Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(sun); d.setDate(sun.getDate() + i)
+      return d
+    })
+  }
+}
 
 export default function DashboardPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const [messages,   setMessages]   = useState<Message[]>([])
   const [businesses, setBusinesses] = useState<Business[]>([])
+  const [events,     setEvents]     = useState<CalendarEvent[]>([])
   const [cardFilter, setCardFilter] = useState<'all' | 'pending' | 'done'>('all')
 
   const isAdmin = user?.role === 'ADMIN'
@@ -26,9 +49,12 @@ export default function DashboardPage() {
     if (isHQ) {
       const u1 = listenMessagesForHQ(user.uid, isAdmin, setMessages)
       const u2 = listenBusinesses(setBusinesses)
-      return () => { u1(); u2() }
+      const u3 = listenEvents(user.uid, user.bizId, setEvents)
+      return () => { u1(); u2(); u3() }
     } else if (isBiz && user.bizId) {
-      return listenMessagesForBiz(user.bizId, user.uid, setMessages)
+      const u1 = listenMessagesForBiz(user.bizId, user.uid, setMessages)
+      const u2 = listenEvents(user.uid, user.bizId, setEvents)
+      return () => { u1(); u2() }
     }
   }, [user, loading, isHQ, isBiz, isAdmin, router])
 
@@ -38,149 +64,217 @@ export default function DashboardPage() {
     </div>
   )
 
-  // ── 본부용 ────────────────────────────────────────────
+  // ── 이번 주 일정 공통 컴포넌트 ────────────────────────
+  const WeekCalendar = () => {
+    const { days, todayStr, sunStr, satStr } = getThisWeek()
+    const weekEvents = events
+      .filter(e => e.date >= sunStr && e.date <= satStr && !e.isDone)
+      .sort((a, b) => a.date.localeCompare(b.date))
+    const DOW = ['일', '월', '화', '수', '목', '금', '토']
+    return (
+      <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calendar size={15} className="text-primary-500"/>
+            <h3 className="font-semibold text-gray-900 text-sm">이번 주 일정</h3>
+          </div>
+          <button onClick={() => router.push('/calendar')}
+            className="text-xs text-primary-600 hover:underline flex items-center gap-0.5">
+            전체 보기 <ArrowUpRight size={11}/>
+          </button>
+        </div>
+        {/* 달력 */}
+        <div className="px-4 pt-3 pb-2">
+          <div className="grid grid-cols-7 mb-2">
+            {DOW.map((d, i) => (
+              <div key={d} className={clsx('text-center text-xs font-medium',
+                i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-400')}>
+                {d}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {days.map((d, i) => {
+              const dStr    = d.toISOString().slice(0, 10)
+              const isToday = dStr === todayStr
+              const hasEv   = weekEvents.some(e => e.date === dStr)
+              return (
+                <div key={i} className="flex flex-col items-center">
+                  <div className={clsx(
+                    'w-7 h-7 flex items-center justify-center text-xs rounded-full relative',
+                    isToday ? 'bg-primary-600 text-white font-medium' : 'text-gray-700'
+                  )}>
+                    {d.getDate()}
+                    {hasEv && !isToday && (
+                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400"/>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        {/* 일정 목록 */}
+        {weekEvents.length > 0 ? (
+          <div className="px-4 pb-3 space-y-1.5 border-t border-gray-50 pt-2">
+            {weekEvents.slice(0, 4).map(e => {
+              const d = new Date(e.date + 'T00:00:00')
+              const label = d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })
+              return (
+                <button key={e.id} onClick={() => router.push('/calendar')}
+                  className="w-full flex items-center gap-2.5 py-1.5 hover:bg-gray-50 rounded-lg px-1 transition-colors">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary-500 shrink-0"/>
+                  <span className="text-sm text-gray-800 flex-1 text-left truncate">{e.title}</span>
+                  <span className="text-xs text-gray-400 shrink-0">{label}{e.time ? ` ${e.time}` : ''}</span>
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-center text-xs text-gray-400 py-4">이번 주 일정이 없습니다</p>
+        )}
+      </div>
+    )
+  }
+
+  // ── 본부용 대시보드 ────────────────────────────────────
   if (isHQ) {
     const broadcastMsgs = messages.filter(m => m.type === 'broadcast')
     const directMsgs    = messages.filter(m => m.type === 'direct')
-    const openMsgs      = broadcastMsgs.filter(m => m.status === 'open')
-    const urgentMsgs    = openMsgs.filter(m => m.priority === 'urgent')
-    const pendingCount  = broadcastMsgs
-      .filter(m => m.targetBizIds?.length > 0)  // 수신 사업장 없는 고아 메시지 제외
-      .reduce((acc, m) =>
-        acc + (m.receipts?.filter(r => r.status === 'pending').length ?? 0), 0)
-    const unreadDirect  = directMsgs.filter(m => m.status === 'open' && m.targetUid === user?.uid).length
+
+    // 전달사항 집계
+    const pendingMsgs = broadcastMsgs.filter(m =>
+      m.targetBizIds?.length > 0 && m.status === 'open' &&
+      m.receipts?.some(r => r.status === 'pending')
+    )
+    const processingMsgs = broadcastMsgs.filter(m =>
+      m.targetBizIds?.length > 0 && m.status === 'open' &&
+      !m.receipts?.some(r => r.status === 'pending') &&
+      m.receipts?.some(r => r.status === 'processing')
+    )
+    const doneMsgs = broadcastMsgs.filter(m => m.status === 'done')
+
+    // 메시지
+    const receivedMsgs = directMsgs.filter(m =>
+      (m.targetUid === user?.uid || isAdmin) &&
+      m.authorUid !== user?.uid
+    )
+    const sentMsgs = directMsgs.filter(m =>
+      m.authorUid === user?.uid
+    )
 
     return (
       <AppShell title="대시보드">
-        <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
+        <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
           <div>
             <h2 className="text-lg font-bold text-gray-900">안녕하세요, {user?.name}님 👋</h2>
             <p className="text-sm text-gray-500 mt-0.5">오늘도 좋은 하루 되세요.</p>
           </div>
 
-          {/* 요약 카드 */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {[
-              { label: '진행중 전달',  value: openMsgs.length,           icon: Clock,         color: 'bg-amber-50 border-amber-200',   iconColor: 'text-amber-500',   href: '/businesses' },
-              { label: '미접수',       value: pendingCount,              icon: AlertCircle,   color: pendingCount > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200', iconColor: pendingCount > 0 ? 'text-red-500' : 'text-gray-400', href: '/businesses' },
-              { label: '긴급 전달',    value: urgentMsgs.length,         icon: AlertCircle,   color: urgentMsgs.length > 0 ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200', iconColor: urgentMsgs.length > 0 ? 'text-red-600' : 'text-gray-400', href: '/businesses' },
-              { label: '전체 사업장',  value: businesses.filter(b => !b.isHQ).length,         icon: Building2,     color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', href: '/businesses' },
-              { label: '1:1 메시지',   value: directMsgs.filter(m => m.targetUid === user?.uid || m.authorUid === user?.uid || isAdmin).length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/direct' },
-            ].map(card => (
-              <button key={card.label} onClick={() => router.push(card.href)}
-                className={clsx('relative text-left border rounded-xl p-4 hover:shadow-md active:scale-95 transition-all', card.color)}>
-                <div className="flex items-start justify-between">
-                  <card.icon size={20} className={card.iconColor}/>
-                  <ChevronRight size={14} className="text-gray-400 mt-0.5"/>
-                </div>
-                <div className="mt-2">
-                  <p className="text-2xl font-bold text-gray-900">{card.value}</p>
-                  <p className="text-xs font-medium text-gray-700 mt-0.5">{card.label}</p>
-                </div>
-              </button>
-            ))}
-          </div>
-
-          {/* 바로가기 */}
-          <div className="flex flex-wrap gap-2">
-            {canBroadcast && (
-              <button onClick={() => router.push('/compose')}
-                className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
-                <Send size={16}/> 전달 작성
-              </button>
-            )}
-            <button onClick={() => router.push('/businesses')}
-              className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-4 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
-              <Building2 size={16}/> 사업장 현황
-            </button>
-          </div>
-
-          {/* 1:1 메시지 (내게 온 것) */}
-          {directMsgs.filter(m => m.targetUid === user?.uid || m.authorUid === user?.uid || isAdmin).length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Lock size={14} className="text-blue-500"/>
-                <h3 className="font-semibold text-gray-900 text-sm">1:1 메시지</h3>
-                <span className="text-xs text-gray-400">(본인 + 관리자만 열람)</span>
-              </div>
-              <div className="space-y-2">
-                {directMsgs.filter(m => isAdmin || m.targetUid === user?.uid || m.authorUid === user?.uid).slice(0, 5).map(msg => (
-                  <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
-                    className="w-full text-left bg-white border border-blue-100 rounded-xl p-4 hover:shadow-sm hover:border-blue-200 transition-all group">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="badge-open text-blue-700 bg-blue-50 border-blue-200">1:1</span>
-                          {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
-                          <span className={msg.status === 'done' ? 'badge-done' : 'badge-open'}>
-                            {msg.status === 'done' ? '완결' : '진행중'}
-                          </span>
-                        </div>
-                        <p className="font-medium text-sm text-gray-900 truncate">{msg.title}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {msg.authorName} → {msg.targetName}
-                        </p>
-                      </div>
-                      <ChevronRight size={16} className="text-gray-300 group-hover:text-blue-400 shrink-0"/>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 진행중 broadcast 전달 */}
-          {openMsgs.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-900 text-sm">진행중 전달</h3>
-                <button onClick={() => router.push('/businesses')}
-                  className="text-xs text-primary-600 flex items-center gap-0.5 hover:underline">
-                  전체 보기 <ArrowRight size={12}/>
+          {/* ── 전달사항 ── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">전달사항</h3>
+              {canBroadcast && (
+                <button onClick={() => router.push('/compose')}
+                  className="flex items-center gap-1.5 bg-primary-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-primary-800 transition-colors">
+                  <Send size={12}/> 전달 작성
                 </button>
-              </div>
-              <div className="space-y-2">
-                {openMsgs.slice(0, 5).map(msg => {
-                  const total      = msg.receipts?.length ?? 0
-                  const doneCount  = msg.receipts?.filter(r => r.status === 'done').length ?? 0
-                  const procCount  = msg.receipts?.filter(r => r.status === 'processing').length ?? 0
-                  const pendCount  = msg.receipts?.filter(r => r.status === 'pending').length ?? 0
+              )}
+            </div>
+            {/* 집계 카드 */}
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              {[
+                { label: '미접수', value: pendingMsgs.reduce((a, m) => a + (m.receipts?.filter(r => r.status === 'pending').length ?? 0), 0), color: 'text-red-500',   bg: 'bg-red-50 border-red-100' },
+                { label: '진행중', value: processingMsgs.length, color: 'text-blue-500',  bg: 'bg-blue-50 border-blue-100' },
+                { label: '완료',   value: doneMsgs.length,       color: 'text-green-600', bg: 'bg-green-50 border-green-100' },
+              ].map(s => (
+                <button key={s.label} onClick={() => router.push('/businesses')}
+                  className={clsx('border rounded-xl p-3 text-center hover:shadow-sm transition-all', s.bg)}>
+                  <p className={clsx('text-2xl font-bold', s.color)}>{s.value}</p>
+                  <p className="text-xs text-gray-600 mt-0.5">{s.label}</p>
+                </button>
+              ))}
+            </div>
+            {/* 미접수 목록 */}
+            {pendingMsgs.length > 0 && (
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                <div className="px-4 py-2.5 bg-red-50 border-b border-red-100 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-red-600">📥 미접수 전달</span>
+                  <button onClick={() => router.push('/businesses')}
+                    className="text-xs text-red-500 hover:underline">전체 보기</button>
+                </div>
+                {pendingMsgs.slice(0, 3).map(msg => {
+                  const pendCount = msg.receipts?.filter(r => r.status === 'pending').length ?? 0
                   return (
                     <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
-                      className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm hover:border-primary-200 transition-all group">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
-                            <span className="badge-open">진행중</span>
-                          </div>
-                          <p className="font-medium text-gray-900 text-sm truncate">{msg.title}</p>
-                          <p className="text-xs text-gray-400 mt-0.5">{msg.authorName}</p>
-                        </div>
-                        <ChevronRight size={16} className="text-gray-300 group-hover:text-primary-400 shrink-0 mt-1"/>
-                      </div>
-                      <div className="mt-3">
-                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                          <span>처리 현황</span><span>{doneCount}/{total}개 완료</span>
-                        </div>
-                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden flex">
-                          <div className="bg-green-400 h-full transition-all" style={{ width: total ? `${(doneCount/total)*100}%` : '0%' }}/>
-                          <div className="bg-blue-400 h-full transition-all"  style={{ width: total ? `${(procCount/total)*100}%` : '0%' }}/>
-                          <div className="bg-red-300 h-full transition-all"   style={{ width: total ? `${(pendCount/total)*100}%` : '0%' }}/>
-                        </div>
-                        <div className="flex gap-3 mt-1.5 text-xs">
-                          {doneCount > 0 && <span className="text-green-600">✓ 완료 {doneCount}</span>}
-                          {procCount > 0 && <span className="text-blue-600">● 처리중 {procCount}</span>}
-                          {pendCount > 0 && <span className="text-red-400">○ 미접수 {pendCount}</span>}
-
-                        </div>
+                      className="w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0">
+                          {CATEGORY_LABEL[msg.category ?? 'instruction']}
+                        </span>
+                        <span className="text-sm font-medium text-gray-900 flex-1 truncate">{msg.title}</span>
+                        <span className="text-xs text-red-500 shrink-0">{pendCount}곳 미접수</span>
+                        <ChevronRight size={14} className="text-gray-300 shrink-0"/>
                       </div>
                     </button>
                   )
                 })}
               </div>
+            )}
+          </div>
+
+          {/* ── 메시지 ── */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">메시지</h3>
+            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+              {/* 받은 메시지 */}
+              <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
+                <Inbox size={13} className="text-blue-500"/>
+                <span className="text-xs font-semibold text-blue-600">받은 메시지 {receivedMsgs.length}건</span>
+              </div>
+              {receivedMsgs.length === 0 ? (
+                <p className="text-xs text-gray-400 px-4 py-3">받은 메시지가 없습니다</p>
+              ) : receivedMsgs.slice(0, 3).map(msg => (
+                <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
+                  className="w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors flex items-center gap-2">
+                  <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
+                    msg.status === 'done' ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-700')}>
+                    {msg.status === 'done' ? '완결' : '진행중'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{msg.title}</p>
+                    <p className="text-xs text-gray-400">{msg.authorName} → 나</p>
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 shrink-0"/>
+                </button>
+              ))}
+              {/* 보낸 메시지 */}
+              <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 border-b border-gray-100 flex items-center gap-2">
+                <ArrowUpRight size={13} className="text-gray-400"/>
+                <span className="text-xs font-semibold text-gray-500">보낸 메시지 {sentMsgs.length}건</span>
+              </div>
+              {sentMsgs.length === 0 ? (
+                <p className="text-xs text-gray-400 px-4 py-3">보낸 메시지가 없습니다</p>
+              ) : sentMsgs.slice(0, 3).map(msg => (
+                <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
+                  className="w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors flex items-center gap-2">
+                  <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
+                    msg.status === 'done' ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700')}>
+                    {msg.status === 'done' ? '완결' : '진행중'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{msg.title}</p>
+                    <p className="text-xs text-gray-400">나 → {msg.targetName}</p>
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 shrink-0"/>
+                </button>
+              ))}
             </div>
-          )}
+          </div>
+
+          {/* ── 이번 주 일정 ── */}
+          <WeekCalendar/>
         </div>
       </AppShell>
     )
@@ -194,154 +288,136 @@ export default function DashboardPage() {
       msg: m, receipt: m.receipts?.find(r => r.bizId === user?.bizId)
     })).filter(({ receipt, msg }) => receipt && !receipt.hidden && msg.targetBizIds?.length > 0)
 
-    const openItems    = myReceipts.filter(({ msg }) => msg.status === 'open')
-    const pendingItems = myReceipts.filter(({ receipt }) => receipt?.status === 'pending')
+    const pendingItems    = myReceipts.filter(({ receipt }) => receipt?.status === 'pending')
+    const processingItems = myReceipts.filter(({ receipt }) => receipt?.status === 'processing')
+    const doneItems       = myReceipts.filter(({ msg }) => msg.status === 'done')
+
+    const receivedDirect = directMsgs.filter(m => m.targetUid === user?.uid)
+    const sentDirect     = directMsgs.filter(m => m.authorUid === user?.uid)
 
     const filteredByCard = cardFilter === 'all'
       ? myReceipts
       : cardFilter === 'pending'
-      ? myReceipts.filter(({ receipt }) => receipt?.status === 'pending')
-      : myReceipts.filter(({ msg }) => msg.status === 'done')
+      ? pendingItems
+      : doneItems
 
     return (
       <AppShell title="대시보드">
-        <div className="p-4 md:p-6 space-y-6 max-w-2xl mx-auto">
+        <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-6">
           <div>
             <h2 className="text-lg font-bold text-gray-900">안녕하세요, {user?.name}님 👋</h2>
             <p className="text-sm text-gray-500 mt-0.5">오늘도 좋은 하루 되세요.</p>
           </div>
 
-          {/* 요약 카드 */}
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: '전달받은 건수', value: myReceipts.length,    icon: Send,        color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', filter: 'all' },
-              { label: '미접수',        value: pendingItems.length,  icon: AlertCircle,
-                color: pendingItems.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200',
-                iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400', filter: 'pending', href: '/dashboard' },
-              { label: '처리 완료',     value: myReceipts.filter(({msg}) => msg.status === 'done').length, icon: CheckCircle2, color: 'bg-green-50 border-green-200', iconColor: 'text-green-500', filter: 'done' },
-            ].map(c => (
-              <button key={c.label}
-                onClick={() => setCardFilter(c.filter as 'all' | 'pending' | 'done')}
-                className={clsx('border rounded-xl p-3 text-center hover:shadow-md active:scale-95 transition-all cursor-pointer', c.color,
-                  cardFilter === c.filter ? 'ring-2 ring-primary-400' : ''
-                )}>
-                <c.icon size={18} className={clsx('mx-auto mb-1', c.iconColor)}/>
-                <p className="text-xl font-bold text-gray-900">{c.value}</p>
-                <p className="text-xs text-gray-600">{c.label}</p>
-              </button>
-            ))}
-          </div>
-
-          {/* 바로가기 버튼 */}
-          <div className="grid grid-cols-2 gap-2">
-            <button onClick={() => router.push('/notices')}
-              className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-3 hover:shadow-sm hover:border-primary-200 transition-all">
-              <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
-                <span className="text-amber-600 text-sm">📢</span>
-              </div>
-              <span className="text-sm font-medium text-gray-700">공지사항</span>
-            </button>
-            <button onClick={() => router.push('/calendar')}
-              className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-3 hover:shadow-sm hover:border-primary-200 transition-all">
-              <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
-                <span className="text-blue-600 text-sm">📅</span>
-              </div>
-              <span className="text-sm font-medium text-gray-700">캘린더</span>
-            </button>
-          </div>
-
-          {/* 1:1 메시지 바로가기 */}
-          <button onClick={() => router.push('/direct')}
-            className="w-full flex items-center gap-3 bg-white border border-blue-200 rounded-xl p-4 hover:shadow-sm hover:border-blue-300 transition-all">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center shrink-0">
-              <MessageSquare size={18} className="text-blue-500"/>
-            </div>
-            <div className="flex-1 text-left">
-              <p className="font-medium text-sm text-gray-900">담당자에게 1:1 메시지</p>
-              <p className="text-xs text-gray-400 mt-0.5">본부 담당자에게 직접 문의할 수 있습니다</p>
-            </div>
-            <ChevronRight size={16} className="text-gray-300"/>
-          </button>
-
-          {/* 내가 보낸 1:1 메시지 */}
-          {directMsgs.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <Lock size={13} className="text-blue-400"/>
-                <h3 className="font-semibold text-gray-900 text-sm">내 1:1 메시지</h3>
-              </div>
-              <div className="space-y-2">
-                {directMsgs.slice(0, 3).map(msg => (
-                  <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
-                    className="w-full text-left bg-white border border-blue-100 rounded-xl p-3 hover:shadow-sm transition-all group">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-0.5">
-                          <span className={msg.status === 'done' ? 'badge-done' : 'badge-open'}>
-                            {msg.status === 'done' ? '완결' : '진행중'}
-                          </span>
-                          {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
-                        </div>
-                        <p className="text-sm font-medium text-gray-900 truncate">{msg.title}</p>
-                        <p className="text-xs text-gray-400">→ {msg.targetName}</p>
-                      </div>
-                      <ChevronRight size={14} className="text-gray-300 group-hover:text-blue-400 shrink-0"/>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 전달 목록 (카드 필터 연동) */}
+          {/* ── 전달사항 ── */}
           <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-gray-900 text-sm">
-                {cardFilter === 'all' ? '전체 전달' : cardFilter === 'pending' ? '미확인 전달' : '처리 완료'}
-              </h3>
-              {cardFilter !== 'all' && (
-                <button onClick={() => setCardFilter('all')}
-                  className="text-xs text-primary-600 hover:underline">전체 보기</button>
-              )}
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">전달사항</h3>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              {[
+                { label: '미접수',  value: pendingItems.length,    color: 'text-red-500',   bg: pendingItems.length > 0 ? 'bg-red-50 border-red-100' : 'bg-gray-50 border-gray-100',   filter: 'pending' },
+                { label: '진행중',  value: processingItems.length, color: 'text-blue-500',  bg: 'bg-blue-50 border-blue-100',   filter: 'all' },
+                { label: '완료',    value: doneItems.length,       color: 'text-green-600', bg: 'bg-green-50 border-green-100', filter: 'done' },
+              ].map(s => (
+                <button key={s.label}
+                  onClick={() => setCardFilter(s.filter as 'all' | 'pending' | 'done')}
+                  className={clsx('border rounded-xl p-3 text-center hover:shadow-sm transition-all', s.bg,
+                    cardFilter === s.filter ? 'ring-2 ring-primary-400' : '')}>
+                  <p className={clsx('text-2xl font-bold', s.color)}>{s.value}</p>
+                  <p className="text-xs text-gray-600 mt-0.5">{s.label}</p>
+                </button>
+              ))}
             </div>
+            {/* 전달 목록 */}
             {filteredByCard.length === 0 ? (
-              <div className="text-center py-10 text-gray-400 text-sm bg-white border border-gray-100 rounded-xl">
-                {cardFilter === 'pending' ? '미확인 전달이 없습니다 👍' :
-                 cardFilter === 'done'    ? '처리 완료된 전달이 없습니다' :
-                                           '전달 내역이 없습니다'}
+              <div className="text-center py-8 text-gray-400 text-sm bg-white border border-gray-100 rounded-xl">
+                {cardFilter === 'pending' ? '미접수 전달이 없습니다 👍' :
+                 cardFilter === 'done'    ? '처리 완료된 전달이 없습니다' : '전달 내역이 없습니다'}
               </div>
             ) : (
-              <div className="space-y-2">
-                {filteredByCard.map(({ msg, receipt }) => (
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+                {filteredByCard.slice(0, 5).map(({ msg, receipt }) => (
                   <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
-                    className={clsx(
-                      'w-full text-left border rounded-xl p-4 hover:shadow-sm transition-all group',
-                      msg.status === 'done'
-                        ? 'bg-gray-50 border-gray-200 opacity-75'
-                        : 'bg-white border-gray-200 hover:border-primary-200'
-                    )}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
-                          <span className={msg.status === 'done' ? 'badge-done' :
-                            receipt?.status === 'pending'  ? 'badge-pending' :
-                            receipt?.status === 'processing' ? 'badge-received' : 'badge-replied'}>
-                            {msg.status === 'done'            ? '처리완료'  :
-                             receipt?.status === 'pending'    ? '미접수'    :
-                             receipt?.status === 'processing' ? '처리중'  : '답변완료'}
-                          </span>
-                        </div>
-                        <p className="font-medium text-sm text-gray-900 truncate">{msg.title}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{msg.authorName}</p>
-                      </div>
-                      <ChevronRight size={16} className="text-gray-300 group-hover:text-primary-400 shrink-0"/>
+                    className="w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors flex items-center gap-2">
+                    <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
+                      msg.status === 'done'              ? 'bg-gray-100 text-gray-500' :
+                      receipt?.status === 'pending'      ? 'bg-red-100 text-red-700' :
+                      receipt?.status === 'processing'   ? 'bg-blue-100 text-blue-700' :
+                                                           'bg-green-100 text-green-700')}>
+                      {msg.status === 'done'            ? '처리완료' :
+                       receipt?.status === 'pending'    ? '미접수'   :
+                       receipt?.status === 'processing' ? '처리중'   : '답변완료'}
+                    </span>
+                    {msg.priority === 'urgent' && (
+                      <AlertCircle size={13} className="text-red-500 shrink-0"/>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{msg.title}</p>
+                      <p className="text-xs text-gray-400">{msg.authorName}</p>
                     </div>
+                    <ChevronRight size={14} className="text-gray-300 shrink-0"/>
                   </button>
                 ))}
               </div>
             )}
           </div>
+
+          {/* ── 메시지 ── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">메시지</h3>
+              <button onClick={() => router.push('/direct')}
+                className="flex items-center gap-1 text-xs text-primary-600 hover:underline">
+                <MessageSquare size={11}/> 새 메시지
+              </button>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+              {/* 받은 메시지 */}
+              <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
+                <Inbox size={13} className="text-blue-500"/>
+                <span className="text-xs font-semibold text-blue-600">받은 메시지 {receivedDirect.length}건</span>
+              </div>
+              {receivedDirect.length === 0 ? (
+                <p className="text-xs text-gray-400 px-4 py-3">받은 메시지가 없습니다</p>
+              ) : receivedDirect.slice(0, 3).map(msg => (
+                <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
+                  className="w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors flex items-center gap-2">
+                  <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
+                    msg.status === 'done' ? 'bg-gray-100 text-gray-500' : 'bg-blue-100 text-blue-700')}>
+                    {msg.status === 'done' ? '완결' : '진행중'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{msg.title}</p>
+                    <p className="text-xs text-gray-400">{msg.authorName} → 나</p>
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 shrink-0"/>
+                </button>
+              ))}
+              {/* 보낸 메시지 */}
+              <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100 border-b border-gray-100 flex items-center gap-2">
+                <ArrowUpRight size={13} className="text-gray-400"/>
+                <span className="text-xs font-semibold text-gray-500">보낸 메시지 {sentDirect.length}건</span>
+              </div>
+              {sentDirect.length === 0 ? (
+                <p className="text-xs text-gray-400 px-4 py-3">보낸 메시지가 없습니다</p>
+              ) : sentDirect.slice(0, 3).map(msg => (
+                <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
+                  className="w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors flex items-center gap-2">
+                  <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full shrink-0',
+                    msg.status === 'done' ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700')}>
+                    {msg.status === 'done' ? '완결' : '진행중'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{msg.title}</p>
+                    <p className="text-xs text-gray-400">나 → {msg.targetName}</p>
+                  </div>
+                  <ChevronRight size={14} className="text-gray-300 shrink-0"/>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── 이번 주 일정 ── */}
+          <WeekCalendar/>
         </div>
       </AppShell>
     )
