@@ -62,8 +62,8 @@ export default function SettingsPage() {
       const perm = await Notification.requestPermission()
       setPushPerm(perm)
       if (perm === 'granted') {
-        const ok = await subscribePush(user.uid)
-        if (ok) await updateSettings({ pushEnabled: true })
+        const result = await subscribePush(user.uid)
+        if (result.ok) await updateSettings({ pushEnabled: true })
       }
     }
     setPushLoading(false)
