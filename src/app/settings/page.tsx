@@ -244,7 +244,7 @@ export default function SettingsPage() {
             </div>
             <button onClick={togglePush} disabled={pushLoading || pushPerm === 'denied'}
               style={{
-                position:'relative', width:'52px', height:'28px',
+                position:'relative', width:'48px', height:'26px',
                 borderRadius:'99px', border:'none', cursor:'pointer',
                 backgroundColor: settings.pushEnabled ? '#534AB7' : '#D1D5DB',
                 transition:'background-color .2s',
@@ -254,8 +254,8 @@ export default function SettingsPage() {
               <span style={{
                 position:'absolute',
                 top:'3px',
-                left: settings.pushEnabled ? '27px' : '3px',
-                width:'22px', height:'22px',
+                left: settings.pushEnabled ? '25px' : '3px',
+                width:'20px', height:'20px',
                 backgroundColor:'white',
                 borderRadius:'50%',
                 boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
@@ -275,7 +275,7 @@ export default function SettingsPage() {
             </div>
             <button onClick={toggleSilent}
               style={{
-                position:'relative', width:'52px', height:'28px',
+                position:'relative', width:'48px', height:'26px',
                 borderRadius:'99px', border:'none', cursor:'pointer',
                 backgroundColor: settings.silentMode ? '#534AB7' : '#D1D5DB',
                 transition:'background-color .2s',
@@ -284,8 +284,8 @@ export default function SettingsPage() {
               <span style={{
                 position:'absolute',
                 top:'3px',
-                left: settings.silentMode ? '27px' : '3px',
-                width:'22px', height:'22px',
+                left: settings.silentMode ? '25px' : '3px',
+                width:'20px', height:'20px',
                 backgroundColor:'white',
                 borderRadius:'50%',
                 boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
