@@ -66,17 +66,27 @@ export default function DashboardPage() {
 
   // ── 이번 주 일정 공통 컴포넌트 ────────────────────────
   const WeekCalendar = () => {
-    const { days, todayStr, sunStr, satStr } = getThisWeek()
+    const { todayStr, sunStr, satStr } = getThisWeek()
+    const DOW_KO = ['일','월','화','수','목','금','토']
+
+    // 날짜별로 그룹핑
     const weekEvents = events
       .filter(e => e.date >= sunStr && e.date <= satStr && !e.isDone)
       .sort((a, b) => {
         if (a.date !== b.date) return a.date.localeCompare(b.date)
         return (a.time ?? '99:99').localeCompare(b.time ?? '99:99')
       })
-    const DOW_KO = ['일','월','화','수','목','금','토']
+
+    const grouped: { date: string; items: typeof weekEvents }[] = []
+    weekEvents.forEach(e => {
+      const last = grouped[grouped.length - 1]
+      if (last && last.date === e.date) last.items.push(e)
+      else grouped.push({ date: e.date, items: [e] })
+    })
+
     return (
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Calendar size={15} className="text-primary-500"/>
             <h3 className="font-semibold text-gray-900 text-sm">이번 주 일정</h3>
@@ -86,37 +96,63 @@ export default function DashboardPage() {
             전체 보기 <ArrowUpRight size={11}/>
           </button>
         </div>
-        {weekEvents.length > 0 ? (
-          <div className="divide-y divide-gray-50">
-            {weekEvents.slice(0, 5).map(e => {
-              const d = new Date(e.date + 'T00:00:00')
+        {grouped.length > 0 ? (
+          <div className="divide-y divide-gray-300">
+            {grouped.map(({ date, items }) => {
+              const d = new Date(date + 'T00:00:00')
               const dow = DOW_KO[d.getDay()]
-              const isToday = e.date === todayStr
+              const isToday = date === todayStr
+              const isSun = d.getDay() === 0
+              const isSat = d.getDay() === 6
               return (
-                <button key={e.id} onClick={() => router.push('/calendar')}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
-                  <div className={clsx('w-10 text-center shrink-0', isToday ? 'text-primary-600' : 'text-gray-400')}>
-                    <div className="text-xs font-medium">{dow}</div>
-                    <div className={clsx('text-lg font-bold leading-tight',
-                      isToday ? 'text-primary-600' : 'text-gray-700')}>{d.getDate()}</div>
+                <div key={date} className="flex gap-0 hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={() => router.push('/calendar')}>
+                  {/* 날짜 영역 */}
+                  <div className={clsx(
+                    'w-16 shrink-0 flex flex-col items-center justify-start pt-4 pb-3 border-r border-gray-200',
+                    isToday ? 'bg-primary-50' : ''
+                  )}>
+                    <div className={clsx('text-xs font-medium mb-0.5',
+                      isToday ? 'text-primary-500' :
+                      isSun ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-gray-400')}>
+                      {dow}
+                    </div>
+                    <div className={clsx(
+                      'w-8 h-8 flex items-center justify-center rounded-full text-base font-bold',
+                      isToday ? 'bg-primary-600 text-white' :
+                      isSun ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-800'
+                    )}>
+                      {d.getDate()}
+                    </div>
                   </div>
-                  <div className={clsx('w-0.5 h-8 rounded-full shrink-0',
-                    isToday ? 'bg-primary-400' : 'bg-gray-200')}/>
-                  <div className="flex-1 min-w-0 text-left">
-                    <p className={clsx('text-sm font-medium truncate',
-                      isToday ? 'text-primary-800' : 'text-gray-900')}>{e.title}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {e.time ? e.time : '종일'}
-                      {(e as CalendarEvent & {location?:string}).location
-                        ? ` · ${(e as CalendarEvent & {location?:string}).location}` : ''}
-                    </p>
+                  {/* 일정 목록 영역 */}
+                  <div className="flex-1 min-w-0 divide-y divide-gray-100">
+                    {items.map(e => (
+                      <div key={e.id} className="flex items-center gap-3 px-4 py-3">
+                        <div className={clsx(
+                          'w-1 self-stretch rounded-full shrink-0',
+                          isToday ? 'bg-primary-400' : 'bg-gray-300'
+                        )}/>
+                        <div className="flex-1 min-w-0">
+                          <p className={clsx('text-sm font-medium truncate',
+                            isToday ? 'text-primary-800' : 'text-gray-900')}>
+                            {e.title}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {e.time ?? '종일'}
+                            {(e as CalendarEvent & {location?:string}).location
+                              ? ` · ${(e as CalendarEvent & {location?:string}).location}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>
         ) : (
-          <p className="text-center text-xs text-gray-400 py-6">이번 주 일정이 없습니다</p>
+          <p className="text-center text-xs text-gray-400 py-8">이번 주 일정이 없습니다</p>
         )}
       </div>
     )
