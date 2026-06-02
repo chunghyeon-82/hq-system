@@ -1,8 +1,10 @@
 'use client'
-import { ReactNode, useState } from 'react'
+import { ReactNode, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { signOut } from 'firebase/auth'
+import { listenMessagesForHQ, listenMessagesForBiz } from '@/lib/db'
+import type { Message } from '@/types'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/auth-context'
 import { useSettings } from '@/lib/settings-context'
@@ -20,7 +22,41 @@ export default function AppShell({ children, title, back }: Props) {
   const { settings } = useSettings()
   const router       = useRouter()
   const pathname     = usePathname()
-  const [open, setOpen] = useState(false)
+  const [open,       setOpen]       = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [unreadDirect, setUnreadDirect] = useState(0)
+
+  useEffect(() => {
+    if (!user) return
+    if (isHQ || isAdmin) {
+      return listenMessagesForHQ(user.uid, isAdmin, (msgs: Message[]) => {
+        const pending = msgs.filter(m =>
+          m.type === 'broadcast' && m.status === 'open' &&
+          m.receipts?.some(r => r.status === 'pending')
+        ).length
+        setUnreadCount(pending)
+        const direct = msgs.filter(m =>
+          m.type === 'direct' && m.status === 'open' &&
+          (m.targetUid === user.uid || m.authorUid === user.uid)
+        ).length
+        setUnreadDirect(direct)
+      })
+    }
+    if (isBiz && user.bizId) {
+      return listenMessagesForBiz(user.bizId, user.uid, (msgs: Message[]) => {
+        const pending = msgs.filter(m =>
+          m.type === 'broadcast' &&
+          m.receipts?.some(r => r.bizId === user.bizId && r.status === 'pending')
+        ).length
+        setUnreadCount(pending)
+        const direct = msgs.filter(m =>
+          m.type === 'direct' && m.status === 'open' &&
+          (m.targetUid === user.uid || m.authorUid === user.uid)
+        ).length
+        setUnreadDirect(direct)
+      })
+    }
+  }, [user, isHQ, isAdmin, isBiz])
 
   const isAdmin      = user?.role === 'ADMIN'
   const isHQChief    = user?.role === 'HQ_CHIEF'

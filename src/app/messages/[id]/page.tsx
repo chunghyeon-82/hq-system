@@ -3,11 +3,11 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenMessages, processMessage, completeMessage, closeMessage, reopenMessage, hideMessage, replyDirect, addEventToMyCalendar, addEvent, deleteMessageDoc } from '@/lib/db'
+import { listenMessages, processMessage, completeMessage, closeMessage, reopenMessage, hideMessage, replyDirect, addEventToMyCalendar, addEvent, deleteMessageDoc, recallMessage } from '@/lib/db'
 import type { Message, Receipt } from '@/types'
 import {
   CheckCircle2, Clock, AlertCircle, Send, CheckSquare,
-  RotateCcw, Lock, Calendar, Link2, ExternalLink, ChevronDown, ChevronUp, EyeOff, Trash2
+  RotateCcw, Lock, Calendar, Link2, ExternalLink, ChevronDown, ChevronUp, EyeOff, Trash2, Undo2
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -29,6 +29,7 @@ export default function MessageDetailPage() {
   const [showNote,   setShowNote]   = useState(false)
   const [addedCal,   setAddedCal]   = useState(false)
   const [bizExpanded, setBizExpanded] = useState(false)
+  const [recallError,  setRecallError]  = useState('')
 
   const isAdmin = user?.role === 'ADMIN'
   const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
@@ -96,6 +97,18 @@ export default function MessageDetailPage() {
     setSending(false)
     setShowNote(false)
     setDoneNote('')
+  }
+
+  // 메시지 회수 (5분 이내)
+  const handleRecall = async () => {
+    setRecallError('')
+    if (!confirm('이 메시지를 회수하시겠습니까?\n수신자 화면에서도 사라집니다.')) return
+    const result = await recallMessage(message.id)
+    if (result.ok) {
+      router.push(isHQ ? '/businesses' : '/dashboard')
+    } else {
+      setRecallError(result.error ?? '회수 실패')
+    }
   }
 
   // 메시지 삭제
@@ -166,6 +179,17 @@ export default function MessageDetailPage() {
             <h2 className="text-lg font-bold text-gray-900 mb-3">{message.title}</h2>
             <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{message.body}</div>
             <p className="text-xs text-gray-400 mt-3">{message.authorName}</p>
+
+            {/* 회수 버튼 - 작성자 본인만, 5분 이내 */}
+            {message.authorUid === user?.uid && !isDone && (
+              <div className="mt-3">
+                <button onClick={handleRecall}
+                  className="flex items-center gap-1.5 text-xs text-orange-500 border border-orange-200 bg-orange-50 px-3 py-1.5 rounded-lg hover:bg-orange-100 transition-colors">
+                  <Undo2 size={12}/> 메시지 회수
+                </button>
+                {recallError && <p className="text-xs text-red-500 mt-1">{recallError}</p>}
+              </div>
+            )}
 
             {/* 일정 첨부 */}
             {message.eventDate && (

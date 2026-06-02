@@ -179,6 +179,18 @@ export async function deleteMessageDoc(msgId: string) {
   await deleteDoc(doc(db, 'messages', msgId))
 }
 
+// 메시지 회수 (Recall) - 5분 이내만 가능
+export async function recallMessage(msgId: string): Promise<{ ok: boolean; error?: string }> {
+  const snap = await getDoc(doc(db, 'messages', msgId))
+  if (!snap.exists()) return { ok: false, error: '메시지를 찾을 수 없습니다' }
+  const createdAt = snap.data().createdAt?.toMillis?.() ?? 0
+  if (Date.now() - createdAt > 5 * 60 * 1000) {
+    return { ok: false, error: '전송 후 5분이 지나 회수할 수 없습니다' }
+  }
+  await deleteDoc(doc(db, 'messages', msgId))
+  return { ok: true }
+}
+
 export async function closeMessage(msgId: string) {
   await updateDoc(doc(db, 'messages', msgId), { status: 'done' as MessageStatus, updatedAt: serverTimestamp() })
 }
