@@ -86,7 +86,9 @@ export default function CalendarPage() {
     `${viewYear}-${String(viewMonth + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
 
   const eventsOnDate = (dStr: string) =>
-    events.filter(e => e.date === dStr && !e.isDone)
+    events
+      .filter(e => e.date === dStr && !e.isDone)
+      .sort((a, b) => (a.time ?? '99:99').localeCompare(b.time ?? '99:99'))
 
   const importantEvents = events
     .filter(e => e.isImportant && !e.isDone && e.date >= todayStr)
@@ -182,7 +184,7 @@ export default function CalendarPage() {
             value: parseInt(reminder.split(':')[0]),
             unit:  reminder.split(':')[1] as 'minutes'|'hours'|'days'
           }
-        } : { reminder: undefined }),
+        } : {}),
       }
 
       let eventId: string
