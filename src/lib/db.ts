@@ -264,7 +264,12 @@ export function listenEvents(uid: string, bizId: string | undefined, cb: (e: Cal
     query(collection(db, 'events'), orderBy('date', 'asc')),
     snap => {
       const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent))
-      cb(all.filter(e => e.ownerUid === uid || (bizId && e.targetBizIds?.includes(bizId))))
+      cb(all.filter(e =>
+        e.ownerUid === uid ||
+        (bizId && e.targetBizIds?.includes(bizId)) ||
+        e.sharedWith?.includes(uid) ||
+        (e.addedBy && uid in e.addedBy)
+      ))
     }
   )
 }
@@ -277,6 +282,50 @@ export async function updateEvent(id: string, data: Partial<CalendarEvent>) {
 export async function deleteEvent(id: string) {
   await deleteDoc(doc(db, 'events', id))
 }
+// 일정 공유 - 대상자 uid 목록에게 pendingShare 설정
+export async function shareEvent(
+  eventId: string,
+  targetUids: string[],
+  targetBizIds: string[]
+) {
+  const pending: Record<string, boolean> = {}
+  targetUids.forEach(uid => { pending[uid] = true })
+  await updateDoc(doc(db, 'events', eventId), {
+    sharedWith:   targetUids,
+    sharedBizIds: targetBizIds,
+    pendingShare: pending,
+    updatedAt:    serverTimestamp(),
+  })
+}
+
+// 공유 일정 수락 - 내 캘린더에 추가
+export async function acceptSharedEvent(eventId: string, uid: string) {
+  await updateDoc(doc(db, 'events', eventId), {
+    [`addedBy.${uid}`]:       new Date().toISOString(),
+    [`pendingShare.${uid}`]:  false,
+    updatedAt:                serverTimestamp(),
+  })
+}
+
+// 공유 일정 거절
+export async function declineSharedEvent(eventId: string, uid: string) {
+  await updateDoc(doc(db, 'events', eventId), {
+    [`pendingShare.${uid}`]: false,
+    updatedAt:               serverTimestamp(),
+  })
+}
+
+// 내게 공유 대기 중인 일정 조회
+export function listenPendingSharedEvents(uid: string, cb: (e: import('@/types').CalendarEvent[]) => void) {
+  return onSnapshot(
+    collection(db, 'events'),
+    snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as import('@/types').CalendarEvent))
+      cb(all.filter(e => e.pendingShare?.[uid] === true))
+    }
+  )
+}
+
 export async function addEventToMyCalendar(eventId: string, bizId: string) {
   await updateDoc(doc(db, 'events', eventId), {
     [`addedBy.${bizId}`]: new Date().toISOString(),

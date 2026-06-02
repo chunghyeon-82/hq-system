@@ -120,13 +120,18 @@ export interface CalendarEvent {
   date:          string
   time?:         string
   memo?:         string
+  location?:     string        // 장소
+  isImportant?:  boolean       // 주요일정 여부
   ownerUid:      string
   ownerName:     string
+  sharedWith?:   string[]      // 공유 대상 uid 목록
+  sharedBizIds?: string[]      // 공유 사업장 id 목록
   targetBizIds?: string[]
   reminder?:     EventReminder
   isDone:        boolean
   doneAt?:       string
-  addedBy?:      Record<string, string>
+  addedBy?:      Record<string, string>   // uid → 수락시각
+  pendingShare?: Record<string, boolean>  // uid → 수락 대기
   createdAt:     unknown
   updatedAt?:    unknown
 }
