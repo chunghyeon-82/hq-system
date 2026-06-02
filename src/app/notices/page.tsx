@@ -80,6 +80,10 @@ export default function NoticesPage() {
   return (
     <AppShell title="공지사항">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-400">
+          <span>🗑</span>
+          <span>공지사항은 <strong className="text-gray-500">게시 종료일</strong>에 자동 삭제됩니다</span>
+        </div>
 
         {/* 작성 버튼 */}
         {canWrite && !showForm && (

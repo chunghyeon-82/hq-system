@@ -11,7 +11,7 @@ import { useSettings } from '@/lib/settings-context'
 import {
   LayoutDashboard, Building2, Send, Users, LogOut, Menu, X,
   ChevronRight, MessageSquare, MessageCircle, Settings,
-  Megaphone, Calendar, Search
+  Megaphone, Calendar, Search, GripVertical
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -23,6 +23,14 @@ export default function AppShell({ children, title, back }: Props) {
   const router       = useRouter()
   const pathname     = usePathname()
   const [open,        setOpen]        = useState(false)
+  const [editMode,    setEditMode]    = useState(false)
+  const [navOrder,    setNavOrder]    = useState<string[]>(() => {
+    if (typeof window === 'undefined') return []
+    const saved = localStorage.getItem('navOrder')
+    return saved ? JSON.parse(saved) : []
+  })
+  const [dragIdx,     setDragIdx]     = useState<number | null>(null)
+  const [dragOver,    setDragOver]    = useState<number | null>(null)
   const [unreadCount,  setUnreadCount]  = useState(0)
   const [unreadDirect, setUnreadDirect] = useState(0)
   const [unreadChat,   setUnreadChat]   = useState(0)
@@ -133,6 +141,31 @@ export default function AppShell({ children, title, back }: Props) {
     { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin,       badge: 0 },
     { href: '/settings',   label: '설정',         icon: Settings,        show: true,          badge: 0 },
   ].filter(n => n.show)
+
+  // 저장된 순서 적용
+  const sortedNav = navOrder.length > 0
+    ? [...nav].sort((a, b) => {
+        const ai = navOrder.indexOf(a.href)
+        const bi = navOrder.indexOf(b.href)
+        if (ai === -1 && bi === -1) return 0
+        if (ai === -1) return 1
+        if (bi === -1) return -1
+        return ai - bi
+      })
+    : nav
+
+  const handleDragStart = (i: number) => setDragIdx(i)
+  const handleDragOver  = (e: React.DragEvent, i: number) => { e.preventDefault(); setDragOver(i) }
+  const handleDrop      = (i: number) => {
+    if (dragIdx === null || dragIdx === i) { setDragIdx(null); setDragOver(null); return }
+    const newNav = [...sortedNav]
+    const [moved] = newNav.splice(dragIdx, 1)
+    newNav.splice(i, 0, moved)
+    const order = newNav.map(n => n.href)
+    setNavOrder(order)
+    localStorage.setItem('navOrder', JSON.stringify(order))
+    setDragIdx(null); setDragOver(null)
+  }
 
   const handleLogout = async () => { await signOut(auth); router.replace('/login') }
   const roleLabel: Record<string, string> = {

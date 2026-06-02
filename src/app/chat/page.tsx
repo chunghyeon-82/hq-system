@@ -94,6 +94,12 @@ export default function ChatPage() {
 
   return (
     <AppShell title="운영본부 채팅">
+      <div className="max-w-4xl mx-auto px-4 pt-3">
+        <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-400">
+          <span>🗑</span>
+          <span>채팅 내용은 <strong className="text-gray-500">4주 후</strong> 자동 삭제됩니다</span>
+        </div>
+      </div>
       <div className="flex flex-col h-full">
 
         {/* 상단 바 */}
