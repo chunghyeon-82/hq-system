@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import { getLunarDate, fetchHolidays, getHolidayName, type Holiday } from '@/lib/calendar-utils'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
@@ -67,6 +68,8 @@ export default function CalendarPage() {
   const [saving,      setSaving]      = useState(false)
   const [saveError,   setSaveError]   = useState('')
 
+  const [lunarDates,  setLunarDates]  = useState<Record<string, string>>({})
+  const [holidays,    setHolidays]    = useState<Holiday[]>([])
   const dragId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -364,11 +367,15 @@ export default function CalendarPage() {
               const dayEvents = eventsOnDate(dStr)
               const isDragOver = dragOverDate === dStr
 
+              const holidayName = getHolidayName(holidays, viewYear, viewMonth + 1, d)
+              const isRed = dow === 0 || dow === 6 || !!holidayName
+              const lunarText = lunarDates[dStr] ?? ''
               return (
                 <div key={d}
                   className={clsx(
                     'min-h-[90px] border-r border-b border-gray-50 p-1 cursor-pointer transition-colors',
-                    isToday   ? 'bg-primary-50/40' : 'hover:bg-gray-50',
+                    isToday    ? 'bg-primary-50/40' :
+                    isRed      ? 'bg-red-50/30' : 'hover:bg-gray-50',
                     isDragOver ? 'bg-primary-100 ring-2 ring-primary-400 ring-inset' : ''
                   )}
                   onClick={() => openAddModal(dStr)}
@@ -376,13 +383,25 @@ export default function CalendarPage() {
                   onDragLeave={() => setDragOverDate('')}
                   onDrop={() => { handleDrop(dStr); setDragOverDate('') }}
                 >
-                  <div className={clsx(
-                    'w-6 h-6 flex items-center justify-center text-xs font-medium rounded-full mb-1',
-                    isToday ? 'bg-primary-600 text-white' :
-                    dow === 0 ? 'text-red-400' :
-                    dow === 6 ? 'text-blue-400' : 'text-gray-700'
-                  )}>
-                    {d}
+                  {/* 양력+음력 영역 */}
+                  <div className="flex flex-col items-start mb-0.5">
+                    <div className={clsx(
+                      'w-6 h-6 flex items-center justify-center text-xs font-bold rounded-full',
+                      isToday ? 'bg-primary-600 text-white' :
+                      isRed   ? 'text-red-500' : 'text-gray-800'
+                    )}>
+                      {d}
+                    </div>
+                    {/* 음력 또는 공휴일 */}
+                    {holidayName ? (
+                      <span className="text-[9px] text-red-500 font-medium leading-tight mt-0.5 truncate w-full">
+                        {holidayName}
+                      </span>
+                    ) : lunarText ? (
+                      <span className="text-[9px] text-gray-400 leading-tight mt-0.5">
+                        {lunarText}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="space-y-0.5">
                     {dayEvents.slice(0, 3).map(ev => {
