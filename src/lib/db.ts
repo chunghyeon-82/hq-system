@@ -6,7 +6,8 @@ import { db } from './firebase'
 import type {
   AppUser, Business, Message, Receipt, Reply,
   MessageStatus, MessageType, MessageCategory,
-  Notice, CalendarEvent, MessageTemplate
+  Notice, CalendarEvent, MessageTemplate,
+  ApprovalDoc, ApprovalTemplate, SavedEmailContact
 } from '@/types'
 
 const now = () => new Date().toISOString()
