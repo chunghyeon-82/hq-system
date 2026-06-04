@@ -41,7 +41,7 @@ export default function PendingPage() {
   const pendingDocs = [
     ...docs.filter(isMyTurn).map(d => ({ ...d, docType: 'outgoing' as const })),
     ...incoming.filter(isMyTurn).map(d => ({ ...d, docType: 'incoming' as const })),
-    ...internal.filter(isMyTurn).map(d => ({ ...d, docType: 'internal' as const })),
+    ...internal.filter(isMyTurn).map(d => ({ ...d, docType: 'internal' as const } as unknown as InternalDoc & {docType:'internal'})),
   ].sort((a,b) => {
     const ta = (a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
     const tb = (b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
