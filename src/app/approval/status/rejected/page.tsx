@@ -23,7 +23,7 @@ export default function RejectedPage() {
     return () => { u1(); u2(); u3() }
   }, [user, loading, router])
 
-  const rejectedDocs = [
+  const rejectedDocs: Array<(ApprovalDoc|IncomingDoc|InternalDoc) & {docType:string}> = [
     ...docs.filter(d => d.status === 'rejected' && d.authorUid === user?.uid).map(d => ({...d, docType:'outgoing' as const})),
     ...internal.filter(d => d.authorUid === user?.uid).map(d => ({...d, docType:'internal' as const} as unknown as InternalDoc & {docType:'internal'})),
     ...incoming.filter(d => d.status === 'rejected' && d.authorUid === user?.uid).map(d => ({...d, docType:'incoming' as const})),

@@ -38,7 +38,7 @@ export default function PendingPage() {
     return false
   }
 
-  const pendingDocs = [
+  const pendingDocs: Array<(ApprovalDoc|IncomingDoc|InternalDoc) & {docType:string}> = [
     ...docs.filter(isMyTurn).map(d => ({ ...d, docType: 'outgoing' as const })),
     ...incoming.filter(isMyTurn).map(d => ({ ...d, docType: 'incoming' as const })),
     ...internal.filter(isMyTurn).map(d => ({ ...d, docType: 'internal' as const } as unknown as InternalDoc & {docType:'internal'})),
