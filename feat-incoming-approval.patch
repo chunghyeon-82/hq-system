@@ -1,0 +1,1066 @@
+From dfcac889f1fb9a0503bf3970f97d0af36fd37209 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 04:25:56 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=EA=B3=B5=EB=AC=B8=EC=A0=91=EC=88=98=20?=
+ =?UTF-8?q?=EC=8B=9C=EC=8A=A4=ED=85=9C,=20=EA=B2=B0=EC=9E=AC=EC=84=A0=20?=
+ =?UTF-8?q?=EA=B4=80=EB=A6=AC,=20=EC=B2=98=EB=A6=AC=EA=B8=B0=ED=95=9C=20?=
+ =?UTF-8?q?=EC=95=8C=EB=A6=BC?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ firestore.rules                          |  12 +
+ src/app/approval/incoming/[id]/page.tsx  | 219 ++++++++++++++++
+ src/app/approval/incoming/new/page.tsx   | 319 +++++++++++++++++++++++
+ src/app/approval/page.tsx                |  87 +++++--
+ src/app/settings/approval-lines/page.tsx | 175 +++++++++++++
+ src/app/settings/page.tsx                |  17 ++
+ src/lib/db.ts                            |  50 +++-
+ src/types/index.ts                       |  44 ++++
+ 8 files changed, 907 insertions(+), 16 deletions(-)
+ create mode 100644 src/app/approval/incoming/[id]/page.tsx
+ create mode 100644 src/app/approval/incoming/new/page.tsx
+ create mode 100644 src/app/settings/approval-lines/page.tsx
+
+diff --git a/firestore.rules b/firestore.rules
+index 28b29a3..586a1d2 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -139,6 +139,18 @@ service cloud.firestore {
+       allow create, update, delete: if isAdmin()
+     }
+ 
++    match /incomingDocs/{docId} {
++      allow read: if isSignedIn() && isHQOrAdmin()
++      allow create: if isSignedIn() && isHQOrAdmin()
++      allow update: if isSignedIn() && isHQOrAdmin()
++      allow delete: if isSignedIn() && (isAdmin() || resource.data.authorUid == myUid())
++    }
++
++    match /approvalLines/{lineId} {
++      allow read, write: if isSignedIn() && isHQOrAdmin()
++        && (request.method == 'read' || request.resource.data.ownerUid == myUid())
++    }
++
+     match /approvals/{docId} {
+       allow read: if isSignedIn() && (
+         isHQOrAdmin()
+diff --git a/src/app/approval/incoming/[id]/page.tsx b/src/app/approval/incoming/[id]/page.tsx
+new file mode 100644
+index 0000000..bada981
+--- /dev/null
++++ b/src/app/approval/incoming/[id]/page.tsx
+@@ -0,0 +1,219 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useParams, useRouter } from 'next/navigation'
++import AppShell from '@/components/AppShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenIncomingDocs, updateIncomingDoc, deleteIncomingDoc } from '@/lib/db'
++import type { IncomingDoc, Approver } from '@/types'
++import { FileText, CheckCircle2, XCircle, Trash2, ExternalLink } from 'lucide-react'
++import clsx from 'clsx'
++
++export default function IncomingDetailPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const params = useParams()
++  const id = params.id as string
++
++  const [docs,    setDocs]    = useState<IncomingDoc[]>([])
++  const [comment, setComment] = useState('')
++  const [acting,  setActing]  = useState(false)
++
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    return listenIncomingDocs(user.uid, setDocs)
++  }, [user, loading, router])
++
++  const doc = docs.find(d => d.id === id)
++  if (loading || !doc) return (
++    <AppShell title="공문 접수" back="/approval">
++      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">불러오는 중...</div>
++    </AppShell>
++  )
++
++  const allApprovers = [doc.receiver, ...doc.approvers, doc.finalApprover]
++
++  // 내 차례인지 확인
++  const myApproverIdx = doc.approvers?.findIndex(a => a.uid === user?.uid) ?? -1
++  const isMidTurn = myApproverIdx >= 0 &&
++    doc.status === 'pending' &&
++    doc.approvers[myApproverIdx].status === 'waiting' &&
++    [doc.receiver, ...doc.approvers.slice(0, myApproverIdx)].every(a => a.status === 'submitted' || a.status === 'approved')
++  const isFinalTurn = doc.finalApprover?.uid === user?.uid &&
++    doc.finalApprover?.status === 'waiting' &&
++    doc.status === 'pending' &&
++    doc.approvers.every(a => a.status === 'approved' || a.status === 'submitted')
++  const isMyTurn = isMidTurn || isFinalTurn
++  const isAuthor = doc.authorUid === user?.uid
++
++  const formatDate = (s?: string) => s ? s.replace(/-/g, '.') : ''
++  const formatDt = (s?: string) => {
++    if (!s) return ''
++    const d = new Date(s)
++    return `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
++  }
++
++  const handleApprove = async () => {
++    if (!user || acting) return
++    setActing(true)
++    const now = new Date().toISOString()
++    const sealUrl = (user as typeof user & {sealUrl?:string}).sealUrl
++
++    const newApprovers = doc.approvers.map(a =>
++      a.uid === user.uid ? { ...a, status: 'approved' as const, actedAt: now, comment, sealUrl } : a
++    )
++    const finalApprover = doc.finalApprover.uid === user.uid
++      ? { ...doc.finalApprover, status: 'approved' as const, actedAt: now, comment, sealUrl }
++      : doc.finalApprover
++
++    const isFinalStep = finalApprover.status === 'approved'
++    await updateIncomingDoc(id, {
++      approvers: newApprovers, finalApprover,
++      status: isFinalStep ? 'approved' : 'pending',
++      approvedAt: isFinalStep ? now : undefined,
++    })
++
++    const nextTarget = isFinalStep ? doc.authorUid :
++      newApprovers.every(a => a.status === 'approved' || a.status === 'submitted') ? doc.finalApprover.uid : null
++
++    if (nextTarget) {
++      fetch('/api/push', {
++        method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
++        body: JSON.stringify({
++          title: isFinalStep ? '✅ 공문 접수 완료' : '📨 공문 결재 요청',
++          body: isFinalStep
++            ? `"${doc.title}" 공문이 접수 완료됐습니다`
++            : `"${doc.title}" 공문 결재를 요청합니다`,
++          url: '/approval', targetUids: [nextTarget],
++        }),
++      }).catch(()=>{})
++    }
++    setComment(''); setActing(false)
++  }
++
++  const handleReject = async () => {
++    if (!user || acting || !comment.trim()) { alert('반려 사유를 입력해주세요'); return }
++    setActing(true)
++    const now = new Date().toISOString()
++    const newApprovers = doc.approvers.map(a =>
++      a.uid === user.uid ? { ...a, status: 'rejected' as const, actedAt: now, comment } : a
++    )
++    const finalApprover = doc.finalApprover.uid === user.uid
++      ? { ...doc.finalApprover, status: 'rejected' as const, actedAt: now, comment }
++      : doc.finalApprover
++
++    await updateIncomingDoc(id, { approvers: newApprovers, finalApprover, status: 'rejected', rejectedAt: now })
++    fetch('/api/push', {
++      method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
++      body: JSON.stringify({ title:'❌ 공문 반려', body:`"${doc.title}" 공문이 반려됐습니다`, url:'/approval', targetUids:[doc.authorUid] }),
++    }).catch(()=>{})
++    setComment(''); setActing(false)
++  }
++
++  const STATUS_COLOR: Record<string,string> = {
++    pending:'bg-blue-100 text-blue-700', approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700'
++  }
++  const STATUS_LABEL: Record<string,string> = { pending:'결재중', approved:'접수완료', rejected:'반려' }
++
++  const isDueSoon = doc.hasDueDate && doc.dueDate && (() => {
++    const due = new Date(doc.dueDate + 'T00:00:00')
++    const diff = (due.getTime() - Date.now()) / 86400000
++    return diff <= 3
++  })()
++
++  return (
++    <AppShell title="공문 접수" back="/approval">
++      <div className="max-w-4xl mx-auto p-4 space-y-4">
++        {/* 상태 */}
++        <div className="flex items-center gap-3 flex-wrap">
++          <span className={clsx('text-sm font-medium px-3 py-1.5 rounded-full', STATUS_COLOR[doc.status] ?? 'bg-gray-100 text-gray-600')}>
++            📨 {STATUS_LABEL[doc.status] ?? doc.status}
++          </span>
++          {doc.hasDueDate && doc.dueDate && (
++            <span className={clsx('text-sm px-3 py-1.5 rounded-full', isDueSoon ? 'bg-red-100 text-red-700 font-semibold' : 'bg-amber-50 text-amber-700')}>
++              ⏰ 처리기한: {formatDate(doc.dueDate)} {isDueSoon ? '⚠️ 임박' : ''}
++            </span>
++          )}
++        </div>
++
++        {/* 공문 정보 카드 */}
++        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3">
++          <h2 className="text-lg font-bold text-gray-900">{doc.title}</h2>
++          <div className="grid grid-cols-2 gap-3 text-sm">
++            <div><span className="text-gray-400">발신기관</span><p className="font-medium text-gray-800 mt-0.5">{doc.sender}</p></div>
++            <div><span className="text-gray-400">문서번호</span><p className="font-medium text-gray-800 mt-0.5">{doc.docNo || '-'}</p></div>
++            <div><span className="text-gray-400">수신일자</span><p className="font-medium text-gray-800 mt-0.5">{formatDate(doc.receivedAt)}</p></div>
++            {doc.hasDueDate && <div><span className="text-gray-400">처리기한</span><p className={clsx('font-medium mt-0.5', isDueSoon ? 'text-red-600' : 'text-gray-800')}>{formatDate(doc.dueDate)}</p></div>}
++          </div>
++          {doc.memo && (
++            <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 whitespace-pre-wrap">{doc.memo}</div>
++          )}
++          {doc.pdfUrl && (
++            <a href={doc.pdfUrl} target="_blank" rel="noopener noreferrer"
++              className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 hover:bg-red-100 transition-colors">
++              <FileText size={16}/> {doc.pdfName || '공문 PDF 보기'}
++              <ExternalLink size={13} className="ml-auto"/>
++            </a>
++          )}
++        </div>
++
++        {/* 결재선 */}
++        <div className="bg-white border border-gray-200 rounded-2xl p-4">
++          <p className="text-xs font-semibold text-gray-500 mb-3">결재 현황</p>
++          <div className="flex gap-0 border-t border-gray-300 pt-3">
++            {allApprovers.map((a, i) => (
++              <div key={i} className={clsx('flex-1 px-3 py-2', i < allApprovers.length-1 && 'border-r border-gray-200')}>
++                <p className="text-xs font-bold text-gray-500">{a.role}</p>
++                <p className="text-sm font-bold text-gray-900 relative">
++                  {a.name}
++                  {a.sealUrl && (a.status==='approved'||a.status==='submitted') && (
++                    <img src={a.sealUrl} alt="도장" style={{position:'absolute',top:'-8px',right:'-4px',width:'28px',height:'28px',opacity:0.85,objectFit:'contain'}}/>
++                  )}
++                </p>
++                <p className={clsx('text-xs mt-0.5',
++                  a.status==='approved'||a.status==='submitted' ? 'text-green-600' :
++                  a.status==='rejected' ? 'text-red-500' : 'text-gray-400')}>
++                  {a.actedAt ? formatDt(a.actedAt) : '대기중'}
++                </p>
++                {a.status === 'rejected' && a.comment && (
++                  <p className="text-xs text-red-400 mt-1">사유: {a.comment}</p>
++                )}
++              </div>
++            ))}
++          </div>
++        </div>
++
++        {/* 결재 액션 */}
++        {isMyTurn && (
++          <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-3">
++            <h3 className="font-semibold text-gray-900 text-sm">결재 처리</h3>
++            <textarea value={comment} onChange={e => setComment(e.target.value)}
++              placeholder="결재 의견 (반려 시 필수)" rows={3}
++              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
++            <div className="flex gap-2">
++              <button onClick={handleReject} disabled={acting}
++                className="flex-1 flex items-center justify-center gap-2 py-3 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 disabled:opacity-50">
++                <XCircle size={16}/> 반려
++              </button>
++              <button onClick={handleApprove} disabled={acting}
++                className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
++                <CheckCircle2 size={16}/> 접수 확인
++              </button>
++            </div>
++          </div>
++        )}
++
++        {/* 삭제 */}
++        {isAuthor && doc.status !== 'approved' && (
++          <button onClick={async () => {
++            if (!confirm('삭제하시겠습니까?')) return
++            await deleteIncomingDoc(id)
++            router.push('/approval')
++          }} className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 text-red-500 rounded-xl text-sm hover:bg-red-50">
++            <Trash2 size={15}/> 삭제
++          </button>
++        )}
++      </div>
++    </AppShell>
++  )
++}
+diff --git a/src/app/approval/incoming/new/page.tsx b/src/app/approval/incoming/new/page.tsx
+new file mode 100644
+index 0000000..95983a6
+--- /dev/null
++++ b/src/app/approval/incoming/new/page.tsx
+@@ -0,0 +1,319 @@
++'use client'
++import { useEffect, useState, useRef, Suspense } from 'react'
++import { useRouter, useSearchParams } from 'next/navigation'
++import AppShell from '@/components/AppShell'
++import { useAuth } from '@/lib/auth-context'
++import {
++  listenUsers, listenApprovalLines,
++  createIncomingDoc, listenIncomingDocs
++} from '@/lib/db'
++import { uploadImage } from '@/lib/upload'
++import { storage } from '@/lib/firebase'
++import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
++import type { AppUser, ApprovalLine, Approver, IncomingDoc } from '@/types'
++import { Plus, X, Upload, ChevronRight, Bookmark } from 'lucide-react'
++import clsx from 'clsx'
++
++const ROLE_LABEL: Record<string,string> = {
++  ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타'
++}
++
++function IncomingNewInner() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const searchParams = useSearchParams()
++
++  const [allUsers,  setAllUsers]  = useState<AppUser[]>([])
++  const [lines,     setLines]     = useState<ApprovalLine[]>([])
++  const [step,      setStep]      = useState<'line'|'write'>('line')
++
++  // 결재선
++  const [midApprovers,  setMidApprovers]  = useState<{uid:string;name:string;role:string}[]>([])
++  const [finalApprover, setFinalApprover] = useState<{uid:string;name:string;role:string}|null>(null)
++
++  // 문서 정보
++  const [docNo,      setDocNo]      = useState('')
++  const [title,      setTitle]      = useState('')
++  const [sender,     setSender]     = useState('')
++  const [receivedAt, setReceivedAt] = useState(new Date().toISOString().slice(0,10))
++  const [hasDueDate, setHasDueDate] = useState(false)
++  const [dueDate,    setDueDate]    = useState('')
++  const [memo,       setMemo]       = useState('')
++  const [pdfFile,    setPdfFile]    = useState<File|null>(null)
++  const [pdfName,    setPdfName]    = useState('')
++  const [saving,     setSaving]     = useState(false)
++
++  const pdfRef = useRef<HTMLInputElement>(null)
++  const isHQ = user && ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
++
++  useEffect(() => {
++    if (loading) return
++    if (!user || !isHQ) { router.replace('/dashboard'); return }
++    const u1 = listenUsers(setAllUsers)
++    const u2 = listenApprovalLines(user.uid, setLines)
++    return () => { u1(); u2() }
++  }, [user, loading, isHQ, router])
++
++  const hqUsers = allUsers.filter(u =>
++    ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(u.role) && u.uid !== user?.uid
++  )
++
++  const applyLine = (line: ApprovalLine) => {
++    setMidApprovers(line.approvers)
++    setFinalApprover(line.finalApprover)
++  }
++
++  const handlePdf = (e: React.ChangeEvent<HTMLInputElement>) => {
++    const f = e.target.files?.[0]
++    if (!f) return
++    setPdfFile(f)
++    setPdfName(f.name)
++  }
++
++  const handleSubmit = async () => {
++    if (!user) return
++    if (!title.trim()) { alert('제목을 입력해주세요'); return }
++    if (!sender.trim()) { alert('발신기관을 입력해주세요'); return }
++    if (!finalApprover) { alert('최종결재자를 선택해주세요'); return }
++    setSaving(true)
++    try {
++      let pdfUrl = ''
++      if (pdfFile) {
++        const storageRef = ref(storage, `incomingDocs/${user.uid}_${Date.now()}_${pdfFile.name}`)
++        await uploadBytes(storageRef, pdfFile, { contentType: 'application/pdf' })
++        pdfUrl = await getDownloadURL(storageRef)
++      }
++
++      const receiver: Approver = {
++        uid: user.uid, name: user.name, role: '접수자',
++        status: 'submitted', actedAt: new Date().toISOString()
++      }
++      const approversList: Approver[] = midApprovers.map(a => ({ ...a, status: 'waiting' as const }))
++      const final: Approver = { ...finalApprover, status: 'waiting' }
++
++      const docRef = await createIncomingDoc({
++        docNo, title, sender, receivedAt,
++        hasDueDate, dueDate: hasDueDate ? dueDate : undefined,
++        memo: memo.trim() || undefined,
++        pdfUrl: pdfUrl || undefined,
++        pdfName: pdfName || undefined,
++        receiver, approvers: approversList, finalApprover: final,
++        status: 'pending', authorUid: user.uid,
++        approvedAt: undefined, rejectedAt: undefined,
++      })
++
++      // 첫 결재자에게 알림
++      const first = approversList[0] ?? final
++      setTimeout(() => {
++        fetch('/api/push', {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
++          body: JSON.stringify({
++            title: '📨 공문 접수 결재 요청',
++            body: `${user.name}님이 "${title}" 공문 접수 결재를 요청했습니다`,
++            url: '/approval',
++            targetUids: [first.uid],
++          }),
++        }).catch(() => {})
++      }, 0)
++
++      router.push('/approval?tab=incoming')
++    } catch(e) {
++      console.error(e); alert('저장 중 오류가 발생했습니다')
++    } finally { setSaving(false) }
++  }
++
++  // ── Step 1: 결재선 ──────────────────────────────────
++  if (step === 'line') return (
++    <AppShell title="공문 접수" back="/approval">
++      <div className="max-w-2xl mx-auto p-4 space-y-4">
++        {/* 저장된 결재선 불러오기 */}
++        {lines.length > 0 && (
++          <div className="bg-primary-50 border border-primary-200 rounded-2xl p-4">
++            <p className="text-xs font-semibold text-primary-700 mb-3 flex items-center gap-2">
++              <Bookmark size={13}/> 저장된 결재선
++            </p>
++            <div className="flex flex-wrap gap-2">
++              {lines.map(line => (
++                <button key={line.id} onClick={() => applyLine(line)}
++                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-primary-200 rounded-xl text-xs text-primary-700 hover:bg-primary-100 transition-colors">
++                  {line.name}
++                  <span className="text-primary-400">({line.approvers.length + 1}명)</span>
++                </button>
++              ))}
++            </div>
++          </div>
++        )}
++
++        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-5">
++          <h2 className="font-semibold text-gray-900">결재선 설정</h2>
++
++          {/* 접수자 */}
++          <div>
++            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">접수자</p>
++            <div className="flex items-center gap-3 px-4 py-3 bg-primary-50 border border-primary-200 rounded-xl">
++              <div className="w-8 h-8 rounded-full bg-primary-200 flex items-center justify-center text-xs font-bold text-primary-800">{user?.name?.[0]}</div>
++              <div><p className="text-sm font-medium text-primary-900">{user?.name}</p><p className="text-xs text-primary-500">접수자 (본인)</p></div>
++            </div>
++          </div>
++
++          {/* 검토자 */}
++          <div>
++            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">검토자 <span className="font-normal text-gray-300">({midApprovers.length}/3, 선택)</span></p>
++            {midApprovers.map((a, i) => (
++              <div key={a.uid} className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl mb-2">
++                <span className="text-xs text-gray-400 w-4">{i+1}</span>
++                <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">{a.name[0]}</div>
++                <div className="flex-1"><p className="text-sm font-medium">{a.name}</p><p className="text-xs text-gray-400">{a.role}</p></div>
++                <button onClick={() => setMidApprovers(p => p.filter((_,j) => j !== i))}><X size={14} className="text-gray-300 hover:text-red-400"/></button>
++              </div>
++            ))}
++            {midApprovers.length < 3 && (
++              <div className="grid grid-cols-2 gap-2">
++                {hqUsers.filter(u => !midApprovers.some(a => a.uid === u.uid) && u.uid !== finalApprover?.uid).map(u => (
++                  <button key={u.uid}
++                    onClick={() => setMidApprovers(p => [...p, { uid:u.uid, name:u.name, role:ROLE_LABEL[u.role]??u.role }])}
++                    className="flex items-center gap-2 px-3 py-2.5 border border-dashed border-gray-300 rounded-xl hover:border-primary-400 hover:bg-primary-50 transition-colors text-left">
++                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500">{u.name[0]}</div>
++                    <div className="min-w-0"><p className="text-xs font-medium text-gray-700 truncate">{u.name}</p><p className="text-xs text-gray-400">{ROLE_LABEL[u.role]}</p></div>
++                    <Plus size={12} className="text-gray-400 ml-auto shrink-0"/>
++                  </button>
++                ))}
++              </div>
++            )}
++          </div>
++
++          {/* 최종결재자 */}
++          <div>
++            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">최종결재자 <span className="text-red-400">*</span></p>
++            {finalApprover ? (
++              <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl">
++                <div className="w-8 h-8 rounded-full bg-green-200 flex items-center justify-center text-xs font-bold text-green-800">{finalApprover.name[0]}</div>
++                <div className="flex-1"><p className="text-sm font-medium text-green-900">{finalApprover.name}</p><p className="text-xs text-green-600">{finalApprover.role}</p></div>
++                <button onClick={() => setFinalApprover(null)}><X size={14} className="text-green-300 hover:text-red-400"/></button>
++              </div>
++            ) : (
++              <div className="grid grid-cols-2 gap-2">
++                {hqUsers.filter(u => !midApprovers.some(a => a.uid === u.uid)).map(u => (
++                  <button key={u.uid}
++                    onClick={() => setFinalApprover({ uid:u.uid, name:u.name, role:ROLE_LABEL[u.role]??u.role })}
++                    className="flex items-center gap-2 px-3 py-2.5 border border-dashed border-gray-300 rounded-xl hover:border-green-400 hover:bg-green-50 transition-colors text-left">
++                    <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500">{u.name[0]}</div>
++                    <div className="min-w-0"><p className="text-xs font-medium text-gray-700 truncate">{u.name}</p><p className="text-xs text-gray-400">{ROLE_LABEL[u.role]}</p></div>
++                  </button>
++                ))}
++              </div>
++            )}
++          </div>
++        </div>
++
++        <button onClick={() => { if (!finalApprover) { alert('최종결재자를 선택해주세요'); return } setStep('write') }}
++          className="w-full py-3.5 bg-primary-600 text-white rounded-xl font-semibold hover:bg-primary-800 transition-colors flex items-center justify-center gap-2">
++          다음 — 공문 정보 입력 <ChevronRight size={18}/>
++        </button>
++      </div>
++    </AppShell>
++  )
++
++  // ── Step 2: 공문 정보 입력 ───────────────────────────
++  return (
++    <AppShell title="공문 접수" back="/approval">
++      <div className="max-w-2xl mx-auto p-4 space-y-4">
++        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
++          <h2 className="font-semibold text-gray-900 text-sm">공문 정보</h2>
++
++          {[
++            { label:'발신기관 *', value:sender,     set:setSender,     ph:'예: 문화체육관광부' },
++            { label:'문서번호',   value:docNo,       set:setDocNo,      ph:'예: 종무2담당관-2942' },
++            { label:'제목 *',     value:title,       set:setTitle,      ph:'공문 제목을 입력하세요', bold:true },
++          ].map(f => (
++            <div key={f.label}>
++              <label className="text-xs font-medium text-gray-500 block mb-1.5">{f.label}</label>
++              <input value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.ph}
++                className={clsx('w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400', (f as {bold?:boolean}).bold && 'font-semibold')}/>
++            </div>
++          ))}
++
++          {/* 수신일자 */}
++          <div>
++            <label className="text-xs font-medium text-gray-500 block mb-1.5">수신일자 *</label>
++            <input type="date" value={receivedAt} onChange={e => setReceivedAt(e.target.value)}
++              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++          </div>
++
++          {/* 처리기한 */}
++          <div>
++            <button onClick={() => setHasDueDate(v => !v)}
++              className={clsx('w-full flex items-center gap-3 px-4 py-3 border rounded-xl transition-colors',
++                hasDueDate ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200 hover:bg-gray-50')}>
++              <span className="text-lg">{hasDueDate ? '⏰' : '📅'}</span>
++              <div className="flex-1 text-left">
++                <p className={clsx('text-sm font-medium', hasDueDate ? 'text-red-800' : 'text-gray-700')}>처리기한 설정</p>
++                <p className="text-xs text-gray-400">기한 1일 전 자동 알림</p>
++              </div>
++              <div className={clsx('w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0',
++                hasDueDate ? 'border-red-500 bg-red-500' : 'border-gray-300')}>
++                {hasDueDate && <span className="text-white text-xs font-bold">✓</span>}
++              </div>
++            </button>
++            {hasDueDate && (
++              <div className="mt-2">
++                <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}
++                  min={receivedAt}
++                  className="w-full border border-red-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"/>
++              </div>
++            )}
++          </div>
++
++          {/* PDF 첨부 */}
++          <div>
++            <label className="text-xs font-medium text-gray-500 block mb-1.5">공문 파일 첨부 (PDF)</label>
++            <input ref={pdfRef} type="file" accept=".pdf,application/pdf" onChange={handlePdf} className="hidden"/>
++            <button onClick={() => pdfRef.current?.click()}
++              className={clsx('w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed rounded-xl text-sm transition-colors',
++                pdfFile ? 'border-green-400 bg-green-50 text-green-700' : 'border-gray-300 text-gray-500 hover:border-primary-400 hover:text-primary-600')}>
++              <Upload size={16}/>
++              {pdfFile ? `✓ ${pdfName}` : 'PDF 파일 선택'}
++            </button>
++            <p className="text-xs text-gray-400 mt-1">스캔본 또는 전자문서 PDF</p>
++          </div>
++
++          {/* 비고 */}
++          <div>
++            <label className="text-xs font-medium text-gray-500 block mb-1.5">비고</label>
++            <textarea value={memo} onChange={e => setMemo(e.target.value)}
++              placeholder="처리 지시사항 등 (선택)" rows={3}
++              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
++          </div>
++        </div>
++
++        {/* 결재선 요약 */}
++        <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
++          <p className="text-xs text-gray-500 mb-2 font-medium">결재선</p>
++          <div className="flex items-center gap-2 flex-wrap">
++            <span className="text-xs bg-primary-100 text-primary-700 px-2 py-1 rounded-full">{user?.name} (접수)</span>
++            {midApprovers.map(a => (
++              <span key={a.uid} className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">{a.name}</span>
++            ))}
++            {finalApprover && (
++              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">{finalApprover.name} (최종)</span>
++            )}
++          </div>
++        </div>
++
++        <button onClick={handleSubmit} disabled={saving || !title.trim() || !sender.trim()}
++          className="w-full py-3.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50 transition-colors">
++          {saving ? '접수 중...' : '공문 접수 결재 상신'}
++        </button>
++      </div>
++    </AppShell>
++  )
++}
++
++export default function IncomingNewPage() {
++  return (
++    <Suspense fallback={<div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-600 border-t-transparent"/></div>}>
++      <IncomingNewInner/>
++    </Suspense>
++  )
++}
+diff --git a/src/app/approval/page.tsx b/src/app/approval/page.tsx
+index 36819f4..f285756 100644
+--- a/src/app/approval/page.tsx
++++ b/src/app/approval/page.tsx
+@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react'
+ import { useRouter } from 'next/navigation'
+ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+-import { listenApprovalDocs, deleteApprovalDoc } from '@/lib/db'
+-import type { ApprovalDoc } from '@/types'
+-import { Plus, FileText, ChevronRight, Clock, Copy } from 'lucide-react'
++import { listenApprovalDocs, deleteApprovalDoc, listenIncomingDocs } from '@/lib/db'
++import type { ApprovalDoc, IncomingDoc } from '@/types'
++import { Plus, FileText, ChevronRight, Clock, Copy, Inbox } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+ const STATUS_MAP: Record<string, { label: string; color: string }> = {
+@@ -15,12 +15,13 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
+   rejected: { label: '반려',     color: 'bg-red-100 text-red-700' },
+ }
+ 
+-type TabType = 'mine' | 'pending' | 'viewer'
++type TabType = 'mine' | 'pending' | 'incoming' | 'viewer'
+ 
+ export default function ApprovalPage() {
+   const { user, loading } = useAuth()
+   const router = useRouter()
+-  const [docs, setDocs] = useState<ApprovalDoc[]>([])
++  const [docs,    setDocs]    = useState<ApprovalDoc[]>([])
++  const [incoming, setIncoming] = useState<IncomingDoc[]>([])
+   const [tab,  setTab]  = useState<TabType>('mine')
+ 
+   useEffect(() => {
+@@ -28,7 +29,9 @@ export default function ApprovalPage() {
+     if (!user) { router.replace('/login'); return }
+     const isHQ = ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
+     if (!isHQ) { router.replace('/dashboard'); return }
+-    return listenApprovalDocs(user.uid, setDocs)
++    const u1 = listenApprovalDocs(user.uid, setDocs)
++    const u2 = listenIncomingDocs(user.uid, setIncoming)
++    return () => { u1(); u2() }
+   }, [user, loading, router])
+ 
+   if (loading) return (
+@@ -80,11 +83,12 @@ export default function ApprovalPage() {
+ 
+         {/* 상단 탭 + 기안 버튼 */}
+         <div className="flex items-center justify-between">
+-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
++          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 flex-wrap">
+             {([
+-              { key: 'mine',    label: `내 문서 ${myDocs.length}` },
+-              { key: 'pending', label: `결재 대기 ${pendingDocs.length}`, badge: pendingDocs.length > 0 },
+-              { key: 'viewer',  label: `공람 ${viewerDocs.length}` },
++              { key: 'mine',     label: `내 문서 ${myDocs.length}` },
++              { key: 'pending',  label: `결재 대기 ${pendingDocs.length}`, badge: pendingDocs.length > 0 },
++              { key: 'incoming', label: `공문 접수 ${incoming.length}` },
++              { key: 'viewer',   label: `공람 ${viewerDocs.length}` },
+             ] as { key: TabType; label: string; badge?: boolean }[]).map(t => (
+               <button key={t.key} onClick={() => setTab(t.key)}
+                 className={clsx('px-4 py-2 rounded-lg text-sm font-medium transition-colors relative',
+@@ -96,10 +100,16 @@ export default function ApprovalPage() {
+               </button>
+             ))}
+           </div>
+-          <button onClick={() => router.push('/approval/new')}
+-            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
+-            <Plus size={16}/> 기안 작성
+-          </button>
++          <div className="flex gap-2">
++            <button onClick={() => router.push('/approval/incoming/new')}
++              className="flex items-center gap-2 border border-primary-300 text-primary-700 px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-50 transition-colors">
++              <Inbox size={15}/> 공문 접수
++            </button>
++            <button onClick={() => router.push('/approval/new')}
++              className="flex items-center gap-2 bg-primary-600 text-white px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
++              <Plus size={15}/> 기안 작성
++            </button>
++          </div>
+         </div>
+ 
+         {/* 내 문서 탭 - 임시저장 + 최근문서 섹션 */}
+@@ -202,8 +212,55 @@ export default function ApprovalPage() {
+           </>
+         )}
+ 
++        {/* 공문 접수 탭 */}
++        {tab === 'incoming' && (
++          incoming.length === 0 ? (
++            <div className="text-center py-16 text-gray-400">
++              <Inbox size={40} className="mx-auto mb-3 opacity-30"/>
++              <p className="text-sm">공문 접수 내역이 없습니다</p>
++              <button onClick={() => router.push('/approval/incoming/new')}
++                className="mt-4 text-primary-600 text-sm hover:underline">
++                공문 접수하기 →
++              </button>
++            </div>
++          ) : (
++            <div className="space-y-2">
++              {incoming.map(doc => {
++                const isDue = doc.hasDueDate && doc.dueDate && (() => {
++                  const diff = (new Date(doc.dueDate + 'T00:00:00').getTime() - Date.now()) / 86400000
++                  return diff <= 3
++                })()
++                return (
++                  <div key={doc.id}
++                    className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-all cursor-pointer"
++                    onClick={() => router.push(`/approval/incoming/${doc.id}`)}>
++                    <div className="flex items-start gap-3">
++                      <div className="flex-1 min-w-0">
++                        <div className="flex items-center gap-2 mb-1 flex-wrap">
++                          <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full',
++                            doc.status === 'approved' ? 'bg-green-100 text-green-700' :
++                            doc.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700')}>
++                            {doc.status === 'approved' ? '접수완료' : doc.status === 'rejected' ? '반려' : '결재중'}
++                          </span>
++                          {isDue && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">⏰ 기한임박</span>}
++                        </div>
++                        <p className="text-sm font-semibold text-gray-900 truncate">{doc.title}</p>
++                        <p className="text-xs text-gray-400 mt-0.5">
++                          {doc.sender} · {doc.receivedAt?.replace(/-/g, '.')}
++                          {doc.hasDueDate && doc.dueDate && ` · 기한 ${doc.dueDate.replace(/-/g, '.')}`}
++                        </p>
++                      </div>
++                      <ChevronRight size={14} className="text-gray-300 shrink-0 mt-1"/>
++                    </div>
++                  </div>
++                )
++              })}
++            </div>
++          )
++        )}
++
+         {/* 결재 대기 / 공람 탭 */}
+-        {tab !== 'mine' && (
++        {(tab === 'pending' || tab === 'viewer') && (
+           tabDocs.length === 0 ? (
+             <div className="text-center py-16 text-gray-400">
+               <FileText size={40} className="mx-auto mb-3 opacity-30"/>
+diff --git a/src/app/settings/approval-lines/page.tsx b/src/app/settings/approval-lines/page.tsx
+new file mode 100644
+index 0000000..f8bf692
+--- /dev/null
++++ b/src/app/settings/approval-lines/page.tsx
+@@ -0,0 +1,175 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import AppShell from '@/components/AppShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenUsers, listenApprovalLines, saveApprovalLine, deleteApprovalLine } from '@/lib/db'
++import type { AppUser, ApprovalLine } from '@/types'
++import { Plus, Trash2, X, Bookmark } from 'lucide-react'
++import clsx from 'clsx'
++
++const ROLE_LABEL: Record<string,string> = {
++  ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타'
++}
++
++export default function ApprovalLinesPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [allUsers,  setAllUsers]  = useState<AppUser[]>([])
++  const [lines,     setLines]     = useState<ApprovalLine[]>([])
++
++  // 새 결재선 폼
++  const [lineName,      setLineName]      = useState('')
++  const [midApprovers,  setMidApprovers]  = useState<{uid:string;name:string;role:string}[]>([])
++  const [finalApprover, setFinalApprover] = useState<{uid:string;name:string;role:string}|null>(null)
++  const [saving,        setSaving]        = useState(false)
++  const [showForm,      setShowForm]      = useState(false)
++
++  const isHQ = user && ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
++
++  useEffect(() => {
++    if (loading) return
++    if (!user || !isHQ) { router.replace('/settings'); return }
++    const u1 = listenUsers(setAllUsers)
++    const u2 = listenApprovalLines(user.uid, setLines)
++    return () => { u1(); u2() }
++  }, [user, loading, isHQ, router])
++
++  const hqUsers = allUsers.filter(u =>
++    ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(u.role) && u.uid !== user?.uid
++  )
++
++  const handleSave = async () => {
++    if (!user || !lineName.trim() || !finalApprover) {
++      alert('결재선 이름과 최종결재자를 입력해주세요'); return
++    }
++    setSaving(true)
++    await saveApprovalLine({
++      name: lineName.trim(),
++      approvers: midApprovers,
++      finalApprover,
++      ownerUid: user.uid,
++    })
++    setLineName(''); setMidApprovers([]); setFinalApprover(null)
++    setShowForm(false); setSaving(false)
++  }
++
++  return (
++    <AppShell title="결재선 관리" back="/settings">
++      <div className="max-w-2xl mx-auto p-4 space-y-4">
++        <div className="flex items-center justify-between">
++          <p className="text-sm text-gray-500">자주 쓰는 결재선을 저장해두면 기안/접수 시 바로 불러올 수 있습니다</p>
++          <button onClick={() => setShowForm(v => !v)}
++            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
++            <Plus size={15}/> 새 결재선
++          </button>
++        </div>
++
++        {/* 새 결재선 폼 */}
++        {showForm && (
++          <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-4">
++            <h3 className="font-semibold text-gray-900 text-sm">새 결재선 추가</h3>
++
++            <div>
++              <label className="text-xs font-medium text-gray-500 block mb-1.5">결재선 이름 *</label>
++              <input value={lineName} onChange={e => setLineName(e.target.value)}
++                placeholder="예: 일반결재, 긴급결재"
++                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++            </div>
++
++            <div>
++              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">중간 결재자 <span className="font-normal text-gray-300">({midApprovers.length}/5)</span></p>
++              {midApprovers.map((a, i) => (
++                <div key={a.uid} className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl mb-2">
++                  <span className="text-xs text-gray-400 w-4">{i+1}</span>
++                  <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">{a.name[0]}</div>
++                  <div className="flex-1"><p className="text-sm font-medium">{a.name}</p><p className="text-xs text-gray-400">{a.role}</p></div>
++                  <button onClick={() => setMidApprovers(p => p.filter((_,j) => j !== i))}><X size={14} className="text-gray-300 hover:text-red-400"/></button>
++                </div>
++              ))}
++              {midApprovers.length < 5 && (
++                <div className="grid grid-cols-2 gap-2">
++                  {hqUsers.filter(u => !midApprovers.some(a => a.uid === u.uid) && u.uid !== finalApprover?.uid).map(u => (
++                    <button key={u.uid}
++                      onClick={() => setMidApprovers(p => [...p, { uid:u.uid, name:u.name, role:ROLE_LABEL[u.role]??u.role }])}
++                      className="flex items-center gap-2 px-3 py-2.5 border border-dashed border-gray-300 rounded-xl hover:border-primary-400 hover:bg-primary-50 transition-colors text-left">
++                      <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500">{u.name[0]}</div>
++                      <div className="min-w-0"><p className="text-xs font-medium text-gray-700 truncate">{u.name}</p><p className="text-xs text-gray-400">{ROLE_LABEL[u.role]}</p></div>
++                      <Plus size={12} className="text-gray-400 ml-auto shrink-0"/>
++                    </button>
++                  ))}
++                </div>
++              )}
++            </div>
++
++            <div>
++              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">최종결재자 <span className="text-red-400">*</span></p>
++              {finalApprover ? (
++                <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl">
++                  <div className="w-8 h-8 rounded-full bg-green-200 flex items-center justify-center text-xs font-bold text-green-800">{finalApprover.name[0]}</div>
++                  <div className="flex-1"><p className="text-sm font-medium text-green-900">{finalApprover.name}</p><p className="text-xs text-green-600">{finalApprover.role}</p></div>
++                  <button onClick={() => setFinalApprover(null)}><X size={14} className="text-green-300 hover:text-red-400"/></button>
++                </div>
++              ) : (
++                <div className="grid grid-cols-2 gap-2">
++                  {hqUsers.filter(u => !midApprovers.some(a => a.uid === u.uid)).map(u => (
++                    <button key={u.uid}
++                      onClick={() => setFinalApprover({ uid:u.uid, name:u.name, role:ROLE_LABEL[u.role]??u.role })}
++                      className="flex items-center gap-2 px-3 py-2.5 border border-dashed border-gray-300 rounded-xl hover:border-green-400 hover:bg-green-50 transition-colors text-left">
++                      <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500">{u.name[0]}</div>
++                      <div className="min-w-0"><p className="text-xs font-medium text-gray-700 truncate">{u.name}</p><p className="text-xs text-gray-400">{ROLE_LABEL[u.role]}</p></div>
++                    </button>
++                  ))}
++                </div>
++              )}
++            </div>
++
++            <div className="flex gap-2">
++              <button onClick={() => setShowForm(false)} className="flex-1 py-3 border border-gray-200 text-gray-500 rounded-xl text-sm hover:bg-gray-50">취소</button>
++              <button onClick={handleSave} disabled={saving || !lineName.trim() || !finalApprover}
++                className="flex-1 py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50">
++                {saving ? '저장 중...' : '결재선 저장'}
++              </button>
++            </div>
++          </div>
++        )}
++
++        {/* 저장된 결재선 목록 */}
++        {lines.length === 0 ? (
++          <div className="text-center py-12 text-gray-400">
++            <Bookmark size={36} className="mx-auto mb-3 opacity-30"/>
++            <p className="text-sm">저장된 결재선이 없습니다</p>
++          </div>
++        ) : (
++          <div className="space-y-3">
++            {lines.map(line => (
++              <div key={line.id} className="bg-white border border-gray-200 rounded-2xl p-4">
++                <div className="flex items-center justify-between mb-3">
++                  <div className="flex items-center gap-2">
++                    <Bookmark size={14} className="text-primary-500"/>
++                    <span className="font-semibold text-gray-900 text-sm">{line.name}</span>
++                  </div>
++                  <button onClick={async () => {
++                    if (!confirm(`"${line.name}" 결재선을 삭제하시겠습니까?`)) return
++                    await deleteApprovalLine(line.id)
++                  }} className="text-gray-300 hover:text-red-400 transition-colors">
++                    <Trash2 size={15}/>
++                  </button>
++                </div>
++                <div className="flex items-center gap-2 flex-wrap">
++                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded-full">접수자</span>
++                  <span className="text-gray-300 text-xs">→</span>
++                  {line.approvers.map((a, i) => (
++                    <span key={i} className="text-xs bg-primary-50 text-primary-700 px-2 py-1 rounded-full">{a.name}</span>
++                  ))}
++                  {line.approvers.length > 0 && <span className="text-gray-300 text-xs">→</span>}
++                  <span className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded-full font-medium">{line.finalApprover.name} (최종)</span>
++                </div>
++              </div>
++            ))}
++          </div>
++        )}
++      </div>
++    </AppShell>
++  )
++}
+diff --git a/src/app/settings/page.tsx b/src/app/settings/page.tsx
+index 3c37992..89c324d 100644
+--- a/src/app/settings/page.tsx
++++ b/src/app/settings/page.tsx
+@@ -381,6 +381,23 @@ export default function SettingsPage() {
+           </div>
+         )}
+ 
++        {/* 전자결재 설정 - 본부멤버 이상 */}
++        {user && (user.role === 'ADMIN' || user.role === 'HQ_CHIEF' || user.role === 'HQ_MEMBER') && (
++          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
++              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">전자결재</p>
++            </div>
++            <button onClick={() => router.push('/settings/approval-lines')}
++              className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 border-b border-gray-100 last:border-0">
++              <div className="flex items-center gap-3">
++                <span className="text-gray-500">🔖</span>
++                <span className="text-sm font-medium text-gray-800">결재선 관리</span>
++              </div>
++              <ChevronRight size={16} className="text-gray-400"/>
++            </button>
++          </div>
++        )}
++
+         {/* 계정 */}
+         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+           <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
+diff --git a/src/lib/db.ts b/src/lib/db.ts
+index 972701e..e243a22 100644
+--- a/src/lib/db.ts
++++ b/src/lib/db.ts
+@@ -7,7 +7,8 @@ import type {
+   AppUser, Business, Message, Receipt, Reply,
+   MessageStatus, MessageType, MessageCategory,
+   Notice, CalendarEvent, MessageTemplate,
+-  ApprovalDoc, ApprovalTemplate, SavedEmailContact, OfficialSeal
++  ApprovalDoc, ApprovalTemplate, SavedEmailContact, OfficialSeal,
++  IncomingDoc, ApprovalLine
+ } from '@/types'
+ 
+ const now = () => new Date().toISOString()
+@@ -452,3 +453,50 @@ export async function deleteOfficialSeal(id: string) {
+ export async function updateUserSeal(uid: string, sealUrl: string) {
+   await updateDoc(doc(db, 'users', uid), { sealUrl })
+ }
++
++// ── 공문 접수 ─────────────────────────────────────────
++export function listenIncomingDocs(uid: string, cb: (docs: IncomingDoc[]) => void) {
++  return onSnapshot(
++    query(collection(db, 'incomingDocs'), orderBy('createdAt', 'desc')),
++    snap => {
++      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as IncomingDoc))
++      cb(all.filter(d =>
++        d.authorUid === uid ||
++        d.approvers?.some(a => a.uid === uid) ||
++        d.finalApprover?.uid === uid
++      ))
++    }
++  )
++}
++
++export async function createIncomingDoc(data: Omit<IncomingDoc, 'id' | 'createdAt'>) {
++  return await addDoc(collection(db, 'incomingDocs'), {
++    ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
++  })
++}
++
++export async function updateIncomingDoc(id: string, data: Partial<IncomingDoc>) {
++  await updateDoc(doc(db, 'incomingDocs', id), { ...data, updatedAt: serverTimestamp() })
++}
++
++export async function deleteIncomingDoc(id: string) {
++  await deleteDoc(doc(db, 'incomingDocs', id))
++}
++
++// ── 결재선 관리 ───────────────────────────────────────
++export function listenApprovalLines(uid: string, cb: (lines: ApprovalLine[]) => void) {
++  return onSnapshot(
++    query(collection(db, 'approvalLines'), where('ownerUid', '==', uid)),
++    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalLine)))
++  )
++}
++
++export async function saveApprovalLine(data: Omit<ApprovalLine, 'id' | 'createdAt'>) {
++  return await addDoc(collection(db, 'approvalLines'), {
++    ...data, createdAt: serverTimestamp(),
++  })
++}
++
++export async function deleteApprovalLine(id: string) {
++  await deleteDoc(doc(db, 'approvalLines', id))
++}
+diff --git a/src/types/index.ts b/src/types/index.ts
+index ab4e2be..52d180f 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -243,3 +243,47 @@ export interface OfficialSeal {
+   ownerUid:  string   // 등록한 관리자 uid
+   createdAt: unknown
+ }
++
++// ── 공문 접수 ─────────────────────────────────────────
++export interface IncomingDoc {
++  id:           string
++  docNo:        string        // 문서번호
++  title:        string        // 제목
++  sender:       string        // 발신기관
++  receivedAt:   string        // 수신일자 (YYYY-MM-DD)
++  dueDate?:     string        // 처리기한 (YYYY-MM-DD)
++  hasDueDate:   boolean       // 처리기한 여부
++  pdfUrl?:      string        // 첨부 PDF URL
++  pdfName?:     string        // PDF 파일명
++  memo?:        string        // 비고
++
++  // 결재선
++  receiver:     Approver      // 접수자 (본인)
++  approvers:    Approver[]    // 검토자 0~3명
++  finalApprover: Approver     // 최종 결재자
++
++  status:       ApprovalStatus
++  authorUid:    string
++  createdAt:    unknown
++  updatedAt?:   unknown
++  approvedAt?:  string
++  rejectedAt?:  string
++}
++
++// ── 결재선 관리 ───────────────────────────────────────
++export interface ApprovalLine {
++  id:        string
++  name:      string           // 결재선 이름 (예: 일반결재)
++  approvers: {
++    uid:  string
++    name: string
++    role: string
++  }[]
++  finalApprover: {
++    uid:  string
++    name: string
++    role: string
++  }
++  ownerUid:  string
++  createdAt: unknown
++}
+-- 
+2.43.0
+

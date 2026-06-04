@@ -1,0 +1,53 @@
+From c62f2939c355c83b801cd70dc1667c9f6c7b2c69 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 01:13:31 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20AppShell=20isBiz=20=EB=B3=80=EC=88=98=20?=
+ =?UTF-8?q?=EC=84=A0=EC=96=B8=20=EC=88=9C=EC=84=9C=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/components/AppShell.tsx | 17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/src/components/AppShell.tsx b/src/components/AppShell.tsx
+index 641640e..57dd3ab 100644
+--- a/src/components/AppShell.tsx
++++ b/src/components/AppShell.tsx
+@@ -22,10 +22,17 @@ export default function AppShell({ children, title, back }: Props) {
+   const { settings } = useSettings()
+   const router       = useRouter()
+   const pathname     = usePathname()
+-  const [open,       setOpen]       = useState(false)
+-  const [unreadCount, setUnreadCount] = useState(0)
++  const [open,        setOpen]        = useState(false)
++  const [unreadCount,  setUnreadCount]  = useState(0)
+   const [unreadDirect, setUnreadDirect] = useState(0)
+ 
++  const isAdmin      = user?.role === 'ADMIN'
++  const isHQChief    = user?.role === 'HQ_CHIEF'
++  const isHQMember   = user?.role === 'HQ_MEMBER'
++  const isHQ         = isAdmin || isHQChief || isHQMember
++  const isBiz        = user?.role === 'BIZ_REP'
++  const canBroadcast = isAdmin || isHQChief || !!user?.permissions?.canBroadcast
++
+   useEffect(() => {
+     if (!user) return
+     if (isHQ || isAdmin) {
+@@ -58,12 +65,6 @@ export default function AppShell({ children, title, back }: Props) {
+     }
+   }, [user, isHQ, isAdmin, isBiz])
+ 
+-  const isAdmin      = user?.role === 'ADMIN'
+-  const isHQChief    = user?.role === 'HQ_CHIEF'
+-  const isHQMember   = user?.role === 'HQ_MEMBER'
+-  const isHQ         = isAdmin || isHQChief || isHQMember
+-  const canBroadcast = isAdmin || isHQChief || !!user?.permissions?.canBroadcast
+-
+   const fontClass = settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
+ 
+   const nav = [
+-- 
+2.43.0
+

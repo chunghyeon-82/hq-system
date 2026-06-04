@@ -1,0 +1,30 @@
+From e7b1aecf58271aa60d8e56f0953692959eabd87c Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 00:14:59 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20db.ts=20=ED=92=88=EC=9D=98=EC=84=9C=20?=
+ =?UTF-8?q?=ED=83=80=EC=9E=85=20import=20=EC=B6=94=EA=B0=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/lib/db.ts | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/lib/db.ts b/src/lib/db.ts
+index 21265f1..d3331ac 100644
+--- a/src/lib/db.ts
++++ b/src/lib/db.ts
+@@ -6,7 +6,8 @@ import { db } from './firebase'
+ import type {
+   AppUser, Business, Message, Receipt, Reply,
+   MessageStatus, MessageType, MessageCategory,
+-  Notice, CalendarEvent, MessageTemplate
++  Notice, CalendarEvent, MessageTemplate,
++  ApprovalDoc, ApprovalTemplate, SavedEmailContact
+ } from '@/types'
+ 
+ const now = () => new Date().toISOString()
+-- 
+2.43.0
+

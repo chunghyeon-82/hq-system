@@ -1,0 +1,31 @@
+From 244b2093914126ab8559e0e828becebf59db265b Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 04:53:55 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20approval/new=20import=20=EB=88=84?=
+ =?UTF-8?q?=EB=9D=BD=20=EC=88=98=EC=A0=95=20(listenApprovalLines=20?=
+ =?UTF-8?q?=EB=93=B1)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/approval/new/page.tsx | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/app/approval/new/page.tsx b/src/app/approval/new/page.tsx
+index 7a18c00..c4dcb88 100644
+--- a/src/app/approval/new/page.tsx
++++ b/src/app/approval/new/page.tsx
+@@ -5,7 +5,8 @@ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+ import {
+   listenUsers, listenApprovalTemplates, listenApprovalDocs,
+-  createApprovalDoc, saveApprovalTemplate, listenOfficialSeals
++  createApprovalDoc, saveApprovalTemplate, listenOfficialSeals,
++  listenApprovalLines, listenRecipientContacts, getFooterInfo
+ } from '@/lib/db'
+ import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal, ApprovalLine, RecipientContact } from '@/types'
+ import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff, Users } from 'lucide-react'
+-- 
+2.43.0
+

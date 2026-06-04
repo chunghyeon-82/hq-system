@@ -1,0 +1,59 @@
+From 7ffbcd86a194507d212d3411bf4a94222666b091 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 04:47:42 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EC=A0=84=EC=B2=B4=20=EC=BD=94=EB=93=9C?=
+ =?UTF-8?q?=20=EB=B2=84=EA=B7=B8=20=EC=88=98=EC=A0=95=20-=20direct=20categ?=
+ =?UTF-8?q?ory,=20cleanup=20Timestamp?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/api/cleanup/route.ts | 2 +-
+ src/app/direct/page.tsx      | 4 +++-
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/api/cleanup/route.ts b/src/app/api/cleanup/route.ts
+index 58d4f5f..248795c 100644
+--- a/src/app/api/cleanup/route.ts
++++ b/src/app/api/cleanup/route.ts
+@@ -1,6 +1,6 @@
+ import { NextRequest, NextResponse } from 'next/server'
+ import { initializeApp, cert, getApps } from 'firebase-admin/app'
+-import { getFirestore, Timestamp } from 'firebase-admin/firestore'
++import { getFirestore } from 'firebase-admin/firestore'
+ 
+ // Firebase Admin 초기화
+ function getAdminDb() {
+diff --git a/src/app/direct/page.tsx b/src/app/direct/page.tsx
+index b09402b..7bae3f4 100644
+--- a/src/app/direct/page.tsx
++++ b/src/app/direct/page.tsx
+@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
+ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+ import { listenUsers, sendDirectMessage } from '@/lib/db'
+-import type { AppUser } from '@/types'
++import type { AppUser, MessageCategory } from '@/types'
+ import { Send, MessageSquare, Lock, ShieldAlert } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+@@ -16,6 +16,7 @@ export default function DirectPage() {
+   const [targetUid, setTargetUid] = useState('')
+   const [title,     setTitle]     = useState('')
+   const [body,      setBody]      = useState('')
++  const [category,  setCategory]  = useState<'instruction' | 'confirm' | 'notice'>('instruction')
+   const [priority,  setPriority]  = useState<'normal' | 'urgent'>('normal')
+   const [sending,   setSending]   = useState(false)
+   const [sent,      setSent]      = useState(false)
+@@ -46,6 +47,7 @@ export default function DirectPage() {
+     await sendDirectMessage({
+       title:       title.trim(),
+       body:        body.trim(),
++      category,
+       priority,
+       authorUid:   user.uid,
+       authorName:  user.name,
+-- 
+2.43.0
+

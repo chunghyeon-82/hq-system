@@ -1,0 +1,83 @@
+From b4bfc1a228e9698af0f281da1a83fe9c4412a6c8 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 00:13:59 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=EC=9A=B4=EC=98=81=EB=B3=B8=EB=B6=80=20?=
+ =?UTF-8?q?=EC=B1=84=ED=8C=85=20=EC=9D=B4=EB=AA=A8=ED=8B=B0=EC=BD=98=20?=
+ =?UTF-8?q?=ED=94=BC=EC=BB=A4=20=EC=B6=94=EA=B0=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/chat/page.tsx | 33 ++++++++++++++++++++++++++++++++-
+ 1 file changed, 32 insertions(+), 1 deletion(-)
+
+diff --git a/src/app/chat/page.tsx b/src/app/chat/page.tsx
+index 010544b..7269788 100644
+--- a/src/app/chat/page.tsx
++++ b/src/app/chat/page.tsx
+@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context'
+ import { listenChatMessages, sendChatMessage, listenUsers } from '@/lib/db'
+ import type { ChatMessage } from '@/lib/db'
+ import type { AppUser } from '@/types'
+-import { Send, Users } from 'lucide-react'
++import { Send, Smile, Users } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+ const HQ_ROLES = ['HQ_CHIEF', 'HQ_MEMBER']  // 관리자는 채팅 참여하되 목록에 미노출
+@@ -22,6 +22,14 @@ function memberColor(uid: string, members: AppUser[]) {
+   return COLORS[idx % COLORS.length] ?? 'bg-gray-500'
+ }
+ 
++const EMOJI_LIST = [
++  '😀','😂','🤣','😊','😍','🥰','😎','🤔','😅','🙏',
++  '👍','👎','👏','🙌','🤝','✌️','🤞','💪','🫡','👀',
++  '❤️','🔥','✅','⭐','🎉','🎊','💯','📌','📢','🔔',
++  '😢','😭','😤','😡','🥺','😴','🤯','😱','🤦','🤷',
++  '🏃','💼','📋','✍️','💡','🔑','📞','📧','🗓️','⏰',
++]
++
+ export default function ChatPage() {
+   const { user }  = useAuth()
+   const router    = useRouter()
+@@ -33,6 +41,7 @@ export default function ChatPage() {
+   const [showMembers, setShowMembers] = useState(false)
+   const bottomRef  = useRef<HTMLDivElement>(null)
+   const inputRef   = useRef<HTMLTextAreaElement>(null)
++  const [showEmoji, setShowEmoji] = useState(false)
+ 
+   const isHQ = user && HQ_ROLES_ALL.includes(user.role)
+ 
+@@ -222,7 +231,29 @@ export default function ChatPage() {
+ 
+         {/* 입력창 */}
+         <div className="bg-white border-t border-gray-200 px-3 py-3 shrink-0">
++          {/* 이모티콘 피커 */}
++          {showEmoji && (
++            <div className="bg-white border border-gray-200 rounded-2xl p-3 mb-2 shadow-lg">
++              <div className="grid grid-cols-10 gap-1">
++                {EMOJI_LIST.map(emoji => (
++                  <button key={emoji}
++                    onClick={() => {
++                      setText(t => t + emoji)
++                      inputRef.current?.focus()
++                    }}
++                    className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 rounded-lg transition-colors">
++                    {emoji}
++                  </button>
++                ))}
++              </div>
++            </div>
++          )}
+           <div className="flex items-end gap-2 bg-gray-100 rounded-2xl px-3 py-2">
++            <button onClick={() => setShowEmoji(v => !v)}
++              className={clsx('shrink-0 mb-0.5 transition-colors',
++                showEmoji ? 'text-primary-500' : 'text-gray-400 hover:text-gray-600')}>
++              <Smile size={20}/>
++            </button>
+             <textarea
+               ref={inputRef}
+               value={text}
+-- 
+2.43.0
+

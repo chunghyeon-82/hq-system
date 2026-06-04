@@ -1,0 +1,125 @@
+From 2a2788cd9a0a6e2fa218bcb3635f34c8a1e5a369 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 04:45:40 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EB=A9=94=EC=8B=9C=EC=A7=80=20=EC=8B=9C?=
+ =?UTF-8?q?=EC=8A=A4=ED=85=9C=20=EB=B2=84=EA=B7=B8=20=EC=88=98=EC=A0=95=20?=
+ =?UTF-8?q?-=20BookTemplate,=20=EA=B5=AC=EB=B2=84=EC=A0=84=20=EC=83=81?=
+ =?UTF-8?q?=ED=83=9C=EA=B0=92=20=EC=99=84=EC=A0=84=20=EC=A0=95=EB=A6=AC?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/businesses/[id]/page.tsx | 18 +++++++++---------
+ src/app/compose/page.tsx         |  4 ++--
+ src/app/dashboard/page.tsx       | 14 ++++++++------
+ 3 files changed, 19 insertions(+), 17 deletions(-)
+
+diff --git a/src/app/businesses/[id]/page.tsx b/src/app/businesses/[id]/page.tsx
+index e1b7962..ae2824d 100644
+--- a/src/app/businesses/[id]/page.tsx
++++ b/src/app/businesses/[id]/page.tsx
+@@ -322,8 +322,8 @@ export default function BusinessDetailPage() {
+               const myReceipt  = msg.receipts?.find(r => r.bizId === id)
+               const isDone     = msg.status === 'done'
+               const isPending  = myReceipt?.status === 'pending'
+-              const isReceived = myReceipt?.status === 'received'
+-              const isReplied  = myReceipt?.status === 'replied'
++              const isProcessing = myReceipt?.status === 'processing'
++              const isDoneReceipt = myReceipt?.status === 'done'
+ 
+               return (
+                 <button key={msg.id}
+@@ -338,9 +338,9 @@ export default function BusinessDetailPage() {
+                       <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+                         {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
+                         {isDone    && <span className="badge-done">완결</span>}
+-                        {!isDone && isPending  && <span className="badge-pending">미접수</span>}
+-                        {!isDone && isReceived && <span className="badge-received">진행중</span>}
+-                        {!isDone && isReplied  && <span className="badge-replied">답변완료</span>}
++                        {!isDone && isPending     && <span className="badge-pending">미접수</span>}
++                        {!isDone && isProcessing  && <span className="badge-received">처리중</span>}
++                        {!isDone && isDoneReceipt && <span className="badge-replied">처리완료</span>}
+                       </div>
+ 
+                       {/* 제목 */}
+@@ -349,14 +349,14 @@ export default function BusinessDetailPage() {
+                       {/* 발신자 + 접수시간 */}
+                       <div className="flex items-center gap-3 mt-1">
+                         <span className="text-xs text-gray-400">{msg.authorName}</span>
+-                        {myReceipt?.receivedAt && (
++                        {myReceipt?.processedAt && (
+                           <span className="text-xs text-blue-500">
+-                            접수 {new Date(myReceipt.receivedAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
++                            처리중 {new Date(myReceipt.processedAt!).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                           </span>
+                         )}
+-                        {myReceipt?.repliedAt && (
++                        {myReceipt?.doneAt && (
+                           <span className="text-xs text-green-500">
+-                            답변 {new Date(myReceipt.repliedAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
++                            완료 {new Date(myReceipt.doneAt!).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                           </span>
+                         )}
+                       </div>
+diff --git a/src/app/compose/page.tsx b/src/app/compose/page.tsx
+index d77d4f4..b47ed43 100644
+--- a/src/app/compose/page.tsx
++++ b/src/app/compose/page.tsx
+@@ -7,7 +7,7 @@ import { listenBusinesses, sendMessage, listenTemplates, addTemplate, deleteTemp
+ import type { Business, Receipt, MessageTemplate, MessageCategory } from '@/types'
+ import {
+   Send, CheckSquare, Square, AlertCircle, Calendar, Link2,
+-  BookTemplate, Plus, Trash2, X, ChevronDown
++  FileText, Plus, Trash2, X, ChevronDown
+ } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+@@ -165,7 +165,7 @@ function ComposeContent() {
+           <div className="ml-auto relative">
+             <button onClick={() => setShowTpl(v => !v)}
+               className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+-              <BookTemplate size={15}/> 템플릿
++              <FileText size={15}/> 템플릿
+               <ChevronDown size={12}/>
+             </button>
+             {showTpl && (
+diff --git a/src/app/dashboard/page.tsx b/src/app/dashboard/page.tsx
+index adba6df..31741b7 100644
+--- a/src/app/dashboard/page.tsx
++++ b/src/app/dashboard/page.tsx
+@@ -159,15 +159,17 @@ export default function DashboardPage() {
+                       </div>
+                       <div className="mt-3">
+                         <div className="flex justify-between text-xs text-gray-500 mb-1">
+-                          <span>답변 현황</span><span>{replied}/{total}개</span>
++                          <span>처리 현황</span><span>{doneCount}/{total}개 완료</span>
+                         </div>
+                         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden flex">
+-                          <div className="bg-green-400 h-full" style={{ width: total ? `${(replied/total)*100}%` : '0%' }}/>
+-                          <div className="bg-blue-400 h-full"  style={{ width: total ? `${(received/total)*100}%` : '0%' }}/>
++                          <div className="bg-green-400 h-full transition-all" style={{ width: total ? `${(doneCount/total)*100}%` : '0%' }}/>
++                          <div className="bg-blue-400 h-full transition-all"  style={{ width: total ? `${(procCount/total)*100}%` : '0%' }}/>
++                          <div className="bg-red-300 h-full transition-all"   style={{ width: total ? `${(pendCount/total)*100}%` : '0%' }}/>
+                         </div>
+                         <div className="flex gap-3 mt-1.5 text-xs">
+-                          {replied  > 0 && <span className="text-green-600">✓ 답변 {replied}</span>}
+-                          {received > 0 && <span className="text-blue-600">● 접수 {received}</span>}
++                          {doneCount > 0 && <span className="text-green-600">✓ 완료 {doneCount}</span>}
++                          {procCount > 0 && <span className="text-blue-600">● 처리중 {procCount}</span>}
++                          {pendCount > 0 && <span className="text-red-400">○ 미접수 {pendCount}</span>}
+                           {pending  > 0 && <span className="text-gray-400">○ 미접수 {pending}</span>}
+                         </div>
+                       </div>
+@@ -211,7 +213,7 @@ export default function DashboardPage() {
+           <div className="grid grid-cols-3 gap-3">
+             {[
+               { label: '전달받은 건수', value: myReceipts.length,    icon: Send,        color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', filter: 'all' },
+-              { label: '미확인',        value: pendingItems.length,  icon: AlertCircle,
++              { label: '미접수',        value: pendingItems.length,  icon: AlertCircle,
+                 color: pendingItems.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200',
+                 iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400', filter: 'pending' },
+               { label: '처리 완료',     value: myReceipts.filter(({msg}) => msg.status === 'done').length, icon: CheckCircle2, color: 'bg-green-50 border-green-200', iconColor: 'text-green-500', filter: 'done' },
+-- 
+2.43.0
+

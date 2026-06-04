@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ApprovalShell from '@/components/ApprovalShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenApprovalDocs, listenIncomingDocs } from '@/lib/db'
-import type { ApprovalDoc, IncomingDoc } from '@/types'
+import { listenApprovalDocs, listenIncomingDocs, listenInternalDocs } from '@/lib/db'
+import type { ApprovalDoc, IncomingDoc, InternalDoc } from '@/types'
 import { Clock, ChevronRight } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -12,14 +12,16 @@ export default function PendingPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const [docs,     setDocs]     = useState<ApprovalDoc[]>([])
-  const [incoming, setIncoming] = useState<IncomingDoc[]>([])
+  const [incoming,  setIncoming]  = useState<IncomingDoc[]>([])
+  const [internal,  setInternal]  = useState<InternalDoc[]>([])
 
   useEffect(() => {
     if (loading) return
     if (!user) { router.replace('/login'); return }
     const u1 = listenApprovalDocs(user.uid, setDocs)
     const u2 = listenIncomingDocs(user.uid, setIncoming)
-    return () => { u1(); u2() }
+    const u3 = listenInternalDocs(user.uid, setInternal)
+    return () => { u1(); u2(); u3() }
   }, [user, loading, router])
 
   const isMyTurn = (d: ApprovalDoc | IncomingDoc) => {
@@ -39,6 +41,7 @@ export default function PendingPage() {
   const pendingDocs = [
     ...docs.filter(isMyTurn).map(d => ({ ...d, docType: 'outgoing' as const })),
     ...incoming.filter(isMyTurn).map(d => ({ ...d, docType: 'incoming' as const })),
+    ...internal.filter(isMyTurn).map(d => ({ ...d, docType: 'internal' as const })),
   ].sort((a,b) => {
     const ta = (a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
     const tb = (b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
@@ -69,17 +72,17 @@ export default function PendingPage() {
           <div className="space-y-2">
             {pendingDocs.map(d => (
               <button key={d.id}
-                onClick={() => router.push(d.docType === 'incoming' ? `/approval/incoming/${d.id}` : `/approval/${d.id}`)}
+                onClick={() => router.push(d.docType === 'incoming' ? `/approval/incoming/${d.id}` : d.docType === 'internal' ? `/approval/internal/${d.id}` : `/approval/${d.id}`)}
                 className="w-full bg-white border border-red-200 rounded-xl p-4 hover:shadow-sm transition-all text-left">
                 <div className="flex items-center gap-3">
                   <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium shrink-0',
-                    d.docType === 'incoming' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700')}>
-                    {d.docType === 'incoming' ? '수신' : '발신'}
+                    d.docType === 'incoming' ? 'bg-green-100 text-green-700' : d.docType === 'internal' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700')}>
+                    {d.docType === 'incoming' ? '수신' : d.docType === 'internal' ? '품의' : '발신'}
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900 truncate">{d.title}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {'sender' in d ? (d as IncomingDoc).sender : (d as ApprovalDoc).orgName} · {formatDate(d.createdAt)}
+                      {'sender' in d ? (d as IncomingDoc).sender : 'dept' in d ? (d as InternalDoc).dept : (d as ApprovalDoc).orgName} · {formatDate(d.createdAt)}
                     </p>
                   </div>
                   <span className="text-xs text-red-500 shrink-0 font-medium">결재 필요</span>

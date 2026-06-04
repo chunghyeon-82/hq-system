@@ -1,0 +1,151 @@
+From 255245cbf4e3caaf1ea3f7218c1a42bcf2c92fac Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 01:28:14 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=EC=82=AC=EC=9D=B4=EB=93=9C=EB=B0=94=20?=
+ =?UTF-8?q?=EB=B1=83=EC=A7=80=20=EC=A0=84=EB=A9=B4=20=EA=B0=9C=ED=8E=B8=20?=
+ =?UTF-8?q?(1:1,=EC=B1=84=ED=8C=85,=EA=B3=B5=EC=A7=80,=EC=BA=98=EB=A6=B0?=
+ =?UTF-8?q?=EB=8D=94),=201:1=20=ED=91=B8=EC=8B=9C=20=EC=95=8C=EB=A6=BC=20?=
+ =?UTF-8?q?=EC=97=B0=EB=8F=99?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/direct/page.tsx     | 13 ++++++
+ src/components/AppShell.tsx | 79 +++++++++++++++++++++++++++++++------
+ 2 files changed, 80 insertions(+), 12 deletions(-)
+
+diff --git a/src/app/direct/page.tsx b/src/app/direct/page.tsx
+index dfa3c3b..8341433 100644
+--- a/src/app/direct/page.tsx
++++ b/src/app/direct/page.tsx
+@@ -55,6 +55,19 @@ export default function DirectPage() {
+       targetUid:   target.uid,
+       targetName:  target.name,
+     })
++    // 수신자에게 푸시 알림 발송
++    setTimeout(() => {
++      fetch('/api/push', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
++        body: JSON.stringify({
++          title: `💬 ${user.name}님의 1:1 메시지`,
++          body:  title.trim(),
++          url:   '/dashboard',
++          targetUids: [target.uid],
++        }),
++      }).catch(() => {})
++    }, 0)
+     setSent(true)
+     setSending(false)
+   }
+diff --git a/src/components/AppShell.tsx b/src/components/AppShell.tsx
+index 57dd3ab..4c33c31 100644
+--- a/src/components/AppShell.tsx
++++ b/src/components/AppShell.tsx
+@@ -3,8 +3,8 @@ import { ReactNode, useState, useEffect } from 'react'
+ import Link from 'next/link'
+ import { usePathname, useRouter } from 'next/navigation'
+ import { signOut } from 'firebase/auth'
+-import { listenMessagesForHQ, listenMessagesForBiz } from '@/lib/db'
+-import type { Message } from '@/types'
++import { listenMessagesForHQ, listenMessagesForBiz, listenNotices, listenChatMessages, listenEvents } from '@/lib/db'
++import type { Message, Notice, CalendarEvent } from '@/types'
+ import { auth } from '@/lib/firebase'
+ import { useAuth } from '@/lib/auth-context'
+ import { useSettings } from '@/lib/settings-context'
+@@ -25,6 +25,18 @@ export default function AppShell({ children, title, back }: Props) {
+   const [open,        setOpen]        = useState(false)
+   const [unreadCount,  setUnreadCount]  = useState(0)
+   const [unreadDirect, setUnreadDirect] = useState(0)
++  const [unreadChat,   setUnreadChat]   = useState(0)
++  const [unreadNotice, setUnreadNotice] = useState(0)
++  const [unreadCal,    setUnreadCal]    = useState(0)
++  const [lastSeenChat, setLastSeenChat] = useState<string>(() =>
++    typeof window !== 'undefined' ? (localStorage.getItem('lastSeenChat') || '') : ''
++  )
++  const [lastSeenNotice, setLastSeenNotice] = useState<string>(() =>
++    typeof window !== 'undefined' ? (localStorage.getItem('lastSeenNotice') || '') : ''
++  )
++  const [lastSeenCal, setLastSeenCal] = useState<string>(() =>
++    typeof window !== 'undefined' ? (localStorage.getItem('lastSeenCal') || '') : ''
++  )
+ 
+   const isAdmin      = user?.role === 'ADMIN'
+   const isHQChief    = user?.role === 'HQ_CHIEF'
+@@ -65,19 +77,62 @@ export default function AppShell({ children, title, back }: Props) {
+     }
+   }, [user, isHQ, isAdmin, isBiz])
+ 
++  // 운영본부 채팅 미읽음
++  useEffect(() => {
++    if (!user || !isHQ) return
++    return listenChatMessages(user.role, (msgs) => {
++      const unseen = msgs.filter(m => {
++        const t = typeof m.createdAt === 'object' && (m.createdAt as {toMillis?:()=>number})?.toMillis
++          ? (m.createdAt as {toMillis:()=>number}).toMillis().toString()
++          : String(m.createdAt)
++        return t > lastSeenChat && m.authorUid !== user.uid
++      }).length
++      setUnreadChat(unseen)
++    })
++  }, [user, isHQ, lastSeenChat])
++
++  // 공지사항 미읽음
++  useEffect(() => {
++    if (!user) return
++    return listenNotices((notices: Notice[]) => {
++      const unseen = notices.filter(n => {
++        const t = typeof n.createdAt === 'object' && (n.createdAt as {toMillis?:()=>number})?.toMillis
++          ? (n.createdAt as {toMillis:()=>number}).toMillis().toString()
++          : String(n.createdAt)
++        return t > lastSeenNotice && n.authorUid !== user.uid
++      }).length
++      setUnreadNotice(unseen)
++    })
++  }, [user, lastSeenNotice])
++
++  // 캘린더 미읽음 (오늘 이후 일정 중 내가 등록 안 한 것)
++  useEffect(() => {
++    if (!user) return
++    const today = new Date().toISOString().slice(0, 10)
++    return listenEvents(user.uid, user.bizId, (events: CalendarEvent[]) => {
++      const unseen = events.filter(e => {
++        const t = typeof e.createdAt === 'object' && (e.createdAt as {toMillis?:()=>number})?.toMillis
++          ? (e.createdAt as {toMillis:()=>number}).toMillis().toString()
++          : String(e.createdAt)
++        return e.date >= today && t > lastSeenCal && e.ownerUid !== user.uid
++      }).length
++      setUnreadCal(unseen)
++    })
++  }, [user, lastSeenCal])
++
+   const fontClass = settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
+ 
+   const nav = [
+-    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true },
+-    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ },
+-    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast },
+-    { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true },
+-    { href: '/calendar',   label: '캘린더',       icon: Calendar,        show: true },
+-    { href: '/search',     label: '메시지 검색',  icon: Search,          show: true },
+-    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ },
+-    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true },
+-    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin },
+-    { href: '/settings',   label: '설정',         icon: Settings,        show: true },
++    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true,          badge: 0 },
++    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ,          badge: unreadCount },
++    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast,  badge: 0 },
++    { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true,          badge: unreadNotice },
++    { href: '/calendar',   label: '캘린더',       icon: Calendar,        show: true,          badge: unreadCal },
++    { href: '/search',     label: '메시지 검색',  icon: Search,          show: true,          badge: 0 },
++    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ,          badge: unreadChat },
++    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true,          badge: unreadDirect },
++    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin,       badge: 0 },
++    { href: '/settings',   label: '설정',         icon: Settings,        show: true,          badge: 0 },
+   ].filter(n => n.show)
+ 
+   const handleLogout = async () => { await signOut(auth); router.replace('/login') }
+-- 
+2.43.0
+

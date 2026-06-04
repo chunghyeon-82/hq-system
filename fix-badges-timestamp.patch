@@ -1,0 +1,96 @@
+From 2679d7b3d333554f9fa60a33a33118859676e0ad Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 04:21:09 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EA=B0=9C=EB=B0=9C=EC=9E=90=20=EC=9D=B4?=
+ =?UTF-8?q?=EB=A6=84=20=EC=88=98=EC=A0=95,=20=EC=82=AC=EC=9D=B4=EB=93=9C?=
+ =?UTF-8?q?=EB=B0=94=20=EB=B1=83=EC=A7=80=20Timestamp=20=EB=B9=84=EA=B5=90?=
+ =?UTF-8?q?=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/settings/page.tsx   |  2 +-
+ src/components/AppShell.tsx | 35 +++++++++++++++++------------------
+ 2 files changed, 18 insertions(+), 19 deletions(-)
+
+diff --git a/src/app/settings/page.tsx b/src/app/settings/page.tsx
+index 731e9e4..e04f8da 100644
+--- a/src/app/settings/page.tsx
++++ b/src/app/settings/page.tsx
+@@ -196,7 +196,7 @@ export default function SettingsPage() {
+           {[
+             { label: '앱 이름',   value: '본부관리시스템' },
+             { label: '버전',      value: 'v1.0.0' },
+-            { label: '개발',      value: '운영본부' },
++            { label: '개발',      value: '조충현' },
+           ].map(({ label, value }) => (
+             <div key={label} className="flex justify-between items-center px-5 py-4">
+               <span className="text-sm text-gray-600">{label}</span>
+diff --git a/src/components/AppShell.tsx b/src/components/AppShell.tsx
+index 4c33c31..bd1c226 100644
+--- a/src/components/AppShell.tsx
++++ b/src/components/AppShell.tsx
+@@ -77,16 +77,21 @@ export default function AppShell({ children, title, back }: Props) {
+     }
+   }, [user, isHQ, isAdmin, isBiz])
+ 
++  // Firestore Timestamp → ms 변환
++  const toMs = (t: unknown): number => {
++    if (!t) return 0
++    if (typeof t === 'object' && t !== null && 'toMillis' in t) return (t as {toMillis:()=>number}).toMillis()
++    if (typeof t === 'number') return t
++    return 0
++  }
++
+   // 운영본부 채팅 미읽음
+   useEffect(() => {
+     if (!user || !isHQ) return
+     return listenChatMessages(user.role, (msgs) => {
+-      const unseen = msgs.filter(m => {
+-        const t = typeof m.createdAt === 'object' && (m.createdAt as {toMillis?:()=>number})?.toMillis
+-          ? (m.createdAt as {toMillis:()=>number}).toMillis().toString()
+-          : String(m.createdAt)
+-        return t > lastSeenChat && m.authorUid !== user.uid
+-      }).length
++      const unseen = msgs.filter(m =>
++        toMs(m.createdAt) > parseInt(lastSeenChat || '0') && m.authorUid !== user.uid
++      ).length
+       setUnreadChat(unseen)
+     })
+   }, [user, isHQ, lastSeenChat])
+@@ -95,12 +100,9 @@ export default function AppShell({ children, title, back }: Props) {
+   useEffect(() => {
+     if (!user) return
+     return listenNotices((notices: Notice[]) => {
+-      const unseen = notices.filter(n => {
+-        const t = typeof n.createdAt === 'object' && (n.createdAt as {toMillis?:()=>number})?.toMillis
+-          ? (n.createdAt as {toMillis:()=>number}).toMillis().toString()
+-          : String(n.createdAt)
+-        return t > lastSeenNotice && n.authorUid !== user.uid
+-      }).length
++      const unseen = notices.filter(n =>
++        toMs(n.createdAt) > parseInt(lastSeenNotice || '0') && n.authorUid !== user.uid
++      ).length
+       setUnreadNotice(unseen)
+     })
+   }, [user, lastSeenNotice])
+@@ -110,12 +112,9 @@ export default function AppShell({ children, title, back }: Props) {
+     if (!user) return
+     const today = new Date().toISOString().slice(0, 10)
+     return listenEvents(user.uid, user.bizId, (events: CalendarEvent[]) => {
+-      const unseen = events.filter(e => {
+-        const t = typeof e.createdAt === 'object' && (e.createdAt as {toMillis?:()=>number})?.toMillis
+-          ? (e.createdAt as {toMillis:()=>number}).toMillis().toString()
+-          : String(e.createdAt)
+-        return e.date >= today && t > lastSeenCal && e.ownerUid !== user.uid
+-      }).length
++      const unseen = events.filter(e =>
++        e.date >= today && toMs(e.createdAt) > parseInt(lastSeenCal || '0') && e.ownerUid !== user.uid
++      ).length
+       setUnreadCal(unseen)
+     })
+   }, [user, lastSeenCal])
+-- 
+2.43.0
+

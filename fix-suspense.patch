@@ -1,0 +1,52 @@
+From 0372cef0656ab4d62c9b34594c3dda5714af72c7 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 00:37:42 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20useSearchParams=20Suspense=20=EB=9E=98?=
+ =?UTF-8?q?=ED=95=91?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/approval/new/page.tsx | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/approval/new/page.tsx b/src/app/approval/new/page.tsx
+index ee439a2..438ba46 100644
+--- a/src/app/approval/new/page.tsx
++++ b/src/app/approval/new/page.tsx
+@@ -1,5 +1,5 @@
+ 'use client'
+-import { useEffect, useState, useRef, useCallback } from 'react'
++import { useEffect, useState, useRef, useCallback, Suspense } from 'react'
+ import { useRouter, useSearchParams } from 'next/navigation'
+ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+@@ -61,7 +61,7 @@ function getNextHeading(currentLine: string): string {
+ 
+ type Step = 'line' | 'write'
+ 
+-export default function ApprovalNewPage() {
++function ApprovalNewPageInner() {
+   const { user, loading } = useAuth()
+   const router = useRouter()
+   const searchParams = useSearchParams()
+@@ -622,3 +622,15 @@ export default function ApprovalNewPage() {
+     </AppShell>
+   )
+ }
++
++export default function ApprovalNewPage() {
++  return (
++    <Suspense fallback={
++      <div className="flex items-center justify-center h-screen">
++        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-600 border-t-transparent"/>
++      </div>
++    }>
++      <ApprovalNewPageInner/>
++    </Suspense>
++  )
++}
+-- 
+2.43.0
+

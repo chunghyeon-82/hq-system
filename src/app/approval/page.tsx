@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ApprovalShell from '@/components/ApprovalShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenApprovalDocs, listenIncomingDocs } from '@/lib/db'
-import type { ApprovalDoc, IncomingDoc } from '@/types'
+import { listenApprovalDocs, listenIncomingDocs, listenInternalDocs } from '@/lib/db'
+import type { ApprovalDoc, IncomingDoc, InternalDoc } from '@/types'
 import { FilePlus, FileInput, Clock, CheckCircle2, Inbox } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -12,7 +12,8 @@ export default function ApprovalPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const [docs,     setDocs]     = useState<ApprovalDoc[]>([])
-  const [incoming, setIncoming] = useState<IncomingDoc[]>([])
+  const [incoming,  setIncoming]  = useState<IncomingDoc[]>([])
+  const [internal,  setInternal]  = useState<InternalDoc[]>([])
 
   useEffect(() => {
     if (loading) return
@@ -21,7 +22,8 @@ export default function ApprovalPage() {
     if (!isHQ) { router.replace('/dashboard'); return }
     const u1 = listenApprovalDocs(user.uid, setDocs)
     const u2 = listenIncomingDocs(user.uid, setIncoming)
-    return () => { u1(); u2() }
+    const u3 = listenInternalDocs(user.uid, setInternal)
+    return () => { u1(); u2(); u3() }
   }, [user, loading, router])
 
   if (loading) return (
@@ -57,10 +59,10 @@ export default function ApprovalPage() {
     { label: '결재 대기',   value: pendingCount,                                           color: 'text-red-500',   bg: 'bg-red-50',   icon: Clock,         path: '/approval/status/pending' },
     { label: '발신 공문',   value: myDocs.filter(d => d.status === 'approved').length,     color: 'text-blue-500',  bg: 'bg-blue-50',  icon: FilePlus,      path: '/approval/docs/outgoing' },
     { label: '수신 공문',   value: myIncoming.filter(d => d.status === 'approved').length, color: 'text-green-600', bg: 'bg-green-50', icon: FileInput,     path: '/approval/docs/incoming' },
-    { label: '진행 중',     value: docs.filter(d => d.status === 'pending' && d.authorUid === user?.uid).length, color: 'text-amber-500', bg: 'bg-amber-50', icon: Inbox, path: '/approval/status/progress' },
+    { label: '진행 중',     value: docs.filter(d => d.status === 'pending' && d.authorUid === user?.uid).length + internal.filter(d => d.status === 'pending' && d.authorUid === user?.uid).length, color: 'text-amber-500', bg: 'bg-amber-50', icon: Inbox, path: '/approval/status/progress' },
   ]
 
-  const recentDocs = [...docs, ...incoming]
+  const recentDocs = [...docs, ...incoming, ...internal]
     .filter(d => d.authorUid === user?.uid || 
       (d as ApprovalDoc).approvers?.some(a => a.uid === user?.uid) ||
       (d as ApprovalDoc).finalApprover?.uid === user?.uid)
@@ -139,11 +141,11 @@ export default function ApprovalPage() {
                 const status = d.status
                 return (
                   <button key={i}
-                    onClick={() => router.push(isIncoming ? `/approval/incoming/${d.id}` : `/approval/${d.id}`)}
+                    onClick={() => router.push('dept' in d ? `/approval/internal/${d.id}` : isIncoming ? `/approval/incoming/${d.id}` : `/approval/${d.id}`)}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
                     <span className={clsx('text-xs px-2 py-0.5 rounded-full shrink-0 font-medium',
-                      isIncoming ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700')}>
-                      {isIncoming ? '수신' : '발신'}
+                      'dept' in d ? 'bg-amber-100 text-amber-700' : isIncoming ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700')}>
+                      {'dept' in d ? '품의' : isIncoming ? '수신' : '발신'}
                     </span>
                     <span className={clsx('text-xs px-2 py-0.5 rounded-full shrink-0',
                       status === 'approved' ? 'bg-green-100 text-green-700' :

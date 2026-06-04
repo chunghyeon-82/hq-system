@@ -1,0 +1,29 @@
+From c138ed7e789223b298071bd0fcf2e0219388a53a Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 04:55:52 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20approval/new=20approvalLines,=20recipien?=
+ =?UTF-8?q?tContacts=20state=20=EB=88=84=EB=9D=BD=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/approval/new/page.tsx | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/app/approval/new/page.tsx b/src/app/approval/new/page.tsx
+index c4dcb88..1240f1b 100644
+--- a/src/app/approval/new/page.tsx
++++ b/src/app/approval/new/page.tsx
+@@ -40,6 +40,8 @@ function ApprovalNewPageInner() {
+   const [templates, setTemplates] = useState<ApprovalTemplate[]>([])
+   const [allDocs,   setAllDocs]   = useState<ApprovalDoc[]>([])
+   const [seals,     setSeals]     = useState<OfficialSeal[]>([])
++  const [approvalLines,     setApprovalLines]     = useState<ApprovalLine[]>([])
++  const [recipientContacts, setRecipientContacts] = useState<RecipientContact[]>([])
+   const [showTplPicker, setShowTplPicker] = useState(false)
+   const [showSaveTpl,   setShowSaveTpl]   = useState(false)
+   const [showRecipientPicker, setShowRecipientPicker] = useState(false)
+-- 
+2.43.0
+

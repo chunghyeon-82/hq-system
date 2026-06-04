@@ -1,0 +1,84 @@
+From 82b6553fe26f215c3ba7f4f05aea76de528fea63 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 01:02:21 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=ED=86=A0=EA=B8=80=20=EC=8A=A4=EC=9C=84?=
+ =?UTF-8?q?=EC=B9=98=20=EC=A2=8C=EC=9A=B0=20=EC=9D=B4=EB=8F=99=20=EC=95=A0?=
+ =?UTF-8?q?=EB=8B=88=EB=A9=94=EC=9D=B4=EC=85=98=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/settings/page.tsx | 49 +++++++++++++++++++++++++++++----------
+ 1 file changed, 37 insertions(+), 12 deletions(-)
+
+diff --git a/src/app/settings/page.tsx b/src/app/settings/page.tsx
+index 4665673..fe9cd14 100644
+--- a/src/app/settings/page.tsx
++++ b/src/app/settings/page.tsx
+@@ -243,12 +243,25 @@ export default function SettingsPage() {
+               </div>
+             </div>
+             <button onClick={togglePush} disabled={pushLoading || pushPerm === 'denied'}
+-              className={`relative w-12 h-6 rounded-full transition-colors duration-200 disabled:opacity-40 ${
+-                settings.pushEnabled ? 'bg-primary-600' : 'bg-gray-300'
+-              }`}>
+-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+-                settings.pushEnabled ? 'translate-x-6' : 'translate-x-0.5'
+-              }`}/>
++              style={{
++                position:'relative', width:'52px', height:'28px',
++                borderRadius:'99px', border:'none', cursor:'pointer',
++                backgroundColor: settings.pushEnabled ? '#534AB7' : '#D1D5DB',
++                transition:'background-color .2s',
++                opacity: (pushLoading || pushPerm === 'denied') ? 0.4 : 1,
++                flexShrink: 0,
++              }}>
++              <span style={{
++                position:'absolute',
++                top:'3px',
++                left: settings.pushEnabled ? '27px' : '3px',
++                width:'22px', height:'22px',
++                backgroundColor:'white',
++                borderRadius:'50%',
++                boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
++                transition:'left .2s',
++                display:'block',
++              }}/>
+             </button>
+           </div>
+           {/* 무음 모드 */}
+@@ -261,12 +274,24 @@ export default function SettingsPage() {
+               </div>
+             </div>
+             <button onClick={toggleSilent}
+-              className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
+-                settings.silentMode ? 'bg-primary-600' : 'bg-gray-300'
+-              }`}>
+-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+-                settings.silentMode ? 'translate-x-6' : 'translate-x-0.5'
+-              }`}/>
++              style={{
++                position:'relative', width:'52px', height:'28px',
++                borderRadius:'99px', border:'none', cursor:'pointer',
++                backgroundColor: settings.silentMode ? '#534AB7' : '#D1D5DB',
++                transition:'background-color .2s',
++                flexShrink: 0,
++              }}>
++              <span style={{
++                position:'absolute',
++                top:'3px',
++                left: settings.silentMode ? '27px' : '3px',
++                width:'22px', height:'22px',
++                backgroundColor:'white',
++                borderRadius:'50%',
++                boxShadow:'0 1px 3px rgba(0,0,0,0.3)',
++                transition:'left .2s',
++                display:'block',
++              }}/>
+             </button>
+           </div>
+         </div>
+-- 
+2.43.0
+

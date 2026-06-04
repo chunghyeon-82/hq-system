@@ -8,7 +8,7 @@ import type {
   MessageStatus, MessageType, MessageCategory,
   Notice, CalendarEvent, MessageTemplate,
   ApprovalDoc, ApprovalTemplate, SavedEmailContact, OfficialSeal,
-  IncomingDoc, ApprovalLine, FooterInfo, RecipientContact
+  IncomingDoc, ApprovalLine, FooterInfo, RecipientContact, InternalDoc
 } from '@/types'
 
 const now = () => new Date().toISOString()
@@ -533,4 +533,33 @@ export async function addRecipientContact(data: Omit<RecipientContact, 'id' | 'c
 
 export async function deleteRecipientContact(id: string) {
   await deleteDoc(doc(db, 'recipientContacts', id))
+}
+
+// ── 내부 품의서 ────────────────────────────────────────
+export function listenInternalDocs(uid: string, cb: (docs: InternalDoc[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'internalDocs'), orderBy('createdAt', 'desc')),
+    snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as InternalDoc))
+      cb(all.filter(d =>
+        d.authorUid === uid ||
+        d.approvers?.some(a => a.uid === uid) ||
+        d.finalApprover?.uid === uid
+      ))
+    }
+  )
+}
+
+export async function createInternalDoc(data: Omit<InternalDoc, 'id' | 'createdAt'>) {
+  return await addDoc(collection(db, 'internalDocs'), {
+    ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  })
+}
+
+export async function updateInternalDoc(id: string, data: Partial<InternalDoc>) {
+  await updateDoc(doc(db, 'internalDocs', id), { ...data, updatedAt: serverTimestamp() })
+}
+
+export async function deleteInternalDoc(id: string) {
+  await deleteDoc(doc(db, 'internalDocs', id))
 }

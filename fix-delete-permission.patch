@@ -1,0 +1,40 @@
+From 8d3eb94936fc35b460a510aada464df1897e2764 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 23:18:51 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EB=A9=94=EC=8B=9C=EC=A7=80=20=EC=82=AD?=
+ =?UTF-8?q?=EC=A0=9C=20=EA=B6=8C=ED=95=9C=20-=20=EA=B4=80=EB=A6=AC?=
+ =?UTF-8?q?=EC=9E=90/=EC=9E=91=EC=84=B1=EC=9E=90/=EC=88=98=EC=8B=A0?=
+ =?UTF-8?q?=EC=9E=90=20=EB=AA=A8=EB=91=90=20=EA=B0=80=EB=8A=A5?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/messages/[id]/page.tsx | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/messages/[id]/page.tsx b/src/app/messages/[id]/page.tsx
+index ad8c749..fb305ce 100644
+--- a/src/app/messages/[id]/page.tsx
++++ b/src/app/messages/[id]/page.tsx
+@@ -379,7 +379,7 @@ export default function MessageDetailPage() {
+                       <RotateCcw size={15}/> 재오픈
+                     </button>
+                 }
+-                {(isAdmin || message.authorUid === user?.uid) && (
++                {(isAdmin || message.authorUid === user?.uid || message.targetUid === user?.uid || (user?.bizId && message.targetBizIds?.includes(user.bizId))) && (
+                   <button onClick={handleDelete}
+                     className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
+                     <Trash2 size={15}/> 삭제
+@@ -437,7 +437,7 @@ export default function MessageDetailPage() {
+                   }
+                 </>
+               )}
+-              {(isAdmin || message.authorUid === user?.uid) && (
++              {(isAdmin || message.authorUid === user?.uid || message.targetUid === user?.uid || (user?.bizId && message.targetBizIds?.includes(user.bizId))) && (
+                 <button onClick={handleDelete}
+                   className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
+                   <Trash2 size={14}/> 삭제
+-- 
+2.43.0
+

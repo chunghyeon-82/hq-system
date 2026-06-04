@@ -1,0 +1,28 @@
+From db682524c8bf90ac9b72da85f57a476363f302fd Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 04:57:31 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20settings/approval-lines=20lineType=20?=
+ =?UTF-8?q?=ED=95=84=EB=93=9C=20=EB=88=84=EB=9D=BD=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/settings/approval-lines/page.tsx | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/app/settings/approval-lines/page.tsx b/src/app/settings/approval-lines/page.tsx
+index f8bf692..699ba07 100644
+--- a/src/app/settings/approval-lines/page.tsx
++++ b/src/app/settings/approval-lines/page.tsx
+@@ -46,6 +46,7 @@ export default function ApprovalLinesPage() {
+     setSaving(true)
+     await saveApprovalLine({
+       name: lineName.trim(),
++      lineType: 'outgoing',
+       approvers: midApprovers,
+       finalApprover,
+       ownerUid: user.uid,
+-- 
+2.43.0
+

@@ -1,0 +1,59 @@
+From 531952dfa1e3f9e7e54c71b4d6bd54d051771b0d Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 00:00:17 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20lunar-javascript=20=ED=83=80=EC=9E=85=20?=
+ =?UTF-8?q?=EC=84=A0=EC=96=B8=20=EC=B6=94=EA=B0=80,=20=EB=B9=8C=EB=93=9C?=
+ =?UTF-8?q?=20=EC=98=A4=EB=A5=98=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/lib/calendar-utils.ts       | 12 ++----------
+ src/types/lunar-javascript.d.ts | 11 +++++++++++
+ 2 files changed, 13 insertions(+), 10 deletions(-)
+ create mode 100644 src/types/lunar-javascript.d.ts
+
+diff --git a/src/lib/calendar-utils.ts b/src/lib/calendar-utils.ts
+index 31b2ef9..3b47159 100644
+--- a/src/lib/calendar-utils.ts
++++ b/src/lib/calendar-utils.ts
+@@ -1,16 +1,8 @@
+ // ── 음력 변환 ──────────────────────────────────────────
+-// lunar-javascript 패키지 사용
+-let LunarLib: any = null
+-async function getLunarLib() {
+-  if (!LunarLib) {
+-    LunarLib = (await import('lunar-javascript')).default ?? (await import('lunar-javascript'))
+-  }
+-  return LunarLib
+-}
++import { Lunar } from 'lunar-javascript'
+ 
+-export async function getLunarDate(year: number, month: number, day: number): Promise<string> {
++export function getLunarDate(year: number, month: number, day: number): string {
+   try {
+-    const { Lunar } = await getLunarLib()
+     const lunar = Lunar.fromDate(new Date(year, month - 1, day))
+     const lm = lunar.getMonth()
+     const ld = lunar.getDay()
+diff --git a/src/types/lunar-javascript.d.ts b/src/types/lunar-javascript.d.ts
+new file mode 100644
+index 0000000..22309b2
+--- /dev/null
++++ b/src/types/lunar-javascript.d.ts
+@@ -0,0 +1,11 @@
++declare module 'lunar-javascript' {
++  export class Lunar {
++    static fromDate(date: Date): Lunar
++    getMonth(): number
++    getDay(): number
++    isLeap(): boolean
++  }
++  export class Solar {
++    static fromDate(date: Date): Solar
++  }
++}
+-- 
+2.43.0
+

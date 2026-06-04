@@ -1,0 +1,289 @@
+From 3afa551fd850cfbc815d99cfce67780df948601e Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 00:50:24 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?fix:=20=ED=91=B8=EC=8B=9C=20=EC=95=8C?=
+ =?UTF-8?q?=EB=A6=BC=20=EC=98=A4=EB=A5=98=20=EC=B2=98=EB=A6=AC=20=EA=B0=9C?=
+ =?UTF-8?q?=EC=84=A0=20-=20=EC=98=A4=EB=A5=98=EB=A9=94=EC=8B=9C=EC=A7=80?=
+ =?UTF-8?q?=20=ED=91=9C=EC=8B=9C,=20=ED=83=80=EC=9E=84=EC=95=84=EC=9B=83,?=
+ =?UTF-8?q?=20=EC=84=B1=EA=B3=B5=20=ED=94=BC=EB=93=9C=EB=B0=B1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/components/PushPermissionModal.tsx | 86 ++++++++++++++++++--------
+ src/lib/push.ts                        | 25 ++++++--
+ 2 files changed, 79 insertions(+), 32 deletions(-)
+
+diff --git a/src/components/PushPermissionModal.tsx b/src/components/PushPermissionModal.tsx
+index cf09478..90c5391 100644
+--- a/src/components/PushPermissionModal.tsx
++++ b/src/components/PushPermissionModal.tsx
+@@ -1,6 +1,6 @@
+ 'use client'
+ import { useState } from 'react'
+-import { Bell, X } from 'lucide-react'
++import { Bell, X, AlertCircle, CheckCircle2 } from 'lucide-react'
+ import { subscribePush } from '@/lib/push'
+ import { useAuth } from '@/lib/auth-context'
+ import { useSettings } from '@/lib/settings-context'
+@@ -8,48 +8,82 @@ import { useSettings } from '@/lib/settings-context'
+ interface Props { onClose: () => void }
+ 
+ export default function PushPermissionModal({ onClose }: Props) {
+-  const { user }             = useAuth()
+-  const { updateSettings }   = useSettings()
++  const { user }              = useAuth()
++  const { updateSettings }    = useSettings()
+   const [loading, setLoading] = useState(false)
++  const [error,   setError]   = useState('')
++  const [success, setSuccess] = useState(false)
+ 
+   const handleAllow = async () => {
+     if (!user) return
+     setLoading(true)
+-    const permission = await Notification.requestPermission()
+-    if (permission === 'granted') {
+-      const ok = await subscribePush(user.uid)
+-      if (ok) await updateSettings({ pushEnabled: true })
++    setError('')
++    try {
++      const permission = await Notification.requestPermission()
++      if (permission === 'granted') {
++        const result = await subscribePush(user.uid)
++        if (result.ok) {
++          await updateSettings({ pushEnabled: true })
++          setSuccess(true)
++          setTimeout(() => onClose(), 1500)
++        } else {
++          setError(result.error || '알림 등록에 실패했습니다')
++        }
++      } else if (permission === 'denied') {
++        setError('브라우저에서 알림을 차단했습니다. 브라우저 설정에서 허용해주세요.')
++      } else {
++        onClose()
++      }
++    } catch (e) {
++      setError(e instanceof Error ? e.message : '오류가 발생했습니다')
++    } finally {
++      setLoading(false)
+     }
+-    setLoading(false)
+-    onClose()
+   }
+ 
+   return (
+     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4">
+       <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
+         <div className="flex items-start justify-between mb-4">
+-          <div className="w-12 h-12 bg-primary-50 rounded-2xl flex items-center justify-center">
+-            <Bell size={24} className="text-primary-600"/>
++          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${success ? 'bg-green-50' : 'bg-primary-50'}`}>
++            {success
++              ? <CheckCircle2 size={24} className="text-green-500"/>
++              : <Bell size={24} className="text-primary-600"/>}
+           </div>
+           <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+             <X size={20}/>
+           </button>
+         </div>
+-        <h2 className="font-bold text-gray-900 text-lg mb-2">푸시 알림 허용</h2>
+-        <p className="text-sm text-gray-500 leading-relaxed mb-6">
+-          새 전달, 공지사항, 일정 알림을 실시간으로 받을 수 있습니다.
+-          중요한 업무를 놓치지 마세요.
+-        </p>
+-        <div className="flex gap-2">
+-          <button onClick={onClose}
+-            className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">
+-            나중에
+-          </button>
+-          <button onClick={handleAllow} disabled={loading}
+-            className="flex-1 py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800 disabled:opacity-60">
+-            {loading ? '처리 중...' : '허용하기'}
+-          </button>
+-        </div>
++        {success ? (
++          <>
++            <h2 className="font-bold text-gray-900 text-lg mb-2">알림 등록 완료!</h2>
++            <p className="text-sm text-gray-500">이제 새 전달과 공지사항 알림을 받을 수 있습니다.</p>
++          </>
++        ) : (
++          <>
++            <h2 className="font-bold text-gray-900 text-lg mb-2">푸시 알림 허용</h2>
++            <p className="text-sm text-gray-500 leading-relaxed mb-4">
++              새 전달, 공지사항, 일정 알림을 실시간으로 받을 수 있습니다.
++              중요한 업무를 놓치지 마세요.
++            </p>
++            {error && (
++              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
++                <AlertCircle size={15} className="text-red-500 shrink-0 mt-0.5"/>
++                <p className="text-xs text-red-600">{error}</p>
++              </div>
++            )}
++            <div className="flex gap-2">
++              <button onClick={onClose}
++                className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">
++                나중에
++              </button>
++              <button onClick={handleAllow} disabled={loading}
++                className="flex-1 py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800 disabled:opacity-60">
++                {loading ? '등록 중...' : '허용하기'}
++              </button>
++            </div>
++          </>
++        )}
+       </div>
+     </div>
+   )
+diff --git a/src/lib/push.ts b/src/lib/push.ts
+index 9d3b021..2820328 100644
+--- a/src/lib/push.ts
++++ b/src/lib/push.ts
+@@ -9,11 +9,22 @@ export function urlBase64ToUint8Array(base64String: string) {
+   return Uint8Array.from(Array.from(rawData).map(c => c.charCodeAt(0)))
+ }
+ 
+-export async function subscribePush(uid: string): Promise<boolean> {
++export async function subscribePush(uid: string): Promise<{ ok: boolean; error?: string }> {
+   try {
+-    const reg = await navigator.serviceWorker.ready
+     const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+-    if (!vapidKey) return false
++    if (!vapidKey) return { ok: false, error: 'VAPID 키가 설정되지 않았습니다' }
++
++    // Service Worker 준비 대기 (최대 10초)
++    const reg = await Promise.race([
++      navigator.serviceWorker.ready,
++      new Promise<never>((_, reject) =>
++        setTimeout(() => reject(new Error('Service Worker 준비 시간 초과')), 10000)
++      )
++    ]) as ServiceWorkerRegistration
++
++    // 기존 구독 확인
++    const existingSub = await reg.pushManager.getSubscription()
++    if (existingSub) await existingSub.unsubscribe()
+ 
+     const sub = await reg.pushManager.subscribe({
+       userVisibleOnly: true,
+@@ -24,9 +35,11 @@ export async function subscribePush(uid: string): Promise<boolean> {
+       subscription: JSON.parse(JSON.stringify(sub)),
+       updatedAt: serverTimestamp(),
+     })
+-    return true
+-  } catch {
+-    return false
++    return { ok: true }
++  } catch (e) {
++    const msg = e instanceof Error ? e.message : '알 수 없는 오류'
++    console.error('Push subscribe error:', msg)
++    return { ok: false, error: msg }
+   }
+ }
+ 
+-- 
+2.43.0
+
+
+From 25b2442dffaba2e7835030cc15dba33136d68ddc Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 00:55:38 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?fix:=20=ED=91=B8=EC=8B=9C=20=EC=95=8C?=
+ =?UTF-8?q?=EB=A6=BC=20=EB=B0=98=ED=99=98=EA=B0=92=20=ED=83=80=EC=9E=85=20?=
+ =?UTF-8?q?=EC=88=98=EC=A0=95,=20=EA=B3=B5=EC=A7=80/=EC=A0=84=EB=8B=AC=20?=
+ =?UTF-8?q?=EB=93=B1=EB=A1=9D=20=EB=B8=94=EB=A1=9C=ED=82=B9=20=EC=A0=9C?=
+ =?UTF-8?q?=EA=B1=B0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/compose/page.tsx  | 22 ++++++++++++----------
+ src/app/notices/page.tsx  | 22 ++++++++++++----------
+ src/app/settings/page.tsx |  4 ++--
+ 3 files changed, 26 insertions(+), 22 deletions(-)
+
+diff --git a/src/app/compose/page.tsx b/src/app/compose/page.tsx
+index 90dc712..add2a56 100644
+--- a/src/app/compose/page.tsx
++++ b/src/app/compose/page.tsx
+@@ -88,17 +88,19 @@ function ComposeContent() {
+       ...(showEvent && eventDate ? { eventDate, eventTime, eventTitle: eventTitle || title } : {}),
+       ...(showLink && linkUrl    ? { linkUrl, linkLabel: linkLabel || linkUrl }             : {}),
+     })
+-    // 수신 사업장 대표에게 푸시 발송
++    // 수신 사업장 대표에게 푸시 발송 (비동기 - 블로킹 없음)
+     const categoryLabel = { instruction: '업무지시', confirm: '확인요청', notice: '단순공지' }[category]
+-    fetch('/api/push', {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CLEANUP_SECRET}` },
+-      body: JSON.stringify({
+-        title: `[${categoryLabel}] ${title.trim()}`,
+-        body:  body.trim().slice(0, 100),
+-        url:   '/dashboard',
+-      }),
+-    }).catch(() => {})
++    setTimeout(() => {
++      fetch('/api/push', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
++        body: JSON.stringify({
++          title: `[${categoryLabel}] ${title.trim()}`,
++          body:  body.trim().slice(0, 100),
++          url:   '/dashboard',
++        }),
++      }).catch(() => {})
++    }, 0)
+     setSent(true)
+     setSending(false)
+   }
+diff --git a/src/app/notices/page.tsx b/src/app/notices/page.tsx
+index 9d1a102..431bcc8 100644
+--- a/src/app/notices/page.tsx
++++ b/src/app/notices/page.tsx
+@@ -46,16 +46,18 @@ export default function NoticesPage() {
+       authorName: user.name,
+       expiresAt:  new Date(expiresAt).toISOString(),
+     })
+-    // 전체 푸시 발송
+-    fetch('/api/push', {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CLEANUP_SECRET}` },
+-      body: JSON.stringify({
+-        title: `[공지] ${title.trim()}`,
+-        body:  body.trim().slice(0, 100),
+-        url:   '/notices',
+-      }),
+-    }).catch(() => {})
++    // 전체 푸시 발송 (비동기 - 블로킹 없음)
++    setTimeout(() => {
++      fetch('/api/push', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
++        body: JSON.stringify({
++          title: `[공지] ${title.trim()}`,
++          body:  body.trim().slice(0, 100),
++          url:   '/notices',
++        }),
++      }).catch(() => {})
++    }, 0)
+     setTitle(''); setBody(''); setExpiresAt('')
+     setShowForm(false)
+     setSaving(false)
+diff --git a/src/app/settings/page.tsx b/src/app/settings/page.tsx
+index c7bdab4..4665673 100644
+--- a/src/app/settings/page.tsx
++++ b/src/app/settings/page.tsx
+@@ -62,8 +62,8 @@ export default function SettingsPage() {
+       const perm = await Notification.requestPermission()
+       setPushPerm(perm)
+       if (perm === 'granted') {
+-        const ok = await subscribePush(user.uid)
+-        if (ok) await updateSettings({ pushEnabled: true })
++        const result = await subscribePush(user.uid)
++        if (result.ok) await updateSettings({ pushEnabled: true })
+       }
+     }
+     setPushLoading(false)
+-- 
+2.43.0
+

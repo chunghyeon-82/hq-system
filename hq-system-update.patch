@@ -1,0 +1,2657 @@
+From d089cbc379608f1f116d0012cd2422b4c75e8761 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 00:08:07 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=EB=B3=B4=EC=95=88=EA=B7=9C=EC=B9=99?=
+ =?UTF-8?q?=C2=B7=ED=91=B8=EC=8B=9C=EC=95=8C=EB=A6=BC=C2=B7=EC=84=A4?=
+ =?UTF-8?q?=EC=A0=95=C2=B7=EA=B3=B5=EC=A7=80=C2=B7=EC=BA=98=EB=A6=B0?=
+ =?UTF-8?q?=EB=8D=94=C2=B7=EC=9D=BC=EC=A0=95=EC=B2=A8=EB=B6=80=C2=B7?=
+ =?UTF-8?q?=EB=A7=81=ED=81=AC=EC=B2=A8=EB=B6=80=C2=B7=ED=85=9C=ED=94=8C?=
+ =?UTF-8?q?=EB=A6=BF=C2=B7=EA=B2=80=EC=83=89=C2=B71:1=EC=A0=9C=ED=95=9C?=
+ =?UTF-8?q?=ED=95=B4=EC=A0=9C=C2=B7=EC=9E=90=EB=8F=99=EC=82=AD=EC=A0=9C=20?=
+ =?UTF-8?q?=EC=B6=94=EA=B0=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ firestore.rules                        | 140 ++++++++--
+ package.json                           |   5 +-
+ public/sw.js                           |  37 ++-
+ src/app/api/cleanup/route.ts           | 110 ++++++++
+ src/app/calendar/page.tsx              | 216 ++++++++++++++++
+ src/app/compose/page.tsx               | 165 +++++++++++-
+ src/app/direct/page.tsx                |  74 ++++--
+ src/app/layout.tsx                     |   9 +-
+ src/app/messages/[id]/page.tsx         | 230 ++++++++---------
+ src/app/notices/page.tsx               | 178 +++++++++++++
+ src/app/search/page.tsx                | 117 +++++++++
+ src/app/settings/page.tsx              | 341 +++++++++++++++++++++++++
+ src/components/AppShell.tsx            |  41 +--
+ src/components/PushInit.tsx            |  30 +++
+ src/components/PushPermissionModal.tsx |  56 ++++
+ src/lib/db.ts                          |  91 +++++++
+ src/lib/push.ts                        |  45 ++++
+ src/lib/settings-context.tsx           |  64 +++++
+ src/types/index.ts                     |  97 +++++--
+ vercel.json                            |   8 +
+ 20 files changed, 1830 insertions(+), 224 deletions(-)
+ create mode 100644 src/app/api/cleanup/route.ts
+ create mode 100644 src/app/calendar/page.tsx
+ create mode 100644 src/app/notices/page.tsx
+ create mode 100644 src/app/search/page.tsx
+ create mode 100644 src/app/settings/page.tsx
+ create mode 100644 src/components/PushInit.tsx
+ create mode 100644 src/components/PushPermissionModal.tsx
+ create mode 100644 src/lib/push.ts
+ create mode 100644 src/lib/settings-context.tsx
+ create mode 100644 vercel.json
+
+diff --git a/firestore.rules b/firestore.rules
+index 14f0e5c..f6baf95 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -2,35 +2,141 @@ rules_version = '2';
+ service cloud.firestore {
+   match /databases/{database}/documents {
+ 
+-    function userRole() {
+-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
++    // ── 헬퍼 함수 ──────────────────────────────────────
++    function isSignedIn()  { return request.auth != null }
++    function myUid()       { return request.auth.uid }
++    function myData()      { return get(/databases/$(database)/documents/users/$(myUid())).data }
++    function myRole()      { return myData().role }
++    function myBizId()     { return myData().bizId }
++
++    function isAdmin()     { return myRole() == 'ADMIN' }
++    function isHQChief()   { return myRole() == 'HQ_CHIEF' }
++    function isHQMember()  { return myRole() == 'HQ_MEMBER' }
++    function isHQ()        { return myRole() in ['HQ_CHIEF', 'HQ_MEMBER'] }
++    function isHQOrAdmin() { return isAdmin() || isHQ() }
++    function isBizRep()    { return myRole() == 'BIZ_REP' }
++
++    function canBroadcast() {
++      return isAdmin() || isHQChief() ||
++             (isHQMember() && myData().get('permissions', {}).get('canBroadcast', false) == true)
+     }
+-    function isAdmin()    { return userRole() == 'ADMIN' }
+-    function isHQ()       { return userRole() in ['HQ_CHIEF', 'HQ_MEMBER'] }
+-    function isHQOrAdmin(){ return isAdmin() || isHQ() }
+ 
+-    // 사용자
++    // ── 사용자 ─────────────────────────────────────────
+     match /users/{uid} {
+-      allow read:  if request.auth != null
+-      allow write: if request.auth.uid == uid || isAdmin()
++      allow read:   if isSignedIn()
++      // 본인 프로필 수정 (role/permissions 변경 불가), 관리자는 전부 가능
++      allow create: if isAdmin()
++      allow update: if isAdmin()
++                    || (myUid() == uid
++                        && !request.resource.data.diff(resource.data).affectedKeys()
++                            .hasAny(['role', 'permissions', 'bizId']))
++      allow delete: if isAdmin()
+     }
+ 
+-    // 사업장: 관리자만 생성/수정/삭제, 로그인 사용자 읽기
++    // ── 사업장 ─────────────────────────────────────────
+     match /businesses/{bizId} {
+-      allow read:                if request.auth != null
++      allow read:   if isSignedIn()
+       allow create, update, delete: if isAdmin()
+     }
+ 
+-    // 메시지
++    // ── 전달 메시지 ────────────────────────────────────
+     match /messages/{msgId} {
+-      allow read: if request.auth != null && (
++      // 읽기: 본부/관리자 전체, 사업장은 자기 것만, 1:1은 당사자만
++      allow read: if isSignedIn() && (
++        isHQOrAdmin()
++        || (isBizRep() && (
++              resource.data.targetBizIds.hasAny([myBizId()])
++              || resource.data.authorUid == myUid()
++              || resource.data.targetUid == myUid()
++           ))
++      )
++      // 작성: broadcast는 본부/관리자, direct는 사업장도 가능
++      allow create: if isSignedIn() && (
++        (request.resource.data.type == 'broadcast' && canBroadcast())
++        || (request.resource.data.type == 'direct'
++            && (isHQOrAdmin() || isBizRep())
++            && request.resource.data.authorUid == myUid())
++      )
++      // 수정: 본부/관리자(상태변경·답변), 사업장은 자기 receipt만
++      allow update: if isSignedIn() && (
++        isHQOrAdmin()
++        || (isBizRep() && resource.data.targetBizIds.hasAny([myBizId()]))
++        || (isBizRep() && resource.data.targetUid == myUid())
++      )
++      allow delete: if isAdmin()
++    }
++
++    // ── 운영본부 단체채팅 ──────────────────────────────
++    match /hq_chat/{chatId} {
++      allow read:   if isSignedIn() && isHQOrAdmin()
++      allow create: if isSignedIn() && isHQOrAdmin()
++                    && request.resource.data.authorUid == myUid()
++      allow update, delete: if isAdmin()
++    }
++
++    // ── 공지사항 ────────────────────────────────────────
++    match /notices/{noticeId} {
++      allow read:   if isSignedIn()
++      allow create: if canBroadcast()
++                    && request.resource.data.authorUid == myUid()
++      // 작성자 본인 또는 관리자만 수정/삭제
++      allow update: if isAdmin()
++                    || (isHQOrAdmin() && resource.data.authorUid == myUid())
++      allow delete: if isAdmin()
++                    || (isHQOrAdmin() && resource.data.authorUid == myUid())
++    }
++
++    // ── 캘린더 일정 ────────────────────────────────────
++    match /events/{eventId} {
++      // 본부/관리자: 전체 읽기, 사업장: 자기 것만
++      allow read: if isSignedIn() && (
+         isHQOrAdmin()
+-        || resource.data.targetBizIds.hasAny([
+-            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.bizId
+-           ])
++        || resource.data.targetBizIds.hasAny([myBizId()])
++        || resource.data.ownerUid == myUid()
++      )
++      allow create: if isSignedIn()
++                    && request.resource.data.ownerUid == myUid()
++      allow update: if isSignedIn() && (
++        isAdmin()
++        || resource.data.ownerUid == myUid()
++        // 사업장 대표는 자기 캘린더에 추가(addedToCalendar 필드만 변경)만 허용
++        || (isBizRep() && resource.data.targetBizIds.hasAny([myBizId()])
++            && request.resource.data.diff(resource.data).affectedKeys()
++               .hasOnly(['addedBy', 'updatedAt']))
+       )
+-      allow create: if isHQ()        // 본부장/본부멤버만 전달 작성
+-      allow update: if request.auth != null  // 접수/답변은 누구나
++      allow delete: if isAdmin()
++                    || resource.data.ownerUid == myUid()
++    }
++
++    // ── 메시지 템플릿 ──────────────────────────────────
++    match /templates/{tplId} {
++      allow read:   if isSignedIn() && resource.data.ownerUid == myUid()
++      allow create: if isSignedIn()
++                    && request.resource.data.ownerUid == myUid()
++      allow update, delete: if isSignedIn()
++                    && resource.data.ownerUid == myUid()
++    }
++
++    // ── 사용자 설정 ────────────────────────────────────
++    match /userSettings/{uid} {
++      allow read, write: if isSignedIn() && myUid() == uid
++    }
++
++    // ── 사업장 순서 (개인별) ───────────────────────────
++    match /bizOrder/{uid} {
++      allow read, write: if isSignedIn() && myUid() == uid
++    }
++
++    // ── FCM 토큰 ────────────────────────────────────────
++    match /fcmTokens/{uid} {
++      allow read:  if isAdmin()
++      allow write: if isSignedIn() && myUid() == uid
++    }
++
++    // ── 자동 삭제 로그 (스케줄러용) ────────────────────
++    match /deletionLogs/{logId} {
++      allow read:  if isAdmin()
++      allow write: if false  // Cloud Functions만 쓰기 가능
+     }
+   }
+ }
+diff --git a/package.json b/package.json
+index f58042f..7e9367a 100644
+--- a/package.json
++++ b/package.json
+@@ -14,7 +14,8 @@
+     "lucide-react": "^0.383.0",
+     "next": "14.2.3",
+     "react": "^18",
+-    "react-dom": "^18"
++    "react-dom": "^18",
++    "firebase-admin": "^12.0.0"
+   },
+   "devDependencies": {
+     "@types/node": "^20",
+@@ -25,4 +26,4 @@
+     "tailwindcss": "^3.3.0",
+     "typescript": "^5"
+   }
+-}
++}
+\ No newline at end of file
+diff --git a/public/sw.js b/public/sw.js
+index 68d0593..35a1997 100644
+--- a/public/sw.js
++++ b/public/sw.js
+@@ -1,4 +1,4 @@
+-const CACHE = 'hq-v2'
++const CACHE = 'hq-v3'
+ const OFFLINE_URLS = ['/', '/dashboard', '/login']
+ 
+ self.addEventListener('install', e => {
+@@ -15,7 +15,38 @@ self.addEventListener('activate', e => {
+ })
+ self.addEventListener('fetch', e => {
+   if (e.request.method !== 'GET') return
+-  e.respondWith(
+-    fetch(e.request).catch(() => caches.match(e.request))
++  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)))
++})
++
++// ── 푸시 알림 수신 ──────────────────────────────────
++self.addEventListener('push', e => {
++  if (!e.data) return
++  let payload
++  try { payload = e.data.json() } catch { payload = { title: '알림', body: e.data.text() } }
++
++  const { title = '본부관리시스템', body = '', url = '/dashboard', icon = '/icons/icon-192.png' } = payload
++
++  e.waitUntil(
++    self.registration.showNotification(title, {
++      body,
++      icon,
++      badge: '/icons/icon-72.png',
++      tag: 'hq-push',
++      renotify: true,
++      data: { url },
++    })
++  )
++})
++
++// ── 알림 클릭 → 해당 페이지 열기 ──────────────────
++self.addEventListener('notificationclick', e => {
++  e.notification.close()
++  const url = e.notification.data?.url || '/dashboard'
++  e.waitUntil(
++    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
++      const existing = list.find(c => c.url.includes(url))
++      if (existing) return existing.focus()
++      return clients.openWindow(url)
++    })
+   )
+ })
+diff --git a/src/app/api/cleanup/route.ts b/src/app/api/cleanup/route.ts
+new file mode 100644
+index 0000000..58d4f5f
+--- /dev/null
++++ b/src/app/api/cleanup/route.ts
+@@ -0,0 +1,110 @@
++import { NextRequest, NextResponse } from 'next/server'
++import { initializeApp, cert, getApps } from 'firebase-admin/app'
++import { getFirestore, Timestamp } from 'firebase-admin/firestore'
++
++// Firebase Admin 초기화
++function getAdminDb() {
++  if (!getApps().length) {
++    initializeApp({
++      credential: cert({
++        projectId:    process.env.FIREBASE_ADMIN_PROJECT_ID,
++        clientEmail:  process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
++        privateKey:   process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
++      }),
++    })
++  }
++  return getFirestore()
++}
++
++// 삭제 정책 (밀리초)
++const POLICIES = {
++  messages_broadcast: 3 * 365 * 24 * 60 * 60 * 1000,   // 3년
++  messages_direct_hq: 3 * 365 * 24 * 60 * 60 * 1000,   // 3년 (본부 1:1)
++  messages_direct_biz: 7 * 24 * 60 * 60 * 1000,         // 7일 (사업장↔사업장)
++  hq_chat: 28 * 24 * 60 * 60 * 1000,                    // 4주
++  events_done: 30 * 24 * 60 * 60 * 1000,                // 완료 후 1개월
++}
++
++export async function POST(req: NextRequest) {
++  // Vercel Cron 또는 수동 호출 시 인증
++  const authHeader = req.headers.get('authorization')
++  if (authHeader !== `Bearer ${process.env.CLEANUP_SECRET}`) {
++    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++  }
++
++  const db = getAdminDb()
++  const now = Date.now()
++  let deleted = 0
++
++  try {
++    // 1. 메시지: 사업장↔사업장 direct 7일
++    const bizDirectSnap = await db.collection('messages')
++      .where('type', '==', 'direct')
++      .get()
++    for (const doc of bizDirectSnap.docs) {
++      const data = doc.data()
++      // authorBizId 있고, targetUid가 BIZ_REP인 경우 (사업장↔사업장)
++      if (!data.authorBizId) continue
++      const createdAt = data.createdAt?.toMillis?.() ?? 0
++      if (now - createdAt > POLICIES.messages_direct_biz) {
++        // target 유저 역할 확인 생략 - authorBizId 있으면 사업장발 메시지
++        await doc.ref.delete()
++        deleted++
++      }
++    }
++
++    // 2. 운영본부 채팅 4주
++    const chatSnap = await db.collection('hq_chat').get()
++    for (const doc of chatSnap.docs) {
++      const createdAt = doc.data().createdAt?.toMillis?.() ?? 0
++      if (now - createdAt > POLICIES.hq_chat) {
++        await doc.ref.delete()
++        deleted++
++      }
++    }
++
++    // 3. 캘린더: 완료 후 1개월
++    const eventSnap = await db.collection('events').where('isDone', '==', true).get()
++    for (const doc of eventSnap.docs) {
++      const doneAt = doc.data().doneAt
++        ? new Date(doc.data().doneAt).getTime()
++        : doc.data().updatedAt?.toMillis?.() ?? 0
++      if (now - doneAt > POLICIES.events_done) {
++        await doc.ref.delete()
++        deleted++
++      }
++    }
++
++    // 4. 공지사항: expiresAt 지난 것
++    const noticeSnap = await db.collection('notices').get()
++    for (const doc of noticeSnap.docs) {
++      const expiresAt = new Date(doc.data().expiresAt).getTime()
++      if (now > expiresAt) {
++        await doc.ref.delete()
++        deleted++
++      }
++    }
++
++    // 5. broadcast 메시지 3년
++    const broadcastSnap = await db.collection('messages')
++      .where('type', '==', 'broadcast')
++      .get()
++    for (const doc of broadcastSnap.docs) {
++      const createdAt = doc.data().createdAt?.toMillis?.() ?? 0
++      if (now - createdAt > POLICIES.messages_broadcast) {
++        await doc.ref.delete()
++        deleted++
++      }
++    }
++
++    return NextResponse.json({ ok: true, deleted, timestamp: new Date().toISOString() })
++  } catch (e) {
++    console.error('Cleanup error:', e)
++    return NextResponse.json({ error: String(e) }, { status: 500 })
++  }
++}
++
++// GET: 헬스체크
++export async function GET() {
++  return NextResponse.json({ ok: true, message: 'Cleanup API ready' })
++}
+diff --git a/src/app/calendar/page.tsx b/src/app/calendar/page.tsx
+new file mode 100644
+index 0000000..8cd8064
+--- /dev/null
++++ b/src/app/calendar/page.tsx
+@@ -0,0 +1,216 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import AppShell from '@/components/AppShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenEvents, addEvent, updateEvent, deleteEvent } from '@/lib/db'
++import type { CalendarEvent, EventReminder, ReminderUnit } from '@/types'
++import { Calendar, Plus, Trash2, CheckCircle2, Circle, Bell, X, ChevronDown, ChevronUp } from 'lucide-react'
++import clsx from 'clsx'
++
++const REMINDER_OPTIONS: { value: number; unit: ReminderUnit; label: string }[] = [
++  { value: 10,  unit: 'minutes', label: '10분 전' },
++  { value: 30,  unit: 'minutes', label: '30분 전' },
++  { value: 1,   unit: 'hours',   label: '1시간 전' },
++  { value: 3,   unit: 'hours',   label: '3시간 전' },
++  { value: 1,   unit: 'days',    label: '1일 전' },
++]
++
++export default function CalendarPage() {
++  const { user }  = useAuth()
++  const router    = useRouter()
++  const [events,   setEvents]   = useState<CalendarEvent[]>([])
++  const [showForm, setShowForm] = useState(false)
++  const [expanded, setExpanded] = useState<string | null>(null)
++
++  // 폼
++  const [title,    setTitle]    = useState('')
++  const [date,     setDate]     = useState(new Date().toISOString().slice(0, 10))
++  const [time,     setTime]     = useState('')
++  const [memo,     setMemo]     = useState('')
++  const [reminder, setReminder] = useState<EventReminder | undefined>(undefined)
++  const [saving,   setSaving]   = useState(false)
++
++  useEffect(() => {
++    if (!user) { router.replace('/login'); return }
++    return listenEvents(user.uid, user.bizId, setEvents)
++  }, [user, router])
++
++  const handleSubmit = async () => {
++    if (!user || !title.trim() || !date) return
++    setSaving(true)
++    await addEvent({
++      title: title.trim(), date, time, memo,
++      ownerUid: user.uid, ownerName: user.name,
++      reminder, isDone: false,
++    })
++    setTitle(''); setTime(''); setMemo(''); setReminder(undefined)
++    setShowForm(false)
++    setSaving(false)
++  }
++
++  const toggleDone = async (e: CalendarEvent) => {
++    const isDone = !e.isDone
++    await updateEvent(e.id, { isDone, doneAt: isDone ? new Date().toISOString() : undefined })
++  }
++
++  const handleDelete = async (id: string) => {
++    if (!confirm('일정을 삭제하시겠습니까?')) return
++    await deleteEvent(id)
++  }
++
++  // 날짜별 그룹
++  const today   = new Date().toISOString().slice(0, 10)
++  const upcoming = events.filter(e => !e.isDone && e.date >= today).sort((a, b) => a.date.localeCompare(b.date))
++  const done     = events.filter(e => e.isDone).sort((a, b) => (b.doneAt ?? '').localeCompare(a.doneAt ?? ''))
++
++  const formatDate = (d: string) => {
++    const dt = new Date(d + 'T00:00:00')
++    return dt.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })
++  }
++
++  const reminderLabel = (r?: EventReminder) => {
++    if (!r) return ''
++    const opt = REMINDER_OPTIONS.find(o => o.value === r.value && o.unit === r.unit)
++    return opt ? opt.label : ''
++  }
++
++  const EventCard = ({ e }: { e: CalendarEvent }) => {
++    const isOpen = expanded === e.id
++    const canEdit = user?.role === 'ADMIN' || e.ownerUid === user?.uid
++    return (
++      <div className={clsx('bg-white border rounded-2xl overflow-hidden',
++        e.isDone ? 'border-gray-100 opacity-60' : 'border-gray-200')}>
++        <div className="flex items-start gap-3 px-4 py-3.5">
++          <button onClick={() => toggleDone(e)} className="mt-0.5 shrink-0">
++            {e.isDone
++              ? <CheckCircle2 size={20} className="text-green-500"/>
++              : <Circle size={20} className="text-gray-300 hover:text-primary-400"/>}
++          </button>
++          <button className="flex-1 text-left min-w-0" onClick={() => setExpanded(isOpen ? null : e.id)}>
++            <p className={clsx('font-medium text-sm', e.isDone ? 'line-through text-gray-400' : 'text-gray-900')}>
++              {e.title}
++            </p>
++            <div className="flex items-center gap-2 mt-1">
++              <span className="text-xs text-gray-400">{formatDate(e.date)}{e.time ? ` ${e.time}` : ''}</span>
++              {e.reminder && (
++                <span className="flex items-center gap-0.5 text-xs text-primary-500">
++                  <Bell size={10}/>{reminderLabel(e.reminder)}
++                </span>
++              )}
++            </div>
++          </button>
++          <div className="flex items-center gap-1 shrink-0">
++            {canEdit && (
++              <button onClick={() => handleDelete(e.id)} className="p-1.5 text-gray-300 hover:text-red-500">
++                <Trash2 size={14}/>
++              </button>
++            )}
++            {isOpen ? <ChevronUp size={14} className="text-gray-400"/> : <ChevronDown size={14} className="text-gray-400"/>}
++          </div>
++        </div>
++        {isOpen && e.memo && (
++          <div className="px-12 pb-3 border-t border-gray-50 pt-2">
++            <p className="text-xs text-gray-500 whitespace-pre-wrap">{e.memo}</p>
++          </div>
++        )}
++      </div>
++    )
++  }
++
++  return (
++    <AppShell title="캘린더">
++      <div className="max-w-2xl mx-auto p-4 space-y-4">
++
++        {/* 추가 버튼 */}
++        {!showForm && (
++          <button onClick={() => setShowForm(true)}
++            className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors">
++            <Plus size={16}/> 일정 추가
++          </button>
++        )}
++
++        {/* 추가 폼 */}
++        {showForm && (
++          <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-4 shadow-sm">
++            <div className="flex items-center justify-between">
++              <h3 className="font-semibold text-gray-900">일정 추가</h3>
++              <button onClick={() => setShowForm(false)}><X size={18} className="text-gray-400"/></button>
++            </div>
++            <input value={title} onChange={e => setTitle(e.target.value)}
++              placeholder="일정 제목"
++              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++            <div className="grid grid-cols-2 gap-3">
++              <div>
++                <label className="text-xs font-medium text-gray-500 block mb-1">날짜</label>
++                <input type="date" value={date} onChange={e => setDate(e.target.value)}
++                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++              </div>
++              <div>
++                <label className="text-xs font-medium text-gray-500 block mb-1">시간 (선택)</label>
++                <input type="time" value={time} onChange={e => setTime(e.target.value)}
++                  className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++              </div>
++            </div>
++            <div>
++              <label className="text-xs font-medium text-gray-500 block mb-2">
++                <Bell size={12} className="inline mr-1"/>알림 설정 (선택)
++              </label>
++              <div className="flex flex-wrap gap-2">
++                <button onClick={() => setReminder(undefined)}
++                  className={clsx('px-3 py-1.5 rounded-lg text-xs border transition-colors',
++                    !reminder ? 'bg-primary-50 border-primary-400 text-primary-700' : 'bg-white border-gray-200 text-gray-500')}>
++                  없음
++                </button>
++                {REMINDER_OPTIONS.map(opt => (
++                  <button key={opt.label}
++                    onClick={() => setReminder({ value: opt.value, unit: opt.unit })}
++                    className={clsx('px-3 py-1.5 rounded-lg text-xs border transition-colors',
++                      reminder?.value === opt.value && reminder?.unit === opt.unit
++                        ? 'bg-primary-50 border-primary-400 text-primary-700'
++                        : 'bg-white border-gray-200 text-gray-500')}>
++                    {opt.label}
++                  </button>
++                ))}
++              </div>
++            </div>
++            <textarea value={memo} onChange={e => setMemo(e.target.value)}
++              placeholder="메모 (선택)" rows={3}
++              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
++            <button onClick={handleSubmit} disabled={!title.trim() || !date || saving}
++              className="w-full py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800 disabled:opacity-50">
++              {saving ? '저장 중...' : '일정 저장'}
++            </button>
++          </div>
++        )}
++
++        {/* 예정 일정 */}
++        {upcoming.length > 0 && (
++          <div>
++            <h3 className="text-sm font-semibold text-gray-700 mb-2">예정 일정</h3>
++            <div className="space-y-2">
++              {upcoming.map(e => <EventCard key={e.id} e={e}/>)}
++            </div>
++          </div>
++        )}
++
++        {/* 완료된 일정 */}
++        {done.length > 0 && (
++          <div>
++            <h3 className="text-sm font-semibold text-gray-400 mb-2">완료됨</h3>
++            <div className="space-y-2">
++              {done.slice(0, 5).map(e => <EventCard key={e.id} e={e}/>)}
++            </div>
++          </div>
++        )}
++
++        {events.length === 0 && (
++          <div className="text-center py-16 text-gray-400">
++            <Calendar size={32} className="mx-auto mb-3 opacity-30"/>
++            <p className="text-sm">등록된 일정이 없습니다</p>
++          </div>
++        )}
++      </div>
++    </AppShell>
++  )
++}
+diff --git a/src/app/compose/page.tsx b/src/app/compose/page.tsx
+index f17a7e6..55974c6 100644
+--- a/src/app/compose/page.tsx
++++ b/src/app/compose/page.tsx
+@@ -3,9 +3,13 @@ import { Suspense, useEffect, useState } from 'react'
+ import { useRouter, useSearchParams } from 'next/navigation'
+ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+-import { listenBusinesses, sendMessage } from '@/lib/db'
+-import type { Business, Receipt } from '@/types'
+-import { Send, CheckSquare, Square, AlertCircle } from 'lucide-react'
++import { listenBusinesses, sendMessage, listenTemplates, addTemplate, deleteTemplate } from '@/lib/db'
++import type { Business, Receipt, MessageTemplate } from '@/types'
++import {
++  Send, CheckSquare, Square, AlertCircle, Calendar, Link2,
++  BookTemplate, Plus, Trash2, X, ChevronDown
++} from 'lucide-react'
++import clsx from 'clsx'
+ 
+ function ComposeContent() {
+   const { user }     = useAuth()
+@@ -20,17 +24,42 @@ function ComposeContent() {
+   const [sending,    setSending]    = useState(false)
+   const [sent,       setSent]       = useState(false)
+ 
++  // 일정 첨부
++  const [showEvent,  setShowEvent]  = useState(false)
++  const [eventDate,  setEventDate]  = useState('')
++  const [eventTime,  setEventTime]  = useState('')
++  const [eventTitle, setEventTitle] = useState('')
++
++  // 링크 첨부
++  const [showLink,   setShowLink]   = useState(false)
++  const [linkUrl,    setLinkUrl]    = useState('')
++  const [linkLabel,  setLinkLabel]  = useState('')
++
++  // 템플릿
++  const [templates,    setTemplates]    = useState<MessageTemplate[]>([])
++  const [showTpl,      setShowTpl]      = useState(false)
++  const [tplTitle,     setTplTitle]     = useState('')
++  const [showSaveTpl,  setShowSaveTpl]  = useState(false)
++
+   const canSend = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
+ 
+   useEffect(() => {
+     if (!canSend) { router.replace('/dashboard'); return }
+-    const unsub = listenBusinesses(setBusinesses)
+-    return unsub
+-  }, [canSend, router])
++    const u1 = listenBusinesses(setBusinesses)
++    const u2 = user ? listenTemplates(user.uid, setTemplates) : () => {}
++    return () => { u1(); u2() }
++  }, [canSend, router, user])
+ 
+   useEffect(() => {
+     const bizId = searchParams.get('biz')
+     if (bizId) setSelected(new Set([bizId]))
++    // 전달에서 일정 첨부로 넘어온 경우
++    const ed = searchParams.get('eventDate')
++    const et = searchParams.get('eventTime')
++    const etl = searchParams.get('eventTitle')
++    if (ed) { setEventDate(ed); setShowEvent(true) }
++    if (et) setEventTime(et)
++    if (etl) setEventTitle(etl)
+   }, [searchParams])
+ 
+   const toggleAll = () => setSelected(
+@@ -55,11 +84,24 @@ function ComposeContent() {
+       authorUid: user.uid, authorName: user.name,
+       targetBizIds: Array.from(selected),
+       receipts,
++      ...(showEvent && eventDate ? { eventDate, eventTime, eventTitle: eventTitle || title } : {}),
++      ...(showLink && linkUrl    ? { linkUrl, linkLabel: linkLabel || linkUrl }             : {}),
+     })
+     setSent(true)
+     setSending(false)
+   }
+ 
++  const applyTemplate = (tpl: MessageTemplate) => {
++    setTitle(tpl.title); setBody(tpl.body)
++    setShowTpl(false)
++  }
++
++  const saveTemplate = async () => {
++    if (!user || !title.trim() || !body.trim()) return
++    await addTemplate({ ownerUid: user.uid, title: tplTitle || title, body })
++    setShowSaveTpl(false); setTplTitle('')
++  }
++
+   if (sent) return (
+     <AppShell title="전달 작성">
+       <div className="flex flex-col items-center justify-center h-64 gap-4">
+@@ -87,19 +129,44 @@ function ComposeContent() {
+   return (
+     <AppShell title="전달 작성">
+       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
++
+         {/* 우선순위 */}
+         <div className="flex gap-2">
+           {(['normal', 'urgent'] as const).map(p => (
+             <button key={p} onClick={() => setPriority(p)}
+-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
++              className={clsx('flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-colors',
+                 priority === p
+                   ? p === 'urgent' ? 'bg-red-50 border-red-300 text-red-700' : 'bg-primary-50 border-primary-300 text-primary-700'
+-                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+-              }`}>
++                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')}>
+               {p === 'urgent' && <AlertCircle size={15}/>}
+               {p === 'normal' ? '일반' : '긴급'}
+             </button>
+           ))}
++          {/* 템플릿 불러오기 */}
++          <div className="ml-auto relative">
++            <button onClick={() => setShowTpl(v => !v)}
++              className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
++              <BookTemplate size={15}/> 템플릿
++              <ChevronDown size={12}/>
++            </button>
++            {showTpl && (
++              <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-gray-200 rounded-xl shadow-lg z-10 overflow-hidden">
++                {templates.length === 0 ? (
++                  <p className="text-xs text-gray-400 p-4 text-center">저장된 템플릿이 없습니다</p>
++                ) : templates.map(tpl => (
++                  <button key={tpl.id}
++                    onClick={() => applyTemplate(tpl)}
++                    className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0">
++                    <span className="text-sm text-gray-800 truncate">{tpl.title}</span>
++                    <button onClick={async (e) => { e.stopPropagation(); await deleteTemplate(tpl.id) }}
++                      className="text-gray-300 hover:text-red-400 ml-2 shrink-0">
++                      <Trash2 size={13}/>
++                    </button>
++                  </button>
++                ))}
++              </div>
++            )}
++          </div>
+         </div>
+ 
+         {/* 제목 */}
+@@ -114,11 +181,82 @@ function ComposeContent() {
+         <div>
+           <label className="block text-sm font-medium text-gray-700 mb-1.5">내용</label>
+           <textarea value={body} onChange={e => setBody(e.target.value)}
+-            placeholder="전달 내용을 입력하세요"
+-            rows={6}
++            placeholder="전달 내용을 입력하세요" rows={6}
+             className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
++          {/* 템플릿 저장 */}
++          {(title.trim() || body.trim()) && !showSaveTpl && (
++            <button onClick={() => setShowSaveTpl(true)}
++              className="mt-1.5 text-xs text-primary-500 hover:underline flex items-center gap-1">
++              <Plus size={11}/> 템플릿으로 저장
++            </button>
++          )}
++          {showSaveTpl && (
++            <div className="mt-2 flex gap-2">
++              <input value={tplTitle} onChange={e => setTplTitle(e.target.value)}
++                placeholder={title || '템플릿 이름'}
++                className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++              <button onClick={saveTemplate}
++                className="px-3 py-2 bg-primary-600 text-white rounded-lg text-xs hover:bg-primary-800">저장</button>
++              <button onClick={() => setShowSaveTpl(false)}
++                className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-500">취소</button>
++            </div>
++          )}
+         </div>
+ 
++        {/* 첨부 옵션 */}
++        <div className="flex gap-2">
++          <button onClick={() => setShowEvent(v => !v)}
++            className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors',
++              showEvent ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')}>
++            <Calendar size={13}/> 일정 첨부
++          </button>
++          <button onClick={() => setShowLink(v => !v)}
++            className={clsx('flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border transition-colors',
++              showLink ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')}>
++            <Link2 size={13}/> 링크 첨부
++          </button>
++        </div>
++
++        {/* 일정 첨부 폼 */}
++        {showEvent && (
++          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-3">
++            <div className="flex items-center justify-between">
++              <span className="text-xs font-semibold text-blue-700">일정 첨부</span>
++              <button onClick={() => { setShowEvent(false); setEventDate(''); setEventTime('') }}>
++                <X size={14} className="text-blue-400"/>
++              </button>
++            </div>
++            <input value={eventTitle} onChange={e => setEventTitle(e.target.value)}
++              placeholder="일정 제목 (비우면 전달 제목 사용)"
++              className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"/>
++            <div className="flex gap-2">
++              <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)}
++                className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white"/>
++              <input type="time" value={eventTime} onChange={e => setEventTime(e.target.value)}
++                className="flex-1 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white"/>
++            </div>
++            <p className="text-xs text-blue-500">수신자가 캘린더에 추가할 수 있습니다</p>
++          </div>
++        )}
++
++        {/* 링크 첨부 폼 */}
++        {showLink && (
++          <div className="bg-green-50 border border-green-200 rounded-xl p-4 space-y-3">
++            <div className="flex items-center justify-between">
++              <span className="text-xs font-semibold text-green-700">링크 첨부</span>
++              <button onClick={() => { setShowLink(false); setLinkUrl(''); setLinkLabel('') }}>
++                <X size={14} className="text-green-400"/>
++              </button>
++            </div>
++            <input value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
++              placeholder="https://..." type="url"
++              className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 bg-white"/>
++            <input value={linkLabel} onChange={e => setLinkLabel(e.target.value)}
++              placeholder="링크 표시 이름 (선택)"
++              className="w-full border border-green-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-300 bg-white"/>
++          </div>
++        )}
++
+         {/* 수신 사업장 */}
+         <div>
+           <div className="flex items-center justify-between mb-2">
+@@ -130,9 +268,8 @@ function ComposeContent() {
+           <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
+             {businesses.map(biz => (
+               <button key={biz.id} onClick={() => toggle(biz.id)}
+-                className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors ${
+-                  selected.has(biz.id) ? 'bg-primary-50' : 'bg-white'
+-                }`}>
++                className={clsx('w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors',
++                  selected.has(biz.id) ? 'bg-primary-50' : 'bg-white')}>
+                 {selected.has(biz.id)
+                   ? <CheckSquare size={18} className="text-primary-600 shrink-0"/>
+                   : <Square size={18} className="text-gray-300 shrink-0"/>}
+diff --git a/src/app/direct/page.tsx b/src/app/direct/page.tsx
+index a8a93f5..b09402b 100644
+--- a/src/app/direct/page.tsx
++++ b/src/app/direct/page.tsx
+@@ -5,13 +5,14 @@ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+ import { listenUsers, sendDirectMessage } from '@/lib/db'
+ import type { AppUser } from '@/types'
+-import { Send, MessageSquare, Lock } from 'lucide-react'
++import { Send, MessageSquare, Lock, ShieldAlert } from 'lucide-react'
++import clsx from 'clsx'
+ 
+ export default function DirectPage() {
+   const { user } = useAuth()
+   const router   = useRouter()
+ 
+-  const [hqMembers, setHqMembers] = useState<AppUser[]>([])
++  const [allUsers,  setAllUsers]  = useState<AppUser[]>([])
+   const [targetUid, setTargetUid] = useState('')
+   const [title,     setTitle]     = useState('')
+   const [body,      setBody]      = useState('')
+@@ -19,23 +20,28 @@ export default function DirectPage() {
+   const [sending,   setSending]   = useState(false)
+   const [sent,      setSent]      = useState(false)
+ 
+-  const isBiz = user?.role === 'BIZ_REP'
++  const isBiz   = user?.role === 'BIZ_REP'
++  const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
++  const isAdmin = user?.role === 'ADMIN'
++
++  // 수신자 목록 결정
++  // - 사업장 대표: 모든 사용자 (본인 제외) - 제한 해제
++  // - 본부/관리자: 모든 사용자 (본인 제외)
++  const recipients = allUsers.filter(u => u.uid !== user?.uid)
++
++  // 사업장↔사업장 여부 (7일 자동삭제 안내)
++  const target        = allUsers.find(u => u.uid === targetUid)
++  const isBizToBiz    = isBiz && target?.role === 'BIZ_REP'
+ 
+   useEffect(() => {
+-    if (!isBiz) { router.replace('/dashboard'); return }
+-    const unsub = listenUsers(users => {
+-      // 본부장 + 본부멤버 + 관리자만 수신 가능
+-      setHqMembers(users.filter(u =>
+-        u.role === 'ADMIN' || u.role === 'HQ_CHIEF' || u.role === 'HQ_MEMBER'
+-      ))
+-    })
+-    return unsub
+-  }, [isBiz, router])
++    if (!user) { router.replace('/login'); return }
++    if (!isBiz && !isHQ) { router.replace('/dashboard'); return }
++    return listenUsers(setAllUsers)
++  }, [user, isBiz, isHQ, router])
+ 
+   const handleSend = async () => {
+-    if (!user?.bizId || !targetUid || !title.trim() || !body.trim()) return
++    if (!user || !targetUid || !title.trim() || !body.trim()) return
+     setSending(true)
+-    const target = hqMembers.find(m => m.uid === targetUid)
+     if (!target) { setSending(false); return }
+     await sendDirectMessage({
+       title:       title.trim(),
+@@ -43,7 +49,7 @@ export default function DirectPage() {
+       priority,
+       authorUid:   user.uid,
+       authorName:  user.name,
+-      authorBizId: user.bizId,
++      authorBizId: user.bizId ?? '',
+       targetUid:   target.uid,
+       targetName:  target.name,
+     })
+@@ -51,6 +57,10 @@ export default function DirectPage() {
+     setSending(false)
+   }
+ 
++  const roleLabel = (role: string) => ({
++    ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표', ETC: '기타'
++  }[role] ?? role)
++
+   if (sent) return (
+     <AppShell title="1:1 메시지" back="/dashboard">
+       <div className="flex flex-col items-center justify-center h-64 gap-4">
+@@ -59,7 +69,10 @@ export default function DirectPage() {
+         </div>
+         <div className="text-center">
+           <p className="font-semibold text-gray-900">전송 완료!</p>
+-          <p className="text-sm text-gray-500 mt-1">담당자에게 메시지가 전달됐습니다</p>
++          <p className="text-sm text-gray-500 mt-1">{target?.name}님에게 메시지가 전달됐습니다</p>
++          {isBizToBiz && (
++            <p className="text-xs text-gray-400 mt-2">이 메시지는 7일 후 자동 삭제됩니다</p>
++          )}
+         </div>
+         <div className="flex gap-2">
+           <button onClick={() => { setSent(false); setTitle(''); setBody(''); setTargetUid('') }}
+@@ -79,7 +92,7 @@ export default function DirectPage() {
+     <AppShell title="1:1 메시지" back="/dashboard">
+       <div className="max-w-lg mx-auto p-4 md:p-6 space-y-4">
+ 
+-        {/* 안내 */}
++        {/* 비공개 안내 */}
+         <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+           <Lock size={16} className="text-blue-500 shrink-0 mt-0.5"/>
+           <p className="text-xs text-blue-700 leading-relaxed">
+@@ -88,15 +101,26 @@ export default function DirectPage() {
+           </p>
+         </div>
+ 
++        {/* 사업장↔사업장 7일 자동삭제 안내 */}
++        {isBizToBiz && (
++          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
++            <ShieldAlert size={16} className="text-amber-500 shrink-0 mt-0.5"/>
++            <p className="text-xs text-amber-700 leading-relaxed">
++              🔒 사업장↔사업장 1:1 채팅은 보안을 위해<br/>
++              <strong>7일 후 자동으로 서버에서 삭제됩니다</strong>
++            </p>
++          </div>
++        )}
++
+         {/* 수신자 선택 */}
+         <div>
+           <label className="block text-sm font-medium text-gray-700 mb-1.5">받는 사람</label>
+           <select value={targetUid} onChange={e => setTargetUid(e.target.value)}
+             className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
+-            <option value="">담당자를 선택하세요</option>
+-            {hqMembers.map(m => (
+-              <option key={m.uid} value={m.uid}>
+-                {m.name} ({m.role === 'ADMIN' ? '관리자' : m.role === 'HQ_CHIEF' ? '본부장' : '본부멤버'})
++            <option value="">받는 사람을 선택하세요</option>
++            {recipients.map(u => (
++              <option key={u.uid} value={u.uid}>
++                {u.name} ({roleLabel(u.role)})
+               </option>
+             ))}
+           </select>
+@@ -106,11 +130,10 @@ export default function DirectPage() {
+         <div className="flex gap-2">
+           {(['normal', 'urgent'] as const).map(p => (
+             <button key={p} onClick={() => setPriority(p)}
+-              className={`px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${
++              className={clsx('px-4 py-2 rounded-xl text-sm font-medium border transition-colors',
+                 priority === p
+                   ? p === 'urgent' ? 'bg-red-50 border-red-300 text-red-700' : 'bg-primary-50 border-primary-300 text-primary-700'
+-                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+-              }`}>
++                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')}>
+               {p === 'normal' ? '일반' : '🚨 긴급'}
+             </button>
+           ))}
+@@ -128,8 +151,7 @@ export default function DirectPage() {
+         <div>
+           <label className="block text-sm font-medium text-gray-700 mb-1.5">내용</label>
+           <textarea value={body} onChange={e => setBody(e.target.value)}
+-            placeholder="내용을 입력하세요"
+-            rows={6}
++            placeholder="내용을 입력하세요" rows={6}
+             className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
+         </div>
+ 
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+index 9ab4e4c..7406026 100644
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -1,7 +1,9 @@
+ import type { Metadata, Viewport } from 'next'
+ import './globals.css'
+ import { AuthProvider } from '@/lib/auth-context'
++import { SettingsProvider } from '@/lib/settings-context'
+ import InstallPrompt from '@/components/InstallPrompt'
++import PushInit from '@/components/PushInit'
+ import Script from 'next/script'
+ 
+ export const metadata: Metadata = {
+@@ -25,8 +27,11 @@ export default function RootLayout({ children }: { children: React.ReactNode })
+       </head>
+       <body>
+         <AuthProvider>
+-          {children}
+-          <InstallPrompt/>
++          <SettingsProvider>
++            {children}
++            <InstallPrompt/>
++            <PushInit/>
++          </SettingsProvider>
+         </AuthProvider>
+         <Script id="sw" strategy="afterInteractive">{`
+           if ('serviceWorker' in navigator) {
+diff --git a/src/app/messages/[id]/page.tsx b/src/app/messages/[id]/page.tsx
+index 95aa0fc..3e595d2 100644
+--- a/src/app/messages/[id]/page.tsx
++++ b/src/app/messages/[id]/page.tsx
+@@ -3,11 +3,12 @@ import { useEffect, useState } from 'react'
+ import { useParams, useRouter } from 'next/navigation'
+ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+-import { listenMessages, receiveMessage, replyMessage, replyDirect, closeMessage, reopenMessage, hideMessage } from '@/lib/db'
++import { listenMessages, receiveMessage, replyMessage, replyDirect, closeMessage, reopenMessage, hideMessage, addEventToMyCalendar, addEvent } from '@/lib/db'
+ import type { Message } from '@/types'
+ import {
+   CheckCircle2, Clock, AlertCircle, Send, CheckSquare,
+-  EyeOff, RotateCcw, MessageSquare, Building2, User, Lock, ChevronDown, ChevronUp
++  EyeOff, RotateCcw, MessageSquare, Building2, User, Lock,
++  Calendar, Link2, Bell, ExternalLink
+ } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+@@ -21,6 +22,7 @@ export default function MessageDetailPage() {
+   const [sending,   setSending]   = useState(false)
+   const [closing,   setClosing]   = useState(false)
+   const [activeTab, setActiveTab] = useState<'overview' | 'detail'>('overview')
++  const [addedCal,  setAddedCal]  = useState(false)
+ 
+   const isAdmin = user?.role === 'ADMIN'
+   const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
+@@ -48,7 +50,6 @@ export default function MessageDetailPage() {
+   const received = receipts.filter(r => r.status === 'received').length
+   const pending  = receipts.filter(r => r.status === 'pending').length
+ 
+-  // direct 열람 권한
+   if (isDirect && !isAdmin && message.authorUid !== user?.uid && message.targetUid !== user?.uid) {
+     return (
+       <AppShell title="메시지 상세" back="/dashboard">
+@@ -86,22 +87,43 @@ export default function MessageDetailPage() {
+     router.push('/dashboard')
+   }
+ 
++  // 캘린더 추가
++  const handleAddToCalendar = async () => {
++    if (!user || !message.eventDate) return
++    if (isBiz && user.bizId) {
++      await addEventToMyCalendar(message.id, user.bizId)
++    } else {
++      await addEvent({
++        title:    message.eventTitle || message.title,
++        date:     message.eventDate,
++        time:     message.eventTime,
++        ownerUid: user.uid,
++        ownerName: user.name,
++        isDone:   false,
++      })
++    }
++    setAddedCal(true)
++  }
++
++  // 첨부 정보 표시
++  const hasEvent = !!message.eventDate
++  const hasLink  = !!message.linkUrl
++
+   return (
+     <AppShell title="메시지 상세" back={isHQ ? '/businesses' : '/dashboard'}>
+       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
+ 
+-        {/* ── 메시지 헤더 ── */}
++        {/* 메시지 헤더 */}
+         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+-          {/* 상태 배너 */}
+           <div className={clsx(
+             'px-4 py-2.5 flex items-center gap-2 text-sm font-medium',
+-            isDone    ? 'bg-slate-100 text-slate-600'  :
+-            isDirect  ? 'bg-blue-50 text-blue-700'     :
+-                        'bg-amber-50 text-amber-700'
++            isDone   ? 'bg-slate-100 text-slate-600' :
++            isDirect ? 'bg-blue-50 text-blue-700'    :
++                       'bg-amber-50 text-amber-700'
+           )}>
+-            {isDirect   ? <><Lock size={14}/> 1:1 메시지 (비공개)</> :
+-             isDone     ? <><CheckCircle2 size={16}/> 완결</> :
+-                          <><Clock size={16}/> 진행중</>}
++            {isDirect  ? <><Lock size={14}/> 1:1 메시지 (비공개)</> :
++             isDone    ? <><CheckCircle2 size={16}/> 완결</> :
++                         <><Clock size={16}/> 진행중</>}
+             {message.priority === 'urgent' && (
+               <span className="ml-auto badge-urgent flex items-center gap-1">
+                 <AlertCircle size={12}/> 긴급
+@@ -117,16 +139,49 @@ export default function MessageDetailPage() {
+               <span className="flex items-center gap-1"><User size={12}/>{message.authorName}</span>
+               {isDirect && <span>→ {message.targetName}</span>}
+             </div>
++
++            {/* 일정 첨부 */}
++            {hasEvent && (
++              <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between">
++                <div className="flex items-center gap-2">
++                  <Calendar size={15} className="text-blue-500"/>
++                  <div>
++                    <p className="text-xs font-semibold text-blue-800">{message.eventTitle || message.title}</p>
++                    <p className="text-xs text-blue-600">
++                      {message.eventDate}{message.eventTime ? ` ${message.eventTime}` : ''}
++                    </p>
++                  </div>
++                </div>
++                {!addedCal ? (
++                  <button onClick={handleAddToCalendar}
++                    className="flex items-center gap-1 text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">
++                    <Bell size={11}/> 캘린더에 추가
++                  </button>
++                ) : (
++                  <span className="text-xs text-green-600 flex items-center gap-1">
++                    <CheckCircle2 size={11}/> 추가됨
++                  </span>
++                )}
++              </div>
++            )}
++
++            {/* 링크 첨부 */}
++            {hasLink && (
++              <a href={message.linkUrl} target="_blank" rel="noopener noreferrer"
++                className="mt-3 flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl p-3 hover:bg-green-100 transition-colors">
++                <Link2 size={15} className="text-green-600 shrink-0"/>
++                <span className="text-xs text-green-800 flex-1 truncate">
++                  {message.linkLabel || message.linkUrl}
++                </span>
++                <ExternalLink size={12} className="text-green-500 shrink-0"/>
++              </a>
++            )}
+           </div>
+         </div>
+ 
+-        {/* ══════════════════════════════════════
+-            사업장 대표 화면
+-        ══════════════════════════════════════ */}
++        {/* 사업장 대표 화면 */}
+         {isBiz && !isDirect && myReceipt && (
+           <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+-
+-            {/* Step 1: 미접수 */}
+             {myReceipt.status === 'pending' && (
+               <div className="p-5 space-y-4">
+                 <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl p-4">
+@@ -142,12 +197,8 @@ export default function MessageDetailPage() {
+                 </button>
+               </div>
+             )}
+-
+-            {/* Step 2 & 3: 접수 이후 */}
+             {myReceipt.status !== 'pending' && (
+               <div className="p-5 space-y-4">
+-
+-                {/* 접수 완료 타임스탬프 */}
+                 <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                   <CheckCircle2 size={16} className="text-blue-500 shrink-0"/>
+                   <div>
+@@ -155,15 +206,12 @@ export default function MessageDetailPage() {
+                     {myReceipt.receivedAt && (
+                       <p className="text-xs text-blue-600">
+                         {new Date(myReceipt.receivedAt).toLocaleDateString('ko-KR', {
+-                          year:'numeric', month:'2-digit', day:'2-digit',
+-                          hour:'2-digit', minute:'2-digit'
++                          year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'
+                         })}
+                       </p>
+                     )}
+                   </div>
+                 </div>
+-
+-                {/* 기존 진행상황 답변 목록 */}
+                 {myReplies.length > 0 && (
+                   <div className="space-y-2">
+                     <p className="text-xs font-semibold text-gray-500">진행상황 전송 내역</p>
+@@ -177,17 +225,11 @@ export default function MessageDetailPage() {
+                     ))}
+                   </div>
+                 )}
+-
+-                {/* 진행상황 입력 (완결 전) */}
+                 {!isDone && (
+                   <div className="space-y-2">
+-                    <p className="text-xs font-semibold text-gray-700">
+-                      진행상황 전송 <span className="text-gray-400 font-normal">— 발신자에게 전달됩니다</span>
+-                    </p>
+-                    <textarea
+-                      value={replyText} onChange={e => setReplyText(e.target.value)}
+-                      placeholder="진행 내용을 입력하세요..."
+-                      rows={4}
++                    <p className="text-xs font-semibold text-gray-700">진행상황 전송</p>
++                    <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
++                      placeholder="진행 내용을 입력하세요..." rows={4}
+                       className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
+                     <button onClick={handleReply} disabled={!replyText.trim() || sending}
+                       className="w-full flex items-center justify-center gap-2 bg-primary-600 text-white rounded-xl py-3 font-medium text-sm hover:bg-primary-800 disabled:opacity-50 transition-colors">
+@@ -195,16 +237,12 @@ export default function MessageDetailPage() {
+                     </button>
+                   </div>
+                 )}
+-
+-                {/* 완결 상태 표시 */}
+                 {isDone && (
+                   <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                     <CheckSquare size={16} className="text-slate-500 shrink-0"/>
+                     <p className="text-sm text-slate-600">본부에서 완결 처리한 메시지입니다</p>
+                   </div>
+                 )}
+-
+-                {/* 숨기기 (완결된 경우) */}
+                 {isDone && (
+                   <button onClick={handleHide}
+                     className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-500 rounded-xl py-2.5 text-sm hover:bg-gray-50 transition-colors">
+@@ -216,46 +254,34 @@ export default function MessageDetailPage() {
+           </div>
+         )}
+ 
+-        {/* ══════════════════════════════════════
+-            본부 화면 (broadcast)
+-        ══════════════════════════════════════ */}
++        {/* 본부 화면 */}
+         {isHQ && !isDirect && (
+           <>
+-            {/* 탭 */}
+             <div className="flex border-b border-gray-200 bg-white rounded-t-xl overflow-hidden">
+               {(['overview', 'detail'] as const).map(tab => (
+                 <button key={tab} onClick={() => setActiveTab(tab)}
+-                  className={clsx(
+-                    'flex-1 py-3 text-sm font-medium transition-colors',
+-                    activeTab === tab
+-                      ? 'text-primary-700 border-b-2 border-primary-600 bg-white'
+-                      : 'text-gray-500 hover:text-gray-700'
+-                  )}>
++                  className={clsx('flex-1 py-3 text-sm font-medium transition-colors',
++                    activeTab === tab ? 'text-primary-700 border-b-2 border-primary-600 bg-white' : 'text-gray-500 hover:text-gray-700')}>
+                   {tab === 'overview' ? '📊 진행 현황' : '📋 사업장별 답변'}
+                 </button>
+               ))}
+             </div>
+-
+             {activeTab === 'overview' && (
+               <div className="bg-white border border-gray-200 rounded-b-xl rounded-tr-xl p-5 space-y-4">
+-                {/* 진행률 */}
+                 <div>
+                   <div className="flex justify-between text-xs text-gray-500 mb-2">
+-                    <span>전체 진행률</span>
+-                    <span className="font-medium">{replied}/{total} 완료</span>
++                    <span>전체 진행률</span><span className="font-medium">{replied}/{total} 완료</span>
+                   </div>
+                   <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden flex">
+                     <div className="bg-green-400 h-full transition-all" style={{ width: total ? `${(replied/total)*100}%` : '0%' }}/>
+                     <div className="bg-blue-300 h-full transition-all" style={{ width: total ? `${(received/total)*100}%` : '0%' }}/>
+                   </div>
+                 </div>
+-
+-                {/* 통계 (미접수/진행중/완료 순서) */}
+                 <div className="grid grid-cols-3 gap-3">
+                   {[
+-                    { label: '미접수',   value: pending,  bg: pending > 0 ? 'bg-red-50'   : 'bg-gray-50', color: pending > 0 ? 'text-red-600'   : 'text-gray-400', dot: pending > 0 ? 'bg-red-400'   : 'bg-gray-300' },
+-                    { label: '진행중',   value: received, bg: 'bg-blue-50',  color: 'text-blue-600',  dot: 'bg-blue-400'  },
+-                    { label: '답변완료', value: replied,  bg: 'bg-green-50', color: 'text-green-600', dot: 'bg-green-400' },
++                    { label:'미접수',   value:pending,  bg:pending>0?'bg-red-50':'bg-gray-50',   color:pending>0?'text-red-600':'text-gray-400',   dot:pending>0?'bg-red-400':'bg-gray-300' },
++                    { label:'진행중',   value:received, bg:'bg-blue-50',  color:'text-blue-600',  dot:'bg-blue-400'  },
++                    { label:'답변완료', value:replied,  bg:'bg-green-50', color:'text-green-600', dot:'bg-green-400' },
+                   ].map(s => (
+                     <div key={s.label} className={clsx('rounded-xl p-3 text-center', s.bg)}>
+                       <div className={clsx('w-2 h-2 rounded-full mx-auto mb-1', s.dot)}/>
+@@ -264,8 +290,6 @@ export default function MessageDetailPage() {
+                     </div>
+                   ))}
+                 </div>
+-
+-                {/* 완결/재오픈 버튼 */}
+                 <div className="flex gap-2 pt-2 border-t border-gray-100">
+                   {!isDone ? (
+                     <button onClick={handleClose} disabled={closing}
+@@ -281,12 +305,8 @@ export default function MessageDetailPage() {
+                 </div>
+               </div>
+             )}
+-
+             {activeTab === 'detail' && (
+               <div className="bg-white border border-gray-200 rounded-b-xl rounded-tr-xl divide-y divide-gray-100">
+-                {receipts.length === 0 && (
+-                  <div className="p-8 text-center text-gray-400 text-sm">발송된 사업장이 없습니다</div>
+-                )}
+                 {receipts.map(receipt => {
+                   const bizReplies = replies.filter(r => r.bizId === receipt.bizId)
+                   return (
+@@ -298,44 +318,20 @@ export default function MessageDetailPage() {
+                           </div>
+                           <span className="font-medium text-sm text-gray-900">{receipt.bizName}</span>
+                         </div>
+-                        <div className="flex flex-col items-end gap-0.5">
+-                          <span className={clsx(
+-                            receipt.status === 'replied'  ? 'badge-replied' :
+-                            receipt.status === 'received' ? 'badge-received' : 'badge-pending'
+-                          )}>
+-                            {receipt.status === 'replied'  ? '✓ 답변완료' :
+-                             receipt.status === 'received' ? '● 진행중'   : '○ 미접수'}
+-                          </span>
+-                          {receipt.receivedAt && (
+-                            <span className="text-xs text-gray-400">
+-                              접수 {new Date(receipt.receivedAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })}
+-                            </span>
+-                          )}
+-                        </div>
++                        <span className={clsx(
++                          receipt.status==='replied' ? 'badge-replied' :
++                          receipt.status==='received' ? 'badge-received' : 'badge-pending')}>
++                          {receipt.status==='replied'?'✓ 답변완료':receipt.status==='received'?'● 진행중':'○ 미접수'}
++                        </span>
+                       </div>
+-                      {/* 진행상황 답변 */}
+-                      {bizReplies.length > 0 ? (
+-                        <div className="ml-9 space-y-2 mt-2">
+-                          {bizReplies.map(reply => (
+-                            <div key={reply.id} className="bg-primary-50 border border-primary-100 rounded-xl p-3">
+-                              <div className="flex items-center gap-2 mb-1.5">
+-                                <div className="w-5 h-5 rounded-full bg-primary-200 flex items-center justify-center text-xs font-bold text-primary-700">
+-                                  {reply.authorName?.[0]}
+-                                </div>
+-                                <span className="text-xs font-medium text-primary-800">{reply.authorName}</span>
+-                                <span className="text-xs text-gray-400 ml-auto">
+-                                  {reply.createdAt ? new Date(reply.createdAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+-                                </span>
+-                              </div>
+-                              <p className="text-sm text-gray-800 whitespace-pre-wrap">{reply.body}</p>
+-                            </div>
+-                          ))}
++                      {bizReplies.map(reply => (
++                        <div key={reply.id} className="ml-9 mt-2 bg-primary-50 border border-primary-100 rounded-xl p-3">
++                          <p className="text-sm text-gray-800 whitespace-pre-wrap">{reply.body}</p>
++                          <p className="text-xs text-gray-400 mt-1">
++                            {reply.authorName} · {reply.createdAt ? new Date(reply.createdAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
++                          </p>
+                         </div>
+-                      ) : (
+-                        receipt.status !== 'pending' && (
+-                          <p className="ml-9 text-xs text-gray-400 italic mt-1">진행상황 미전송</p>
+-                        )
+-                      )}
++                      ))}
+                     </div>
+                   )
+                 })}
+@@ -344,9 +340,7 @@ export default function MessageDetailPage() {
+           </>
+         )}
+ 
+-        {/* ══════════════════════════════════════
+-            Direct 메시지 (1:1 채팅)
+-        ══════════════════════════════════════ */}
++        {/* 1:1 Direct 채팅 */}
+         {isDirect && (
+           <div className="bg-white border border-blue-100 rounded-2xl p-5 space-y-4">
+             <div className="flex items-center gap-2">
+@@ -355,35 +349,27 @@ export default function MessageDetailPage() {
+               <span className="text-xs text-gray-400 flex items-center gap-1 ml-1"><Lock size={10}/>비공개</span>
+             </div>
+             <div className="space-y-3">
+-              {/* 원본 */}
+-              <div className={clsx('flex gap-2', message.authorUid === user?.uid ? 'flex-row-reverse' : '')}>
++              <div className={clsx('flex gap-2', message.authorUid===user?.uid ? 'flex-row-reverse' : '')}>
+                 <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
+                   {message.authorName?.[0]}
+                 </div>
+-                <div className={clsx('max-w-[75%] flex flex-col gap-1', message.authorUid === user?.uid ? 'items-end' : 'items-start')}>
++                <div className={clsx('max-w-[75%] flex flex-col gap-1', message.authorUid===user?.uid ? 'items-end' : 'items-start')}>
+                   <span className="text-xs text-gray-400">{message.authorName}</span>
+                   <div className={clsx('rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap',
+-                    message.authorUid === user?.uid
+-                      ? 'bg-primary-600 text-white rounded-tr-sm'
+-                      : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
++                    message.authorUid===user?.uid ? 'bg-primary-600 text-white rounded-tr-sm' : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
+                     {message.body}
+                   </div>
+                 </div>
+               </div>
+-              {/* 답변들 */}
+               {replies.map(reply => (
+-                <div key={reply.id} className={clsx('flex gap-2', reply.authorUid === user?.uid ? 'flex-row-reverse' : '')}>
++                <div key={reply.id} className={clsx('flex gap-2', reply.authorUid===user?.uid ? 'flex-row-reverse' : '')}>
+                   <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
+                     {reply.authorName?.[0]}
+                   </div>
+-                  <div className={clsx('max-w-[75%] flex flex-col gap-1', reply.authorUid === user?.uid ? 'items-end' : 'items-start')}>
+-                    <span className="text-xs text-gray-400">
+-                      {reply.authorName} · {reply.createdAt ? new Date(reply.createdAt).toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+-                    </span>
++                  <div className={clsx('max-w-[75%] flex flex-col gap-1', reply.authorUid===user?.uid ? 'items-end' : 'items-start')}>
++                    <span className="text-xs text-gray-400">{reply.authorName}</span>
+                     <div className={clsx('rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap',
+-                      reply.authorUid === user?.uid
+-                        ? 'bg-primary-600 text-white rounded-tr-sm'
+-                        : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
++                      reply.authorUid===user?.uid ? 'bg-primary-600 text-white rounded-tr-sm' : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
+                       {reply.body}
+                     </div>
+                   </div>
+@@ -395,9 +381,9 @@ export default function MessageDetailPage() {
+                 <textarea value={replyText} onChange={e => setReplyText(e.target.value)}
+                   placeholder="답변을 입력하세요..." rows={2}
+                   className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
+-                <button onClick={handleReply} disabled={!replyText.trim() || sending}
+-                  className="bg-primary-600 text-white rounded-xl px-4 flex items-center gap-1.5 text-sm font-medium hover:bg-primary-800 disabled:opacity-50 transition-colors shrink-0">
+-                  <Send size={14}/> {sending ? '...' : '전송'}
++                <button onClick={handleReply} disabled={!replyText.trim()||sending}
++                  className="bg-primary-600 text-white rounded-xl px-4 flex items-center gap-1.5 text-sm font-medium hover:bg-primary-800 disabled:opacity-50 shrink-0">
++                  <Send size={14}/> {sending?'...':'전송'}
+                 </button>
+               </div>
+             )}
+@@ -405,11 +391,11 @@ export default function MessageDetailPage() {
+               <div className="flex gap-2 pt-1 border-t border-gray-100">
+                 {!isDone
+                   ? <button onClick={handleClose} disabled={closing}
+-                      className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-60 transition-colors">
+-                      <CheckSquare size={14}/> {closing ? '처리 중...' : '완결 처리'}
++                      className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-60">
++                      <CheckSquare size={14}/> {closing?'처리 중...':'완결 처리'}
+                     </button>
+                   : <button onClick={handleReopen}
+-                      className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors">
++                      className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600">
+                       <RotateCcw size={14}/> 재오픈
+                     </button>
+                 }
+diff --git a/src/app/notices/page.tsx b/src/app/notices/page.tsx
+new file mode 100644
+index 0000000..8914363
+--- /dev/null
++++ b/src/app/notices/page.tsx
+@@ -0,0 +1,178 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import AppShell from '@/components/AppShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenNotices, addNotice, deleteNotice } from '@/lib/db'
++import type { Notice, NoticePrefix } from '@/types'
++import { Megaphone, Plus, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react'
++import clsx from 'clsx'
++
++export default function NoticesPage() {
++  const { user }   = useAuth()
++  const router     = useRouter()
++  const [notices, setNotices]       = useState<Notice[]>([])
++  const [showForm, setShowForm]     = useState(false)
++  const [expanded, setExpanded]     = useState<string | null>(null)
++
++  // 작성 폼
++  const [prefix,    setPrefix]    = useState<NoticePrefix>('본부')
++  const [title,     setTitle]     = useState('')
++  const [body,      setBody]      = useState('')
++  const [expiresAt, setExpiresAt] = useState('')
++  const [saving,    setSaving]    = useState(false)
++
++  const isHQ = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
++  const canWrite = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' ||
++                   (user?.role === 'HQ_MEMBER' && !!user?.permissions?.canBroadcast) ||
++                   user?.role === 'BIZ_REP'
++
++  // 사업장 대표는 [사업장] 말머리만
++  const prefixes: NoticePrefix[] = user?.role === 'BIZ_REP' ? ['사업장'] : ['본부', '사업장']
++
++  useEffect(() => {
++    if (!user) { router.replace('/login'); return }
++    return listenNotices(setNotices)
++  }, [user, router])
++
++  const handleSubmit = async () => {
++    if (!user || !title.trim() || !body.trim() || !expiresAt) return
++    setSaving(true)
++    await addNotice({
++      prefix,
++      title:      title.trim(),
++      body:       body.trim(),
++      authorUid:  user.uid,
++      authorName: user.name,
++      expiresAt:  new Date(expiresAt).toISOString(),
++    })
++    setTitle(''); setBody(''); setExpiresAt('')
++    setShowForm(false)
++    setSaving(false)
++  }
++
++  const handleDelete = async (id: string) => {
++    if (!confirm('이 공지사항을 삭제하시겠습니까?')) return
++    await deleteNotice(id)
++  }
++
++  const prefixColor = (p: NoticePrefix) =>
++    p === '본부' ? 'bg-primary-100 text-primary-700' : 'bg-amber-100 text-amber-700'
++
++  return (
++    <AppShell title="공지사항">
++      <div className="max-w-2xl mx-auto p-4 space-y-4">
++
++        {/* 작성 버튼 */}
++        {canWrite && !showForm && (
++          <button onClick={() => setShowForm(true)}
++            className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors">
++            <Plus size={16}/> 공지사항 작성
++          </button>
++        )}
++
++        {/* 작성 폼 */}
++        {showForm && (
++          <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-4 shadow-sm">
++            <div className="flex items-center justify-between">
++              <h3 className="font-semibold text-gray-900">공지사항 작성</h3>
++              <button onClick={() => setShowForm(false)} className="text-gray-400"><X size={18}/></button>
++            </div>
++            {/* 말머리 */}
++            <div>
++              <label className="text-sm font-medium text-gray-700 block mb-2">말머리</label>
++              <div className="flex gap-2">
++                {prefixes.map(p => (
++                  <button key={p} onClick={() => setPrefix(p)}
++                    className={clsx('px-4 py-2 rounded-xl text-sm font-medium border transition-colors',
++                      prefix === p ? 'bg-primary-50 border-primary-400 text-primary-700' : 'bg-white border-gray-200 text-gray-600')}>
++                    [{p}]
++                  </button>
++                ))}
++              </div>
++            </div>
++            {/* 제목 */}
++            <div>
++              <label className="text-sm font-medium text-gray-700 block mb-1.5">제목</label>
++              <input value={title} onChange={e => setTitle(e.target.value)}
++                placeholder="공지 제목"
++                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++            </div>
++            {/* 내용 */}
++            <div>
++              <label className="text-sm font-medium text-gray-700 block mb-1.5">내용</label>
++              <textarea value={body} onChange={e => setBody(e.target.value)}
++                rows={5} placeholder="공지 내용"
++                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
++            </div>
++            {/* 게시 종료일 */}
++            <div>
++              <label className="text-sm font-medium text-gray-700 block mb-1.5">
++                게시 종료일 <span className="text-red-500">*</span>
++              </label>
++              <input type="datetime-local" value={expiresAt} onChange={e => setExpiresAt(e.target.value)}
++                min={new Date().toISOString().slice(0, 16)}
++                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++              <p className="text-xs text-gray-400 mt-1">종료일 이후 자동으로 삭제됩니다</p>
++            </div>
++            <button onClick={handleSubmit}
++              disabled={!title.trim() || !body.trim() || !expiresAt || saving}
++              className="w-full py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800 disabled:opacity-50">
++              {saving ? '등록 중...' : '공지 등록'}
++            </button>
++          </div>
++        )}
++
++        {/* 공지 목록 */}
++        {notices.length === 0 ? (
++          <div className="text-center py-16 text-gray-400">
++            <Megaphone size={32} className="mx-auto mb-3 opacity-30"/>
++            <p className="text-sm">등록된 공지사항이 없습니다</p>
++          </div>
++        ) : (
++          <div className="space-y-3">
++            {notices.map(n => {
++              const isOpen = expanded === n.id
++              const canDel = user?.role === 'ADMIN' || user?.uid === n.authorUid
++              const expDate = new Date(n.expiresAt).toLocaleDateString('ko-KR')
++              return (
++                <div key={n.id}
++                  className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++                  <button className="w-full text-left px-5 py-4"
++                    onClick={() => setExpanded(isOpen ? null : n.id)}>
++                    <div className="flex items-start justify-between gap-3">
++                      <div className="flex-1 min-w-0">
++                        <div className="flex items-center gap-2 mb-1.5">
++                          <span className={clsx('text-xs font-semibold px-2 py-0.5 rounded-full', prefixColor(n.prefix))}>
++                            [{n.prefix}]
++                          </span>
++                          <span className="text-xs text-gray-400">{n.authorName}</span>
++                          <span className="text-xs text-gray-300">~{expDate}</span>
++                        </div>
++                        <p className="font-medium text-gray-900 text-sm">{n.title}</p>
++                      </div>
++                      <div className="flex items-center gap-1 shrink-0">
++                        {canDel && (
++                          <button onClick={e => { e.stopPropagation(); handleDelete(n.id) }}
++                            className="p-1.5 text-gray-300 hover:text-red-500 rounded-lg">
++                            <Trash2 size={14}/>
++                          </button>
++                        )}
++                        {isOpen ? <ChevronUp size={16} className="text-gray-400"/> : <ChevronDown size={16} className="text-gray-400"/>}
++                      </div>
++                    </div>
++                  </button>
++                  {isOpen && (
++                    <div className="px-5 pb-4 border-t border-gray-100 pt-3">
++                      <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{n.body}</p>
++                    </div>
++                  )}
++                </div>
++              )
++            })}
++          </div>
++        )}
++      </div>
++    </AppShell>
++  )
++}
+diff --git a/src/app/search/page.tsx b/src/app/search/page.tsx
+new file mode 100644
+index 0000000..9bc26d1
+--- /dev/null
++++ b/src/app/search/page.tsx
+@@ -0,0 +1,117 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import AppShell from '@/components/AppShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenMessagesForHQ, listenMessagesForBiz } from '@/lib/db'
++import type { Message } from '@/types'
++import { Search, X, ChevronRight } from 'lucide-react'
++import clsx from 'clsx'
++
++export default function SearchPage() {
++  const { user }  = useAuth()
++  const router    = useRouter()
++  const [all,     setAll]     = useState<Message[]>([])
++  const [query,   setQuery]   = useState('')
++  const [results, setResults] = useState<Message[]>([])
++
++  const isHQ  = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
++  const isBiz = user?.role === 'BIZ_REP'
++
++  useEffect(() => {
++    if (!user) { router.replace('/login'); return }
++    if (isHQ) return listenMessagesForHQ(user.uid, user.role === 'ADMIN', setAll)
++    if (isBiz && user.bizId) return listenMessagesForBiz(user.bizId, user.uid, setAll)
++  }, [user, isHQ, isBiz, router])
++
++  useEffect(() => {
++    if (!query.trim()) { setResults([]); return }
++    const q = query.toLowerCase()
++    setResults(all.filter(m =>
++      m.title.toLowerCase().includes(q) ||
++      m.body.toLowerCase().includes(q) ||
++      m.authorName.toLowerCase().includes(q)
++    ))
++  }, [query, all])
++
++  return (
++    <AppShell title="메시지 검색">
++      <div className="max-w-2xl mx-auto p-4 space-y-4">
++        {/* 검색창 */}
++        <div className="relative">
++          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"/>
++          <input value={query} onChange={e => setQuery(e.target.value)}
++            placeholder="제목, 내용, 작성자로 검색..."
++            autoFocus
++            className="w-full border border-gray-300 rounded-xl pl-10 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++          {query && (
++            <button onClick={() => setQuery('')}
++              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
++              <X size={16}/>
++            </button>
++          )}
++        </div>
++
++        {/* 결과 */}
++        {query.trim() && (
++          <p className="text-xs text-gray-400">{results.length}개 결과</p>
++        )}
++
++        {results.length > 0 && (
++          <div className="space-y-2">
++            {results.map(msg => {
++              const q = query.toLowerCase()
++              // 하이라이트: 매칭 문장 스니펫
++              const bodyIdx = msg.body.toLowerCase().indexOf(q)
++              const snippet = bodyIdx >= 0
++                ? msg.body.slice(Math.max(0, bodyIdx - 20), bodyIdx + 60)
++                : msg.body.slice(0, 60)
++
++              return (
++                <button key={msg.id}
++                  onClick={() => router.push(`/messages/${msg.id}`)}
++                  className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm hover:border-primary-200 transition-all group">
++                  <div className="flex items-start justify-between gap-2">
++                    <div className="flex-1 min-w-0">
++                      <div className="flex items-center gap-2 mb-1">
++                        <span className={msg.status === 'done' ? 'badge-done' : 'badge-open'}>
++                          {msg.status === 'done' ? '완결' : '진행중'}
++                        </span>
++                        {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
++                        {msg.type === 'direct' && <span className="badge-received">1:1</span>}
++                      </div>
++                      <p className="font-medium text-sm text-gray-900 truncate"
++                        dangerouslySetInnerHTML={{ __html:
++                          msg.title.replace(new RegExp(`(${query})`, 'gi'),
++                            '<mark class="bg-yellow-100 text-yellow-800 rounded px-0.5">$1</mark>')
++                        }}/>
++                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">
++                        ...{snippet}...
++                      </p>
++                      <p className="text-xs text-gray-300 mt-1">{msg.authorName}</p>
++                    </div>
++                    <ChevronRight size={16} className="text-gray-300 group-hover:text-primary-400 shrink-0 mt-1"/>
++                  </div>
++                </button>
++              )
++            })}
++          </div>
++        )}
++
++        {query.trim() && results.length === 0 && (
++          <div className="text-center py-16 text-gray-400">
++            <Search size={32} className="mx-auto mb-3 opacity-30"/>
++            <p className="text-sm">'{query}'에 대한 결과가 없습니다</p>
++          </div>
++        )}
++
++        {!query && (
++          <div className="text-center py-16 text-gray-400">
++            <Search size={32} className="mx-auto mb-3 opacity-30"/>
++            <p className="text-sm">검색어를 입력하세요</p>
++          </div>
++        )}
++      </div>
++    </AppShell>
++  )
++}
+diff --git a/src/app/settings/page.tsx b/src/app/settings/page.tsx
+new file mode 100644
+index 0000000..3f36982
+--- /dev/null
++++ b/src/app/settings/page.tsx
+@@ -0,0 +1,341 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import AppShell from '@/components/AppShell'
++import { useAuth } from '@/lib/auth-context'
++import { useSettings, FontSize } from '@/lib/settings-context'
++import { subscribePush, unsubscribePush, getPushPermission } from '@/lib/push'
++import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'
++import { upsertUser } from '@/lib/db'
++import { auth } from '@/lib/firebase'
++import {
++  Bell, BellOff, Type, User, Info, ChevronRight,
++  Lock, CheckCircle2, AlertCircle, Eye, EyeOff
++} from 'lucide-react'
++
++export default function SettingsPage() {
++  const { user }                   = useAuth()
++  const { settings, updateSettings } = useSettings()
++  const router                     = useRouter()
++
++  const [section, setSection]     = useState<null | 'account' | 'password' | 'appinfo'>(null)
++  const [pushPerm, setPushPerm]   = useState<NotificationPermission>('default')
++  const [pushLoading, setPushLoading] = useState(false)
++
++  // 계정 설정
++  const [name,    setName]    = useState(user?.name ?? '')
++  const [saving,  setSaving]  = useState(false)
++  const [saved,   setSaved]   = useState(false)
++
++  // 비밀번호 변경
++  const [curPw,   setCurPw]   = useState('')
++  const [newPw,   setNewPw]   = useState('')
++  const [newPw2,  setNewPw2]  = useState('')
++  const [showPw,  setShowPw]  = useState(false)
++  const [pwMsg,   setPwMsg]   = useState('')
++  const [pwError, setPwError] = useState(false)
++
++  useEffect(() => {
++    if (!user) { router.replace('/login'); return }
++    setName(user.name)
++    getPushPermission().then(setPushPerm)
++  }, [user, router])
++
++  // ── 무음 모드 토글 ─────────────────────────────────
++  const toggleSilent = () => updateSettings({ silentMode: !settings.silentMode })
++
++  // ── 글자 크기 ──────────────────────────────────────
++  const fontSizes: { value: FontSize; label: string }[] = [
++    { value: 'small',  label: '작게' },
++    { value: 'medium', label: '보통' },
++    { value: 'large',  label: '크게' },
++  ]
++
++  // ── 푸시 알림 ──────────────────────────────────────
++  const togglePush = async () => {
++    if (!user) return
++    setPushLoading(true)
++    if (settings.pushEnabled) {
++      await unsubscribePush(user.uid)
++      await updateSettings({ pushEnabled: false })
++    } else {
++      const perm = await Notification.requestPermission()
++      setPushPerm(perm)
++      if (perm === 'granted') {
++        const ok = await subscribePush(user.uid)
++        if (ok) await updateSettings({ pushEnabled: true })
++      }
++    }
++    setPushLoading(false)
++  }
++
++  // ── 이름 저장 ──────────────────────────────────────
++  const saveName = async () => {
++    if (!user || !name.trim()) return
++    setSaving(true)
++    await upsertUser({ ...user, name: name.trim() })
++    setSaved(true)
++    setSaving(false)
++    setTimeout(() => setSaved(false), 2000)
++  }
++
++  // ── 비밀번호 변경 ──────────────────────────────────
++  const changePassword = async () => {
++    setPwMsg(''); setPwError(false)
++    if (newPw !== newPw2)         { setPwMsg('새 비밀번호가 일치하지 않습니다'); setPwError(true); return }
++    if (newPw.length < 6)         { setPwMsg('비밀번호는 6자 이상이어야 합니다'); setPwError(true); return }
++    if (!auth.currentUser?.email) return
++    try {
++      const cred = EmailAuthProvider.credential(auth.currentUser.email, curPw)
++      await reauthenticateWithCredential(auth.currentUser, cred)
++      await updatePassword(auth.currentUser, newPw)
++      setPwMsg('비밀번호가 변경되었습니다')
++      setCurPw(''); setNewPw(''); setNewPw2('')
++    } catch (e: unknown) {
++      const msg = (e as { code?: string })?.code === 'auth/wrong-password'
++        ? '현재 비밀번호가 올바르지 않습니다'
++        : '변경 중 오류가 발생했습니다'
++      setPwMsg(msg); setPwError(true)
++    }
++  }
++
++  const SectionHeader = ({ label }: { label: string }) => (
++    <div className="flex items-center gap-2 mb-3">
++      <button onClick={() => setSection(null)} className="text-gray-400 hover:text-gray-600 text-sm">← 설정</button>
++      <span className="text-gray-300">/</span>
++      <span className="text-sm font-medium text-gray-700">{label}</span>
++    </div>
++  )
++
++  // ── 계정 설정 섹션 ─────────────────────────────────
++  if (section === 'account') return (
++    <AppShell title="계정 설정">
++      <div className="max-w-lg mx-auto p-4 space-y-4">
++        <SectionHeader label="계정 설정"/>
++        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
++          <div>
++            <label className="text-sm font-medium text-gray-700 block mb-1.5">이름</label>
++            <input value={name} onChange={e => setName(e.target.value)}
++              className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++          </div>
++          <div>
++            <label className="text-sm font-medium text-gray-700 block mb-1.5">이메일</label>
++            <input value={user?.email ?? ''} disabled
++              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 text-gray-400"/>
++          </div>
++          <div>
++            <label className="text-sm font-medium text-gray-700 block mb-1.5">역할</label>
++            <input value={user?.role === 'ETC' && user?.customRole ? user.customRole : (
++              { ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타' }[user?.role ?? ''] ?? ''
++            )} disabled
++              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 text-gray-400"/>
++          </div>
++          <button onClick={saveName} disabled={saving || !name.trim()}
++            className="w-full py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800 disabled:opacity-50 flex items-center justify-center gap-2">
++            {saved ? <><CheckCircle2 size={16}/> 저장됨</> : saving ? '저장 중...' : '저장'}
++          </button>
++        </div>
++        <button onClick={() => setSection('password')}
++          className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-2xl p-5 hover:bg-gray-50">
++          <div className="flex items-center gap-3">
++            <Lock size={18} className="text-gray-500"/>
++            <span className="text-sm font-medium text-gray-800">비밀번호 변경</span>
++          </div>
++          <ChevronRight size={16} className="text-gray-400"/>
++        </button>
++      </div>
++    </AppShell>
++  )
++
++  // ── 비밀번호 변경 섹션 ────────────────────────────
++  if (section === 'password') return (
++    <AppShell title="비밀번호 변경">
++      <div className="max-w-lg mx-auto p-4 space-y-4">
++        <SectionHeader label="비밀번호 변경"/>
++        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
++          {[
++            { label: '현재 비밀번호', value: curPw, setter: setCurPw },
++            { label: '새 비밀번호',   value: newPw, setter: setNewPw },
++            { label: '새 비밀번호 확인', value: newPw2, setter: setNewPw2 },
++          ].map(({ label, value, setter }) => (
++            <div key={label}>
++              <label className="text-sm font-medium text-gray-700 block mb-1.5">{label}</label>
++              <div className="relative">
++                <input type={showPw ? 'text' : 'password'} value={value}
++                  onChange={e => setter(e.target.value)}
++                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 pr-10"/>
++                <button onClick={() => setShowPw(v => !v)}
++                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
++                  {showPw ? <EyeOff size={16}/> : <Eye size={16}/>}
++                </button>
++              </div>
++            </div>
++          ))}
++          {pwMsg && (
++            <div className={`flex items-center gap-2 text-sm ${pwError ? 'text-red-600' : 'text-green-600'}`}>
++              {pwError ? <AlertCircle size={14}/> : <CheckCircle2 size={14}/>}
++              {pwMsg}
++            </div>
++          )}
++          <button onClick={changePassword}
++            disabled={!curPw || !newPw || !newPw2}
++            className="w-full py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800 disabled:opacity-50">
++            변경하기
++          </button>
++        </div>
++      </div>
++    </AppShell>
++  )
++
++  // ── 앱 정보 섹션 ──────────────────────────────────
++  if (section === 'appinfo') return (
++    <AppShell title="앱 정보">
++      <div className="max-w-lg mx-auto p-4 space-y-4">
++        <SectionHeader label="앱 정보"/>
++        <div className="bg-white border border-gray-200 rounded-2xl divide-y divide-gray-100">
++          {[
++            { label: '앱 이름',   value: '본부관리시스템' },
++            { label: '버전',      value: 'v1.0.0' },
++            { label: '개발',      value: '운영본부' },
++          ].map(({ label, value }) => (
++            <div key={label} className="flex justify-between items-center px-5 py-4">
++              <span className="text-sm text-gray-600">{label}</span>
++              <span className="text-sm font-medium text-gray-900">{value}</span>
++            </div>
++          ))}
++          <button onClick={() => router.push('/privacy')}
++            className="w-full flex justify-between items-center px-5 py-4 hover:bg-gray-50">
++            <span className="text-sm text-gray-600">개인정보처리방침</span>
++            <ChevronRight size={16} className="text-gray-400"/>
++          </button>
++          <div className="px-5 py-4">
++            <p className="text-xs text-gray-400 leading-relaxed">
++              데이터 보관 정책: 전달 3년, 운영본부 채팅 4주,
++              1:1 메시지(업무) 3년, 사업장간 1:1 7일,
++              캘린더 완료 후 1개월, 공지사항 게시 종료일까지
++            </p>
++          </div>
++        </div>
++      </div>
++    </AppShell>
++  )
++
++  // ── 메인 설정 화면 ─────────────────────────────────
++  return (
++    <AppShell title="설정">
++      <div className="max-w-lg mx-auto p-4 space-y-4">
++
++        {/* 알림 */}
++        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++          <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
++            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">알림</p>
++          </div>
++          {/* 푸시 알림 */}
++          <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
++            <div className="flex items-center gap-3">
++              <Bell size={18} className="text-gray-500"/>
++              <div>
++                <p className="text-sm font-medium text-gray-800">푸시 알림</p>
++                <p className="text-xs text-gray-400 mt-0.5">
++                  {pushPerm === 'denied' ? '브라우저에서 차단됨 — 브라우저 설정에서 허용해주세요' :
++                   settings.pushEnabled ? '알림이 활성화되어 있습니다' : '알림이 꺼져 있습니다'}
++                </p>
++              </div>
++            </div>
++            <button onClick={togglePush} disabled={pushLoading || pushPerm === 'denied'}
++              className={`relative w-12 h-6 rounded-full transition-colors duration-200 disabled:opacity-40 ${
++                settings.pushEnabled ? 'bg-primary-600' : 'bg-gray-300'
++              }`}>
++              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
++                settings.pushEnabled ? 'translate-x-6' : 'translate-x-0.5'
++              }`}/>
++            </button>
++          </div>
++          {/* 무음 모드 */}
++          <div className="flex items-center justify-between px-5 py-4">
++            <div className="flex items-center gap-3">
++              <BellOff size={18} className="text-gray-500"/>
++              <div>
++                <p className="text-sm font-medium text-gray-800">무음 모드</p>
++                <p className="text-xs text-gray-400 mt-0.5">알림 소리·진동 끄기</p>
++              </div>
++            </div>
++            <button onClick={toggleSilent}
++              className={`relative w-12 h-6 rounded-full transition-colors duration-200 ${
++                settings.silentMode ? 'bg-primary-600' : 'bg-gray-300'
++              }`}>
++              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
++                settings.silentMode ? 'translate-x-6' : 'translate-x-0.5'
++              }`}/>
++            </button>
++          </div>
++        </div>
++
++        {/* 화면 */}
++        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++          <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
++            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">화면</p>
++          </div>
++          <div className="px-5 py-4">
++            <div className="flex items-center gap-3 mb-3">
++              <Type size={18} className="text-gray-500"/>
++              <p className="text-sm font-medium text-gray-800">글자 크기</p>
++            </div>
++            <div className="flex gap-2">
++              {fontSizes.map(({ value, label }) => (
++                <button key={value}
++                  onClick={() => updateSettings({ fontSize: value })}
++                  className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${
++                    settings.fontSize === value
++                      ? 'bg-primary-50 border-primary-400 text-primary-700'
++                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
++                  }`}>
++                  {label}
++                </button>
++              ))}
++            </div>
++            <p className="text-xs text-gray-400 mt-2 text-center">
++              미리보기: <span style={{ fontSize: settings.fontSize === 'small' ? '13px' : settings.fontSize === 'large' ? '17px' : '15px' }}>
++                가나다라 ABC 123
++              </span>
++            </p>
++          </div>
++        </div>
++
++        {/* 계정 */}
++        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++          <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
++            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">계정</p>
++          </div>
++          {[
++            { icon: User, label: '내 정보 / 비밀번호 변경', action: () => setSection('account') },
++          ].map(({ icon: Icon, label, action }) => (
++            <button key={label} onClick={action}
++              className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 border-b border-gray-100 last:border-0">
++              <div className="flex items-center gap-3">
++                <Icon size={18} className="text-gray-500"/>
++                <span className="text-sm font-medium text-gray-800">{label}</span>
++              </div>
++              <ChevronRight size={16} className="text-gray-400"/>
++            </button>
++          ))}
++        </div>
++
++        {/* 앱 정보 */}
++        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++          <button onClick={() => setSection('appinfo')}
++            className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50">
++            <div className="flex items-center gap-3">
++              <Info size={18} className="text-gray-500"/>
++              <span className="text-sm font-medium text-gray-800">앱 정보</span>
++            </div>
++            <div className="flex items-center gap-2">
++              <span className="text-xs text-gray-400">v1.0.0</span>
++              <ChevronRight size={16} className="text-gray-400"/>
++            </div>
++          </button>
++        </div>
++      </div>
++    </AppShell>
++  )
++}
+diff --git a/src/components/AppShell.tsx b/src/components/AppShell.tsx
+index 93c1a23..d65a18b 100644
+--- a/src/components/AppShell.tsx
++++ b/src/components/AppShell.tsx
+@@ -5,15 +5,21 @@ import { usePathname, useRouter } from 'next/navigation'
+ import { signOut } from 'firebase/auth'
+ import { auth } from '@/lib/firebase'
+ import { useAuth } from '@/lib/auth-context'
+-import { LayoutDashboard, Building2, Send, Users, LogOut, Menu, X, ChevronRight, MessageSquare, MessageCircle } from 'lucide-react'
++import { useSettings } from '@/lib/settings-context'
++import {
++  LayoutDashboard, Building2, Send, Users, LogOut, Menu, X,
++  ChevronRight, MessageSquare, MessageCircle, Settings,
++  Megaphone, Calendar, Search
++} from 'lucide-react'
+ import clsx from 'clsx'
+ 
+ interface Props { children: ReactNode; title?: string; back?: string }
+ 
+ export default function AppShell({ children, title, back }: Props) {
+-  const { user } = useAuth()
+-  const router   = useRouter()
+-  const pathname = usePathname()
++  const { user }     = useAuth()
++  const { settings } = useSettings()
++  const router       = useRouter()
++  const pathname     = usePathname()
+   const [open, setOpen] = useState(false)
+ 
+   const isAdmin    = user?.role === 'ADMIN'
+@@ -21,29 +27,32 @@ export default function AppShell({ children, title, back }: Props) {
+   const isHQMember = user?.role === 'HQ_MEMBER'
+   const isBiz      = user?.role === 'BIZ_REP'
+   const isHQ       = isAdmin || isHQChief || isHQMember
+-
+   const canBroadcast = isAdmin || isHQChief || !!user?.permissions?.canBroadcast
+ 
++  const fontClass = settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
++
+   const nav = [
+-    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true },
+-    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ },
+-    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast },
+-    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ },
+-    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: isBiz },
+-    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin },
++    { href: '/dashboard',  label: '대시보드',     icon: LayoutDashboard, show: true },
++    { href: '/businesses', label: '사업장 현황',   icon: Building2,       show: isHQ },
++    { href: '/compose',    label: '전달 작성',     icon: Send,            show: canBroadcast },
++    { href: '/notices',    label: '공지사항',      icon: Megaphone,       show: true },
++    { href: '/calendar',   label: '캘린더',        icon: Calendar,        show: true },
++    { href: '/search',     label: '메시지 검색',   icon: Search,          show: true },
++    { href: '/chat',       label: '운영본부 채팅',  icon: MessageCircle,   show: isHQ },
++    { href: '/direct',     label: '1:1 메시지',    icon: MessageSquare,   show: true },
++    { href: '/admin',      label: '멤버 관리',     icon: Users,           show: isAdmin },
++    { href: '/settings',   label: '설정',          icon: Settings,        show: true },
+   ].filter(n => n.show)
+ 
+   const handleLogout = async () => { await signOut(auth); router.replace('/login') }
+   const roleLabel: Record<string, string> = {
+-    ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표', ETC: '기타'
++    ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타'
+   }
+-  // ETC는 customRole 표시
+   const displayRole = user?.role === 'ETC' && user?.customRole
+-    ? user.customRole
+-    : roleLabel[user?.role ?? '']
++    ? user.customRole : roleLabel[user?.role ?? '']
+ 
+   return (
+-    <div className="flex h-screen bg-gray-50">
++    <div className={clsx('flex h-screen bg-gray-50', fontClass)}>
+       <aside className={clsx(
+         'fixed inset-y-0 left-0 z-40 w-60 bg-primary-900 text-white flex flex-col transition-transform duration-200',
+         open ? 'translate-x-0' : '-translate-x-full', 'lg:relative lg:translate-x-0'
+diff --git a/src/components/PushInit.tsx b/src/components/PushInit.tsx
+new file mode 100644
+index 0000000..68ea589
+--- /dev/null
++++ b/src/components/PushInit.tsx
+@@ -0,0 +1,30 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useAuth } from '@/lib/auth-context'
++import { useSettings } from '@/lib/settings-context'
++import PushPermissionModal from './PushPermissionModal'
++
++export default function PushInit() {
++  const { user }           = useAuth()
++  const { settings }       = useSettings()
++  const [show, setShow]    = useState(false)
++
++  useEffect(() => {
++    if (!user) return
++    if (settings.pushEnabled) return
++    if (!('Notification' in window)) return
++    if (Notification.permission !== 'default') return
++
++    // 첫 로그인 후 2초 뒤 팝업
++    const shown = sessionStorage.getItem('pushPromptShown')
++    if (shown) return
++    const t = setTimeout(() => {
++      sessionStorage.setItem('pushPromptShown', '1')
++      setShow(true)
++    }, 2000)
++    return () => clearTimeout(t)
++  }, [user, settings.pushEnabled])
++
++  if (!show) return null
++  return <PushPermissionModal onClose={() => setShow(false)}/>
++}
+diff --git a/src/components/PushPermissionModal.tsx b/src/components/PushPermissionModal.tsx
+new file mode 100644
+index 0000000..cf09478
+--- /dev/null
++++ b/src/components/PushPermissionModal.tsx
+@@ -0,0 +1,56 @@
++'use client'
++import { useState } from 'react'
++import { Bell, X } from 'lucide-react'
++import { subscribePush } from '@/lib/push'
++import { useAuth } from '@/lib/auth-context'
++import { useSettings } from '@/lib/settings-context'
++
++interface Props { onClose: () => void }
++
++export default function PushPermissionModal({ onClose }: Props) {
++  const { user }             = useAuth()
++  const { updateSettings }   = useSettings()
++  const [loading, setLoading] = useState(false)
++
++  const handleAllow = async () => {
++    if (!user) return
++    setLoading(true)
++    const permission = await Notification.requestPermission()
++    if (permission === 'granted') {
++      const ok = await subscribePush(user.uid)
++      if (ok) await updateSettings({ pushEnabled: true })
++    }
++    setLoading(false)
++    onClose()
++  }
++
++  return (
++    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 px-4">
++      <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-xl">
++        <div className="flex items-start justify-between mb-4">
++          <div className="w-12 h-12 bg-primary-50 rounded-2xl flex items-center justify-center">
++            <Bell size={24} className="text-primary-600"/>
++          </div>
++          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
++            <X size={20}/>
++          </button>
++        </div>
++        <h2 className="font-bold text-gray-900 text-lg mb-2">푸시 알림 허용</h2>
++        <p className="text-sm text-gray-500 leading-relaxed mb-6">
++          새 전달, 공지사항, 일정 알림을 실시간으로 받을 수 있습니다.
++          중요한 업무를 놓치지 마세요.
++        </p>
++        <div className="flex gap-2">
++          <button onClick={onClose}
++            className="flex-1 py-3 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">
++            나중에
++          </button>
++          <button onClick={handleAllow} disabled={loading}
++            className="flex-1 py-3 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800 disabled:opacity-60">
++            {loading ? '처리 중...' : '허용하기'}
++          </button>
++        </div>
++      </div>
++    </div>
++  )
++}
+diff --git a/src/lib/db.ts b/src/lib/db.ts
+index 378598a..4625163 100644
+--- a/src/lib/db.ts
++++ b/src/lib/db.ts
+@@ -232,3 +232,94 @@ export async function sendChatMessage(authorUid: string, authorName: string, aut
+     authorUid, authorName, authorRole, body, createdAt: serverTimestamp()
+   })
+ }
++
++// ══════════════════════════════════════════════════════
++// 공지사항
++// ══════════════════════════════════════════════════════
++import type { Notice, CalendarEvent, MessageTemplate } from '@/types'
++import { Timestamp } from 'firebase/firestore'
++
++export function listenNotices(cb: (n: Notice[]) => void) {
++  const now = new Date().toISOString()
++  return onSnapshot(
++    query(collection(db, 'notices'), orderBy('createdAt', 'desc')),
++    snap => {
++      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as Notice))
++      cb(all.filter(n => n.expiresAt > now))
++    }
++  )
++}
++
++export async function addNotice(data: Omit<Notice, 'id' | 'createdAt'>) {
++  return addDoc(collection(db, 'notices'), { ...data, createdAt: serverTimestamp() })
++}
++
++export async function deleteNotice(id: string) {
++  await deleteDoc(doc(db, 'notices', id))
++}
++
++// ══════════════════════════════════════════════════════
++// 캘린더 일정
++// ══════════════════════════════════════════════════════
++export function listenEvents(uid: string, bizId: string | undefined, cb: (e: CalendarEvent[]) => void) {
++  return onSnapshot(
++    query(collection(db, 'events'), orderBy('date', 'asc')),
++    snap => {
++      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent))
++      cb(all.filter(e =>
++        e.ownerUid === uid ||
++        (bizId && e.targetBizIds?.includes(bizId))
++      ))
++    }
++  )
++}
++
++export async function addEvent(data: Omit<CalendarEvent, 'id' | 'createdAt'>) {
++  return addDoc(collection(db, 'events'), { ...data, createdAt: serverTimestamp() })
++}
++
++export async function updateEvent(id: string, data: Partial<CalendarEvent>) {
++  await updateDoc(doc(db, 'events', id), { ...data, updatedAt: serverTimestamp() })
++}
++
++export async function deleteEvent(id: string) {
++  await deleteDoc(doc(db, 'events', id))
++}
++
++// 사업장 대표가 캘린더에 추가
++export async function addEventToMyCalendar(eventId: string, bizId: string) {
++  await updateDoc(doc(db, 'events', eventId), {
++    [`addedBy.${bizId}`]: new Date().toISOString(),
++    updatedAt: serverTimestamp(),
++  })
++}
++
++// ══════════════════════════════════════════════════════
++// 메시지 템플릿
++// ══════════════════════════════════════════════════════
++export function listenTemplates(uid: string, cb: (t: MessageTemplate[]) => void) {
++  return onSnapshot(
++    query(collection(db, 'templates'), where('ownerUid', '==', uid), orderBy('createdAt', 'desc')),
++    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as MessageTemplate)))
++  )
++}
++
++export async function addTemplate(data: Omit<MessageTemplate, 'id' | 'createdAt'>) {
++  return addDoc(collection(db, 'templates'), { ...data, createdAt: serverTimestamp() })
++}
++
++export async function deleteTemplate(id: string) {
++  await deleteDoc(doc(db, 'templates', id))
++}
++
++// ══════════════════════════════════════════════════════
++// 사업장 순서 (개인별)
++// ══════════════════════════════════════════════════════
++export async function getBizOrder(uid: string): Promise<string[]> {
++  const snap = await getDoc(doc(db, 'bizOrder', uid))
++  return snap.exists() ? (snap.data().order as string[]) : []
++}
++
++export async function saveBizOrder(uid: string, order: string[]) {
++  await setDoc(doc(db, 'bizOrder', uid), { order, updatedAt: serverTimestamp() })
++}
+diff --git a/src/lib/push.ts b/src/lib/push.ts
+new file mode 100644
+index 0000000..54a02fd
+--- /dev/null
++++ b/src/lib/push.ts
+@@ -0,0 +1,45 @@
++// Web Push 유틸리티
++import { db } from './firebase'
++import { doc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
++
++export function urlBase64ToUint8Array(base64String: string) {
++  const padding = '='.repeat((4 - base64String.length % 4) % 4)
++  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
++  const rawData = window.atob(base64)
++  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)))
++}
++
++export async function subscribePush(uid: string): Promise<boolean> {
++  try {
++    const reg = await navigator.serviceWorker.ready
++    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
++    if (!vapidKey) return false
++
++    const sub = await reg.pushManager.subscribe({
++      userVisibleOnly: true,
++      applicationServerKey: urlBase64ToUint8Array(vapidKey),
++    })
++
++    await setDoc(doc(db, 'fcmTokens', uid), {
++      subscription: JSON.parse(JSON.stringify(sub)),
++      updatedAt: serverTimestamp(),
++    })
++    return true
++  } catch {
++    return false
++  }
++}
++
++export async function unsubscribePush(uid: string): Promise<void> {
++  try {
++    const reg = await navigator.serviceWorker.ready
++    const sub = await reg.pushManager.getSubscription()
++    if (sub) await sub.unsubscribe()
++    await deleteDoc(doc(db, 'fcmTokens', uid))
++  } catch {}
++}
++
++export async function getPushPermission(): Promise<NotificationPermission> {
++  if (!('Notification' in window)) return 'denied'
++  return Notification.permission
++}
+diff --git a/src/lib/settings-context.tsx b/src/lib/settings-context.tsx
+new file mode 100644
+index 0000000..3276d5e
+--- /dev/null
++++ b/src/lib/settings-context.tsx
+@@ -0,0 +1,64 @@
++'use client'
++import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
++import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
++import { db } from './firebase'
++import { useAuth } from './auth-context'
++
++export type FontSize = 'small' | 'medium' | 'large'
++
++export interface UserSettings {
++  silentMode: boolean
++  fontSize:   FontSize
++  pushEnabled: boolean
++}
++
++const DEFAULT: UserSettings = {
++  silentMode:  false,
++  fontSize:    'medium',
++  pushEnabled: false,
++}
++
++interface SettingsCtx {
++  settings: UserSettings
++  updateSettings: (patch: Partial<UserSettings>) => Promise<void>
++  loading: boolean
++}
++
++const Ctx = createContext<SettingsCtx>({
++  settings: DEFAULT,
++  updateSettings: async () => {},
++  loading: true,
++})
++
++export function SettingsProvider({ children }: { children: ReactNode }) {
++  const { user } = useAuth()
++  const [settings, setSettings] = useState<UserSettings>(DEFAULT)
++  const [loading,  setLoading]  = useState(true)
++
++  useEffect(() => {
++    if (!user) { setLoading(false); return }
++    getDoc(doc(db, 'userSettings', user.uid)).then(snap => {
++      if (snap.exists()) setSettings({ ...DEFAULT, ...snap.data() as UserSettings })
++      setLoading(false)
++    })
++  }, [user])
++
++  // 글자 크기를 html data 속성으로 적용
++  useEffect(() => {
++    const map: Record<FontSize, string> = { small: '14px', medium: '16px', large: '18px' }
++    document.documentElement.style.setProperty('--app-font-size', map[settings.fontSize])
++  }, [settings.fontSize])
++
++  const updateSettings = async (patch: Partial<UserSettings>) => {
++    const next = { ...settings, ...patch }
++    setSettings(next)
++    if (user) {
++      await setDoc(doc(db, 'userSettings', user.uid),
++        { ...next, updatedAt: serverTimestamp() }, { merge: true })
++    }
++  }
++
++  return <Ctx.Provider value={{ settings, updateSettings, loading }}>{children}</Ctx.Provider>
++}
++
++export const useSettings = () => useContext(Ctx)
+diff --git a/src/types/index.ts b/src/types/index.ts
+index 33631ff..b1d32d6 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -10,15 +10,12 @@ export interface AppUser {
+   email:        string
+   name:         string
+   role:         UserRole
+-  customRole?:  string   // ETC 역할일 때 직접 입력한 직책명
++  customRole?:  string
+   bizId?:       string
+   permissions?: UserPermissions
+ }
+ 
+-export interface Shareholder {
+-  name:   string
+-  shares: number
+-}
++export interface Shareholder { name: string; shares: number }
+ 
+ export interface Business {
+   id:             string
+@@ -31,7 +28,7 @@ export interface Business {
+   shareholders?:  Shareholder[]
+   employeeCount?: number
+   annualRevenue?: number
+-  isHQ?:          boolean   // 운영본부 여부 (본부 멤버 소속)
++  isHQ?:          boolean
+   createdAt?:     unknown
+ }
+ 
+@@ -60,20 +57,76 @@ export interface Reply {
+ }
+ 
+ export interface Message {
+-  id:           string
+-  title:        string
+-  body:         string
+-  priority:     MessagePriority
+-  type:         MessageType
+-  authorUid:    string
+-  authorName:   string
+-  authorBizId?: string
+-  targetBizIds: string[]
+-  targetUid?:   string
+-  targetName?:  string
+-  status:       MessageStatus
+-  receipts:     Receipt[]
+-  replies:      Reply[]
+-  createdAt:    unknown
+-  updatedAt:    unknown
++  id:            string
++  title:         string
++  body:          string
++  priority:      MessagePriority
++  type:          MessageType
++  authorUid:     string
++  authorName:    string
++  authorBizId?:  string
++  targetBizIds:  string[]
++  targetUid?:    string
++  targetName?:   string
++  status:        MessageStatus
++  receipts:      Receipt[]
++  replies:       Reply[]
++  // 일정 첨부
++  eventDate?:    string   // ISO 날짜 "YYYY-MM-DD"
++  eventTime?:    string   // "HH:MM"
++  eventTitle?:   string
++  createdAt:     unknown
++  updatedAt:     unknown
++  // 링크 첨부
++  linkUrl?:      string
++  linkLabel?:    string
++}
++
++// ── 공지사항 ──────────────────────────────────────────
++export type NoticePrefix = '본부' | '사업장'
++
++export interface Notice {
++  id:          string
++  prefix:      NoticePrefix
++  title:       string
++  body:        string
++  authorUid:   string
++  authorName:  string
++  expiresAt:   string   // ISO datetime
++  createdAt:   unknown
++  updatedAt?:  unknown
++}
++
++// ── 캘린더 일정 ───────────────────────────────────────
++export type ReminderUnit = 'minutes' | 'hours' | 'days'
++
++export interface EventReminder {
++  value: number
++  unit:  ReminderUnit
++}
++
++export interface CalendarEvent {
++  id:            string
++  title:         string
++  date:          string   // "YYYY-MM-DD"
++  time?:         string   // "HH:MM"
++  memo?:         string
++  ownerUid:      string
++  ownerName:     string
++  targetBizIds?: string[]   // 사업장에 공유된 경우
++  reminder?:     EventReminder
++  isDone:        boolean
++  doneAt?:       string
++  addedBy?:      Record<string, string>   // bizId → addedAt ISO
++  createdAt:     unknown
++  updatedAt?:    unknown
++}
++
++// ── 메시지 템플릿 ─────────────────────────────────────
++export interface MessageTemplate {
++  id:        string
++  ownerUid:  string
++  title:     string
++  body:      string
++  createdAt: unknown
+ }
+diff --git a/vercel.json b/vercel.json
+new file mode 100644
+index 0000000..be70945
+--- /dev/null
++++ b/vercel.json
+@@ -0,0 +1,8 @@
++{
++  "crons": [
++    {
++      "path": "/api/cleanup",
++      "schedule": "0 3 * * *"
++    }
++  ]
++}
+-- 
+2.43.0
+

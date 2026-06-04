@@ -1,0 +1,59 @@
+From 997568c03d01058fcd9e26108c4a6a22871b48cd Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 00:03:22 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EA=B3=84=EC=A0=95=20=EC=B6=94=EA=B0=80?=
+ =?UTF-8?q?=20=EC=8B=9C=20=EA=B4=80=EB=A6=AC=EC=9E=90=20=EB=A1=9C=EA=B7=B8?=
+ =?UTF-8?q?=EC=9D=B8=20=EC=9C=A0=EC=A7=80=20-=20Secondary=20Firebase=20App?=
+ =?UTF-8?q?=20=EC=82=AC=EC=9A=A9?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/admin/page.tsx | 6 +++++-
+ src/lib/firebase.ts    | 8 +++++++-
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/admin/page.tsx b/src/app/admin/page.tsx
+index b738f5c..7460545 100644
+--- a/src/app/admin/page.tsx
++++ b/src/app/admin/page.tsx
+@@ -5,6 +5,7 @@ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+ import { listenUsers, listenBusinesses, updateBusiness, ensureHQBusiness } from '@/lib/db'
+ import { createUserWithEmailAndPassword } from 'firebase/auth'
++import { secondaryAuth } from '@/lib/firebase'
+ import { doc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore'
+ import { auth, db } from '@/lib/firebase'
+ import type { AppUser, Business, UserRole, UserPermissions } from '@/types'
+@@ -152,7 +153,10 @@ export default function AdminPage() {
+         assignedBizId = newBizId || null
+       }
+ 
+-      const cred = await createUserWithEmailAndPassword(auth, newEmail, newPw)
++      // Secondary App으로 생성 — 현재 관리자 로그인 세션 유지
++      const cred = await createUserWithEmailAndPassword(secondaryAuth, newEmail, newPw)
++      // 생성 후 Secondary App 로그아웃 (세션 정리)
++      await secondaryAuth.signOut()
+       const newUser: AppUser = {
+         uid: cred.user.uid, email: newEmail, name: newName,
+         role: newRole, permissions: newPerms,
+diff --git a/src/lib/firebase.ts b/src/lib/firebase.ts
+index cde6a9b..453ae2d 100644
+--- a/src/lib/firebase.ts
++++ b/src/lib/firebase.ts
+@@ -13,4 +13,10 @@ const firebaseConfig = {
+ 
+ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+ export const auth = getAuth(app)
+-export const db = getFirestore(app)
++export const db   = getFirestore(app)
++
++// Secondary App — 계정 생성 시 현재 로그인 세션 유지용
++const SECONDARY = 'secondary'
++const secondaryApp = getApps().find(a => a.name === SECONDARY)
++  || initializeApp(firebaseConfig, SECONDARY)
++export const secondaryAuth = getAuth(secondaryApp)
+-- 
+2.43.0
+

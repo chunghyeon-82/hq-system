@@ -1,0 +1,119 @@
+From f1539b830c4bda4eb1d35e9a1a35924d6bccfe53 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 00:25:21 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=EC=B1=84=ED=8C=85=20=EC=9D=B4=EB=AA=A8?=
+ =?UTF-8?q?=ED=8B=B0=EC=BD=98=20=ED=83=AD=20=ED=94=BC=EC=BB=A4=20-=20?=
+ =?UTF-8?q?=ED=91=9C=EC=A0=95/=EC=97=85=EB=AC=B4/=ED=95=9C=EA=B8=80?=
+ =?UTF-8?q?=EB=A9=98=ED=8A=B8=203=ED=83=AD?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/chat/page.tsx | 74 +++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 60 insertions(+), 14 deletions(-)
+
+diff --git a/src/app/chat/page.tsx b/src/app/chat/page.tsx
+index 7269788..b406b09 100644
+--- a/src/app/chat/page.tsx
++++ b/src/app/chat/page.tsx
+@@ -22,12 +22,37 @@ function memberColor(uid: string, members: AppUser[]) {
+   return COLORS[idx % COLORS.length] ?? 'bg-gray-500'
+ }
+ 
+-const EMOJI_LIST = [
+-  '😀','😂','🤣','😊','😍','🥰','😎','🤔','😅','🙏',
+-  '👍','👎','👏','🙌','🤝','✌️','🤞','💪','🫡','👀',
+-  '❤️','🔥','✅','⭐','🎉','🎊','💯','📌','📢','🔔',
+-  '😢','😭','😤','😡','🥺','😴','🤯','😱','🤦','🤷',
+-  '🏃','💼','📋','✍️','💡','🔑','📞','📧','🗓️','⏰',
++const EMOJI_TABS = [
++  {
++    label: '😊',
++    items: [
++      '😀','😂','🤣','😊','😍','🥰','😎','🤔','😅','😆',
++      '🙏','👍','👎','👏','🙌','🤝','✌️','💪','🫡','👀',
++      '❤️','🔥','✅','⭐','🎉','🎊','💯','📌','😢','😭',
++      '😤','😡','🥺','😴','🤯','😱','🤦','🤷','😏','🤩',
++    ]
++  },
++  {
++    label: '💼',
++    items: [
++      '📋','✍️','💡','🔑','📞','📧','🗓️','⏰','📊','📈',
++      '📉','💰','🏢','🖥️','📱','🖨️','📠','📂','🗂️','📝',
++      '✉️','📬','🔔','🔕','⚠️','✔️','❌','🔍','💼','🏃',
++      '☕','🍱','🚗','🏠','💊','🩺','🛠️','🔧','⚙️','🎯',
++    ]
++  },
++  {
++    label: '💬',
++    items: [
++      '퇴근 ㄱ?','점심 ㄱ?','커피 ㄱ?','회의 ㄱ?',
++      '잠깐요!','ㅋㅋㅋ','ㅎㅎ','ㅠㅠ','ㄴㄴ','ㅇㅇ',
++      '확인했습니다','알겠습니다','감사합니다','수고하세요',
++      '잠시후에요','곧 갑니다','먼저 갑니다','늦을것 같아요',
++      '오늘도 화이팅!','고생많으셨어요','잘 부탁드려요','다음에 봐요',
++      '급합니다!','잠깐 통화될까요?','자리 비웁니다','곧 돌아올게요',
++      '밥은 드셨나요?','오늘 날씨 좋네요','주말 잘 보내세요','월요일 봐요',
++    ]
++  },
+ ]
+ 
+ export default function ChatPage() {
+@@ -42,6 +67,7 @@ export default function ChatPage() {
+   const bottomRef  = useRef<HTMLDivElement>(null)
+   const inputRef   = useRef<HTMLTextAreaElement>(null)
+   const [showEmoji, setShowEmoji] = useState(false)
++  const [emojiTab,   setEmojiTab]   = useState(0)
+ 
+   const isHQ = user && HQ_ROLES_ALL.includes(user.role)
+ 
+@@ -233,16 +259,36 @@ export default function ChatPage() {
+         <div className="bg-white border-t border-gray-200 px-3 py-3 shrink-0">
+           {/* 이모티콘 피커 */}
+           {showEmoji && (
+-            <div className="bg-white border border-gray-200 rounded-2xl p-3 mb-2 shadow-lg">
+-              <div className="grid grid-cols-10 gap-1">
+-                {EMOJI_LIST.map(emoji => (
+-                  <button key={emoji}
++            <div className="bg-white border border-gray-200 rounded-2xl mb-2 shadow-lg overflow-hidden">
++              {/* 탭 */}
++              <div className="flex border-b border-gray-100">
++                {EMOJI_TABS.map((tab, i) => (
++                  <button key={i} onClick={() => setEmojiTab(i)}
++                    className={clsx('flex-1 py-2 text-sm font-medium transition-colors',
++                      emojiTab === i ? 'bg-primary-50 text-primary-700 border-b-2 border-primary-500' : 'text-gray-500 hover:bg-gray-50')}>
++                    {tab.label}
++                  </button>
++                ))}
++              </div>
++              {/* 아이템 */}
++              <div className={clsx(
++                'p-2',
++                emojiTab === 2 ? 'grid grid-cols-2 gap-1' : 'grid grid-cols-10 gap-1'
++              )}>
++                {EMOJI_TABS[emojiTab].items.map(item => (
++                  <button key={item}
+                     onClick={() => {
+-                      setText(t => t + emoji)
+-                      inputRef.current?.focus()
++                      setText(t => t + (emojiTab === 2 ? item : item))
++                      if (emojiTab !== 2) inputRef.current?.focus()
++                      else setShowEmoji(false)
+                     }}
+-                    className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 rounded-lg transition-colors">
+-                    {emoji}
++                    className={clsx(
++                      'flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors',
++                      emojiTab === 2
++                        ? 'text-xs text-gray-700 px-2 py-2 font-medium'
++                        : 'w-8 h-8 text-lg'
++                    )}>
++                    {item}
+                   </button>
+                 ))}
+               </div>
+-- 
+2.43.0
+

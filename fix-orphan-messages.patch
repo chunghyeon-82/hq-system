@@ -1,0 +1,116 @@
+From 9d6e00e31bfce78d726c27820b6c15d4b35ba90a Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 23:08:18 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EA=B3=A0=EC=95=84=20=EB=A9=94=EC=8B=9C?=
+ =?UTF-8?q?=EC=A7=80=20=EC=B2=98=EB=A6=AC=20-=20=EC=82=AC=EC=97=85?=
+ =?UTF-8?q?=EC=9E=A5=20=EC=82=AD=EC=A0=9C=20=EC=8B=9C=20=EB=A9=94=EC=8B=9C?=
+ =?UTF-8?q?=EC=A7=80=20=EC=A0=95=EB=A6=AC,=20=EB=8C=80=EC=8B=9C=EB=B3=B4?=
+ =?UTF-8?q?=EB=93=9C=20=ED=95=84=ED=84=B0=EB=A7=81,=20=EC=95=88=EB=82=B4?=
+ =?UTF-8?q?=20=ED=91=9C=EC=8B=9C?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/dashboard/page.tsx     |  8 +++++---
+ src/app/messages/[id]/page.tsx | 24 +++++++++++++++++++++++-
+ src/lib/db.ts                  | 19 +++++++++++++++++++
+ 3 files changed, 47 insertions(+), 4 deletions(-)
+
+diff --git a/src/app/dashboard/page.tsx b/src/app/dashboard/page.tsx
+index be1d6bc..fd57c2e 100644
+--- a/src/app/dashboard/page.tsx
++++ b/src/app/dashboard/page.tsx
+@@ -44,8 +44,10 @@ export default function DashboardPage() {
+     const directMsgs    = messages.filter(m => m.type === 'direct')
+     const openMsgs      = broadcastMsgs.filter(m => m.status === 'open')
+     const urgentMsgs    = openMsgs.filter(m => m.priority === 'urgent')
+-    const pendingCount  = broadcastMsgs.reduce((acc, m) =>
+-      acc + (m.receipts?.filter(r => r.status === 'pending').length ?? 0), 0)
++    const pendingCount  = broadcastMsgs
++      .filter(m => m.targetBizIds?.length > 0)  // 수신 사업장 없는 고아 메시지 제외
++      .reduce((acc, m) =>
++        acc + (m.receipts?.filter(r => r.status === 'pending').length ?? 0), 0)
+     const unreadDirect  = directMsgs.filter(m => m.status === 'open' && m.targetUid === user?.uid).length
+ 
+     return (
+@@ -190,7 +192,7 @@ export default function DashboardPage() {
+     const directMsgs    = messages.filter(m => m.type === 'direct')
+     const myReceipts = broadcastMsgs.map(m => ({
+       msg: m, receipt: m.receipts?.find(r => r.bizId === user?.bizId)
+-    })).filter(({ receipt }) => receipt && !receipt.hidden)
++    })).filter(({ receipt, msg }) => receipt && !receipt.hidden && msg.targetBizIds?.length > 0)
+ 
+     const openItems    = myReceipts.filter(({ msg }) => msg.status === 'open')
+     const pendingItems = myReceipts.filter(({ receipt }) => receipt?.status === 'pending')
+diff --git a/src/app/messages/[id]/page.tsx b/src/app/messages/[id]/page.tsx
+index 86d8cce..cd14aaa 100644
+--- a/src/app/messages/[id]/page.tsx
++++ b/src/app/messages/[id]/page.tsx
+@@ -38,9 +38,31 @@ export default function MessageDetailPage() {
+     return listenMessages(msgs => setMessage(msgs.find(m => m.id === id) ?? null))
+   }, [id])
+ 
++  // 5초 후에도 메시지가 없으면 존재하지 않는 메시지로 판단
++  const [notFound, setNotFound] = useState(false)
++  useEffect(() => {
++    const t = setTimeout(() => { if (!message) setNotFound(true) }, 5000)
++    return () => clearTimeout(t)
++  }, [message])
++
+   if (!message) return (
+     <AppShell title="전달 상세" back={isHQ ? '/businesses' : '/dashboard'}>
+-      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">불러오는 중...</div>
++      {notFound ? (
++        <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
++          <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center text-2xl">🗑</div>
++          <p className="text-sm font-medium text-gray-600">삭제된 메시지입니다</p>
++          <p className="text-xs text-gray-400">사업장이 삭제되어 메시지를 불러올 수 없습니다</p>
++          <button onClick={() => router.push(isHQ ? '/businesses' : '/dashboard')}
++            className="mt-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800">
++            돌아가기
++          </button>
++        </div>
++      ) : (
++        <div className="flex items-center justify-center h-64 text-gray-400 text-sm">
++          <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary-600 border-t-transparent mr-2"/>
++          불러오는 중...
++        </div>
++      )}
+     </AppShell>
+   )
+ 
+diff --git a/src/lib/db.ts b/src/lib/db.ts
+index fdfa576..5e2fdc8 100644
+--- a/src/lib/db.ts
++++ b/src/lib/db.ts
+@@ -35,7 +35,26 @@ export async function updateBusiness(id: string, data: Partial<Business>) {
+   await updateDoc(doc(db, 'businesses', id), data)
+ }
+ export async function deleteBusiness(id: string) {
++  // 1. 사업장 삭제
+   await deleteDoc(doc(db, 'businesses', id))
++  // 2. 해당 사업장이 수신자인 메시지 receipts에서 제거 (고아 메시지 방지)
++  const msgsSnap = await getDocs(query(collection(db, 'messages'), where('targetBizIds', 'array-contains', id)))
++  for (const msgDoc of msgsSnap.docs) {
++    const data = msgDoc.data()
++    const receipts = (data.receipts ?? []).filter((r: Receipt) => r.bizId !== id)
++    const targetBizIds = (data.targetBizIds ?? []).filter((bid: string) => bid !== id)
++    // 수신자가 아무도 없으면 메시지 삭제, 아니면 업데이트
++    if (targetBizIds.length === 0 && data.type === 'broadcast') {
++      await deleteDoc(msgDoc.ref)
++    } else {
++      await updateDoc(msgDoc.ref, { receipts, targetBizIds, updatedAt: serverTimestamp() })
++    }
++  }
++  // 3. 해당 사업장 소속 유저의 bizId 초기화
++  const usersSnap = await getDocs(query(collection(db, 'users'), where('bizId', '==', id)))
++  for (const userDoc of usersSnap.docs) {
++    await updateDoc(userDoc.ref, { bizId: null })
++  }
+ }
+ 
+ // ── Messages ──────────────────────────────────────────
+-- 
+2.43.0
+

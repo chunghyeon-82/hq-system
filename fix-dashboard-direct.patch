@@ -1,0 +1,52 @@
+From 7cb8c054295bcf15c734e63c968be8c1b2157dc2 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 23:15:43 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EB=8C=80=EC=8B=9C=EB=B3=B4=EB=93=9C=20?=
+ =?UTF-8?q?=EC=A0=84=EC=B2=B4=EC=82=AC=EC=97=85=EC=9E=A5=20=EC=B9=B4?=
+ =?UTF-8?q?=EC=9A=B4=ED=8A=B8(=EC=9A=B4=EC=98=81=EB=B3=B8=EB=B6=80=20?=
+ =?UTF-8?q?=EC=A0=9C=EC=99=B8),=201:1=20=EB=A9=94=EC=8B=9C=EC=A7=80=20?=
+ =?UTF-8?q?=EB=B3=B4=EB=82=B8=EA=B2=83=EB=8F=84=20=ED=91=9C=EC=8B=9C?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/dashboard/page.tsx | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/app/dashboard/page.tsx b/src/app/dashboard/page.tsx
+index fd57c2e..d4c4115 100644
+--- a/src/app/dashboard/page.tsx
++++ b/src/app/dashboard/page.tsx
+@@ -64,8 +64,8 @@ export default function DashboardPage() {
+               { label: '진행중 전달',  value: openMsgs.length,           icon: Clock,         color: 'bg-amber-50 border-amber-200',   iconColor: 'text-amber-500',   href: '/businesses' },
+               { label: '미접수',       value: pendingCount,              icon: AlertCircle,   color: pendingCount > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200', iconColor: pendingCount > 0 ? 'text-red-500' : 'text-gray-400', href: '/businesses' },
+               { label: '긴급 전달',    value: urgentMsgs.length,         icon: AlertCircle,   color: urgentMsgs.length > 0 ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200', iconColor: urgentMsgs.length > 0 ? 'text-red-600' : 'text-gray-400', href: '/businesses' },
+-              { label: '전체 사업장',  value: businesses.length,         icon: Building2,     color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', href: '/businesses' },
+-              { label: '1:1 메시지',   value: directMsgs.length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/direct' },
++              { label: '전체 사업장',  value: businesses.filter(b => !b.isHQ).length,         icon: Building2,     color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', href: '/businesses' },
++              { label: '1:1 메시지',   value: directMsgs.filter(m => m.targetUid === user?.uid || m.authorUid === user?.uid || isAdmin).length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/direct' },
+             ].map(card => (
+               <button key={card.label} onClick={() => router.push(card.href)}
+                 className={clsx('relative text-left border rounded-xl p-4 hover:shadow-md active:scale-95 transition-all', card.color)}>
+@@ -96,7 +96,7 @@ export default function DashboardPage() {
+           </div>
+ 
+           {/* 1:1 메시지 (내게 온 것) */}
+-          {directMsgs.filter(m => m.targetUid === user?.uid || isAdmin).length > 0 && (
++          {directMsgs.filter(m => m.targetUid === user?.uid || m.authorUid === user?.uid || isAdmin).length > 0 && (
+             <div>
+               <div className="flex items-center gap-2 mb-3">
+                 <Lock size={14} className="text-blue-500"/>
+@@ -104,7 +104,7 @@ export default function DashboardPage() {
+                 <span className="text-xs text-gray-400">(본인 + 관리자만 열람)</span>
+               </div>
+               <div className="space-y-2">
+-                {directMsgs.filter(m => isAdmin || m.targetUid === user?.uid).slice(0, 5).map(msg => (
++                {directMsgs.filter(m => isAdmin || m.targetUid === user?.uid || m.authorUid === user?.uid).slice(0, 5).map(msg => (
+                   <button key={msg.id} onClick={() => router.push(`/messages/${msg.id}`)}
+                     className="w-full text-left bg-white border border-blue-100 rounded-xl p-4 hover:shadow-sm hover:border-blue-200 transition-all group">
+                     <div className="flex items-center justify-between gap-2">
+-- 
+2.43.0
+

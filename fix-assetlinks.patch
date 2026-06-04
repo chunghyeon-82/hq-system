@@ -1,0 +1,31 @@
+From 221150553a05ef2467c9e79a1cca8c25bdb75b6f Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 23:02:15 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20assetlinks.json=20fingerprint=20?=
+ =?UTF-8?q?=EC=8B=A4=EC=A0=9C=20APK=20=EC=84=9C=EB=AA=85=EA=B0=92=EC=9C=BC?=
+ =?UTF-8?q?=EB=A1=9C=20=EC=88=98=EC=A0=95=20+=20=EC=BA=98=EB=A6=B0?=
+ =?UTF-8?q?=EB=8D=94/=EA=B3=B5=EC=A7=80=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ public/.well-known/assetlinks.json | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/public/.well-known/assetlinks.json b/public/.well-known/assetlinks.json
+index 4081a7f..53a2b12 100644
+--- a/public/.well-known/assetlinks.json
++++ b/public/.well-known/assetlinks.json
+@@ -4,7 +4,7 @@
+     "namespace": "android_app",
+     "package_name": "app.vercel.hq_system_jade.twa",
+     "sha256_cert_fingerprints": [
+-      "CE:EF:C1:CF:32:89:32:03:6A:C6:F6:6E:63:B9:A6:B0:F5:61:58:26:68:BB:1D:37:46:93:1F:5F:63:5A:4B:AE"
++      "7E:4A:D4:CF:51:F2:67:A7:5F:80:FA:F7:EC:65:92:FD:7C:06:96:D4:56:F8:80:CB:84:72:F6:31:6B:01:39:C9"
+     ]
+   }
+ }]
+-- 
+2.43.0
+

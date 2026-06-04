@@ -1,0 +1,186 @@
+From 900ca1f045752d0db3dcb30e742b6b418c6a4b64 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Wed, 3 Jun 2026 23:21:20 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=EC=BA=98=EB=A6=B0=EB=8D=94=20=EC=9D=8C?=
+ =?UTF-8?q?=EB=A0=A5=20=ED=91=9C=EC=8B=9C=20+=20=EA=B3=B5=EA=B3=B5?=
+ =?UTF-8?q?=EB=8D=B0=EC=9D=B4=ED=84=B0=ED=8F=AC=ED=84=B8=20=EA=B3=B5?=
+ =?UTF-8?q?=ED=9C=B4=EC=9D=BC=20API=20=EC=97=B0=EB=8F=99?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ package.json              |  3 +-
+ src/app/calendar/page.tsx | 37 +++++++++++++++-----
+ src/lib/calendar-utils.ts | 74 +++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 104 insertions(+), 10 deletions(-)
+ create mode 100644 src/lib/calendar-utils.ts
+
+diff --git a/package.json b/package.json
+index 44eadb3..c62821c 100644
+--- a/package.json
++++ b/package.json
+@@ -16,7 +16,8 @@
+     "react": "^18",
+     "react-dom": "^18",
+     "firebase-admin": "^12.0.0",
+-    "web-push": "^3.6.7"
++    "web-push": "^3.6.7",
++    "lunar-javascript": "^1.6.2"
+   },
+   "devDependencies": {
+     "@types/node": "^20",
+diff --git a/src/app/calendar/page.tsx b/src/app/calendar/page.tsx
+index a745ff9..55a8dc9 100644
+--- a/src/app/calendar/page.tsx
++++ b/src/app/calendar/page.tsx
+@@ -1,5 +1,6 @@
+ 'use client'
+-import { useEffect, useState, useRef } from 'react'
++import { useEffect, useState, useRef, useCallback } from 'react'
++import { getLunarDate, fetchHolidays, getHolidayName, type Holiday } from '@/lib/calendar-utils'
+ import { useRouter } from 'next/navigation'
+ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+@@ -67,6 +68,8 @@ export default function CalendarPage() {
+   const [saving,      setSaving]      = useState(false)
+   const [saveError,   setSaveError]   = useState('')
+ 
++  const [lunarDates,  setLunarDates]  = useState<Record<string, string>>({})
++  const [holidays,    setHolidays]    = useState<Holiday[]>([])
+   const dragId = useRef<string | null>(null)
+ 
+   useEffect(() => {
+@@ -364,11 +367,15 @@ export default function CalendarPage() {
+               const dayEvents = eventsOnDate(dStr)
+               const isDragOver = dragOverDate === dStr
+ 
++              const holidayName = getHolidayName(holidays, viewYear, viewMonth + 1, d)
++              const isRed = dow === 0 || dow === 6 || !!holidayName
++              const lunarText = lunarDates[dStr] ?? ''
+               return (
+                 <div key={d}
+                   className={clsx(
+                     'min-h-[90px] border-r border-b border-gray-50 p-1 cursor-pointer transition-colors',
+-                    isToday   ? 'bg-primary-50/40' : 'hover:bg-gray-50',
++                    isToday    ? 'bg-primary-50/40' :
++                    isRed      ? 'bg-red-50/30' : 'hover:bg-gray-50',
+                     isDragOver ? 'bg-primary-100 ring-2 ring-primary-400 ring-inset' : ''
+                   )}
+                   onClick={() => openAddModal(dStr)}
+@@ -376,13 +383,25 @@ export default function CalendarPage() {
+                   onDragLeave={() => setDragOverDate('')}
+                   onDrop={() => { handleDrop(dStr); setDragOverDate('') }}
+                 >
+-                  <div className={clsx(
+-                    'w-6 h-6 flex items-center justify-center text-xs font-medium rounded-full mb-1',
+-                    isToday ? 'bg-primary-600 text-white' :
+-                    dow === 0 ? 'text-red-400' :
+-                    dow === 6 ? 'text-blue-400' : 'text-gray-700'
+-                  )}>
+-                    {d}
++                  {/* 양력+음력 영역 */}
++                  <div className="flex flex-col items-start mb-0.5">
++                    <div className={clsx(
++                      'w-6 h-6 flex items-center justify-center text-xs font-bold rounded-full',
++                      isToday ? 'bg-primary-600 text-white' :
++                      isRed   ? 'text-red-500' : 'text-gray-800'
++                    )}>
++                      {d}
++                    </div>
++                    {/* 음력 또는 공휴일 */}
++                    {holidayName ? (
++                      <span className="text-[9px] text-red-500 font-medium leading-tight mt-0.5 truncate w-full">
++                        {holidayName}
++                      </span>
++                    ) : lunarText ? (
++                      <span className="text-[9px] text-gray-400 leading-tight mt-0.5">
++                        {lunarText}
++                      </span>
++                    ) : null}
+                   </div>
+                   <div className="space-y-0.5">
+                     {dayEvents.slice(0, 3).map(ev => {
+diff --git a/src/lib/calendar-utils.ts b/src/lib/calendar-utils.ts
+new file mode 100644
+index 0000000..31b2ef9
+--- /dev/null
++++ b/src/lib/calendar-utils.ts
+@@ -0,0 +1,74 @@
++// ── 음력 변환 ──────────────────────────────────────────
++// lunar-javascript 패키지 사용
++let LunarLib: any = null
++async function getLunarLib() {
++  if (!LunarLib) {
++    LunarLib = (await import('lunar-javascript')).default ?? (await import('lunar-javascript'))
++  }
++  return LunarLib
++}
++
++export async function getLunarDate(year: number, month: number, day: number): Promise<string> {
++  try {
++    const { Lunar } = await getLunarLib()
++    const lunar = Lunar.fromDate(new Date(year, month - 1, day))
++    const lm = lunar.getMonth()
++    const ld = lunar.getDay()
++    const isLeap = lunar.isLeap()
++    return `${isLeap ? '윤' : '음'}${lm}/${ld}`
++  } catch {
++    return ''
++  }
++}
++
++// ── 공휴일 API ─────────────────────────────────────────
++export interface Holiday {
++  date: string   // YYYYMMDD
++  name: string
++  isHoliday: boolean
++}
++
++const holidayCache: Record<string, Holiday[]> = {}
++
++export async function fetchHolidays(year: number, month: number): Promise<Holiday[]> {
++  const key = `${year}-${month}`
++  if (holidayCache[key]) return holidayCache[key]
++
++  try {
++    const apiKey = process.env.NEXT_PUBLIC_HOLIDAY_API_KEY
++    if (!apiKey) return []
++
++    const url = `https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo` +
++      `?serviceKey=${encodeURIComponent(apiKey)}` +
++      `&solYear=${year}` +
++      `&solMonth=${String(month).padStart(2, '0')}` +
++      `&_type=json` +
++      `&numOfRows=20`
++
++    const res  = await fetch(url)
++    const json = await res.json()
++    const items = json?.response?.body?.items?.item
++
++    if (!items) { holidayCache[key] = []; return [] }
++
++    const list = Array.isArray(items) ? items : [items]
++    const holidays: Holiday[] = list.map((item: any) => ({
++      date:      String(item.locdate),
++      name:      item.dateName,
++      isHoliday: item.isHoliday === 'Y',
++    }))
++
++    holidayCache[key] = holidays
++    return holidays
++  } catch (e) {
++    console.error('공휴일 API 오류:', e)
++    return []
++  }
++}
++
++// 특정 날짜의 공휴일 이름 반환
++export function getHolidayName(holidays: Holiday[], year: number, month: number, day: number): string | null {
++  const dateStr = `${year}${String(month).padStart(2,'0')}${String(day).padStart(2,'0')}`
++  const found = holidays.find(h => h.date === dateStr)
++  return found ? found.name : null
++}
+-- 
+2.43.0
+

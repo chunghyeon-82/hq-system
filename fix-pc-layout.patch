@@ -1,0 +1,416 @@
+From 0e18aeac5a2d35c808c5a2082afe392ed1f055ae Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 04:55:22 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20PC=20=EC=82=AC=EC=9D=B4=EB=93=9C?=
+ =?UTF-8?q?=EB=B0=94=20=EA=B3=A0=EC=A0=95,=20=EC=A0=84=EC=B2=B4=20?=
+ =?UTF-8?q?=EB=84=88=EB=B9=84=20=ED=99=95=EC=9E=A5,=20=ED=83=80=EC=9D=BC?=
+ =?UTF-8?q?=20=EB=A7=81=ED=81=AC=20=ED=86=B5=EC=9D=BC,=20=EB=B0=94?=
+ =?UTF-8?q?=EB=A1=9C=EA=B0=80=EA=B8=B0=20=EC=B6=94=EA=B0=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/businesses/page.tsx    |   2 +-
+ src/app/calendar/page.tsx      |   2 +-
+ src/app/compose/page.tsx       |   2 +-
+ src/app/dashboard/page.tsx     |  24 +++++-
+ src/app/direct/page.tsx        |   2 +-
+ src/app/globals.css            |  16 +++-
+ src/app/messages/[id]/page.tsx |   2 +-
+ src/app/notices/page.tsx       |   2 +-
+ src/app/search/page.tsx        |   2 +-
+ src/app/settings/page.tsx      |   8 +-
+ src/components/AppShell.tsx    | 132 ++++++++++++++++++++-------------
+ 11 files changed, 126 insertions(+), 68 deletions(-)
+
+diff --git a/src/app/businesses/page.tsx b/src/app/businesses/page.tsx
+index 10d073c..b349538 100644
+--- a/src/app/businesses/page.tsx
++++ b/src/app/businesses/page.tsx
+@@ -48,7 +48,7 @@ export default function BusinessesPage() {
+ 
+   return (
+     <AppShell title="사업장 현황">
+-      <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-5">
++      <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
+ 
+         {/* ── 운영본부 카드 ── */}
+         {hqBiz && (
+diff --git a/src/app/calendar/page.tsx b/src/app/calendar/page.tsx
+index 8cd8064..fbefebf 100644
+--- a/src/app/calendar/page.tsx
++++ b/src/app/calendar/page.tsx
+@@ -120,7 +120,7 @@ export default function CalendarPage() {
+ 
+   return (
+     <AppShell title="캘린더">
+-      <div className="max-w-2xl mx-auto p-4 space-y-4">
++      <div className="max-w-4xl mx-auto p-4 space-y-4">
+ 
+         {/* 추가 버튼 */}
+         {!showForm && (
+diff --git a/src/app/compose/page.tsx b/src/app/compose/page.tsx
+index b47ed43..253d941 100644
+--- a/src/app/compose/page.tsx
++++ b/src/app/compose/page.tsx
+@@ -129,7 +129,7 @@ function ComposeContent() {
+ 
+   return (
+     <AppShell title="전달 작성">
+-      <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-4">
++      <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
+ 
+         {/* 전달 종류 */}
+         <div>
+diff --git a/src/app/dashboard/page.tsx b/src/app/dashboard/page.tsx
+index 84d4577..be1d6bc 100644
+--- a/src/app/dashboard/page.tsx
++++ b/src/app/dashboard/page.tsx
+@@ -50,7 +50,7 @@ export default function DashboardPage() {
+ 
+     return (
+       <AppShell title="대시보드">
+-        <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
++        <div className="p-4 md:p-6 space-y-6 max-w-5xl mx-auto">
+           <div>
+             <h2 className="text-lg font-bold text-gray-900">안녕하세요, {user?.name}님 👋</h2>
+             <p className="text-sm text-gray-500 mt-0.5">오늘도 좋은 하루 되세요.</p>
+@@ -63,7 +63,7 @@ export default function DashboardPage() {
+               { label: '미접수',       value: pendingCount,              icon: AlertCircle,   color: pendingCount > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200', iconColor: pendingCount > 0 ? 'text-red-500' : 'text-gray-400', href: '/businesses' },
+               { label: '긴급 전달',    value: urgentMsgs.length,         icon: AlertCircle,   color: urgentMsgs.length > 0 ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200', iconColor: urgentMsgs.length > 0 ? 'text-red-600' : 'text-gray-400', href: '/businesses' },
+               { label: '전체 사업장',  value: businesses.length,         icon: Building2,     color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', href: '/businesses' },
+-              { label: '1:1 메시지',   value: directMsgs.length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/dashboard' },
++              { label: '1:1 메시지',   value: directMsgs.length,         icon: MessageSquare, color: unreadDirect > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200', iconColor: unreadDirect > 0 ? 'text-blue-500' : 'text-gray-400', href: '/direct' },
+             ].map(card => (
+               <button key={card.label} onClick={() => router.push(card.href)}
+                 className={clsx('relative text-left border rounded-xl p-4 hover:shadow-md active:scale-95 transition-all', card.color)}>
+@@ -215,7 +215,7 @@ export default function DashboardPage() {
+               { label: '전달받은 건수', value: myReceipts.length,    icon: Send,        color: 'bg-primary-50 border-primary-200', iconColor: 'text-primary-500', filter: 'all' },
+               { label: '미접수',        value: pendingItems.length,  icon: AlertCircle,
+                 color: pendingItems.length > 0 ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200',
+-                iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400', filter: 'pending' },
++                iconColor: pendingItems.length > 0 ? 'text-red-500' : 'text-gray-400', filter: 'pending', href: '/dashboard' },
+               { label: '처리 완료',     value: myReceipts.filter(({msg}) => msg.status === 'done').length, icon: CheckCircle2, color: 'bg-green-50 border-green-200', iconColor: 'text-green-500', filter: 'done' },
+             ].map(c => (
+               <button key={c.label}
+@@ -230,6 +230,24 @@ export default function DashboardPage() {
+             ))}
+           </div>
+ 
++          {/* 바로가기 버튼 */}
++          <div className="grid grid-cols-2 gap-2">
++            <button onClick={() => router.push('/notices')}
++              className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-3 hover:shadow-sm hover:border-primary-200 transition-all">
++              <div className="w-8 h-8 bg-amber-50 rounded-lg flex items-center justify-center shrink-0">
++                <span className="text-amber-600 text-sm">📢</span>
++              </div>
++              <span className="text-sm font-medium text-gray-700">공지사항</span>
++            </button>
++            <button onClick={() => router.push('/calendar')}
++              className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-3 hover:shadow-sm hover:border-primary-200 transition-all">
++              <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center shrink-0">
++                <span className="text-blue-600 text-sm">📅</span>
++              </div>
++              <span className="text-sm font-medium text-gray-700">캘린더</span>
++            </button>
++          </div>
++
+           {/* 1:1 메시지 바로가기 */}
+           <button onClick={() => router.push('/direct')}
+             className="w-full flex items-center gap-3 bg-white border border-blue-200 rounded-xl p-4 hover:shadow-sm hover:border-blue-300 transition-all">
+diff --git a/src/app/direct/page.tsx b/src/app/direct/page.tsx
+index 7bae3f4..dfa3c3b 100644
+--- a/src/app/direct/page.tsx
++++ b/src/app/direct/page.tsx
+@@ -92,7 +92,7 @@ export default function DirectPage() {
+ 
+   return (
+     <AppShell title="1:1 메시지" back="/dashboard">
+-      <div className="max-w-lg mx-auto p-4 md:p-6 space-y-4">
++      <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-4">
+ 
+         {/* 비공개 안내 */}
+         <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
+diff --git a/src/app/globals.css b/src/app/globals.css
+index 218b122..8f82a77 100644
+--- a/src/app/globals.css
++++ b/src/app/globals.css
+@@ -5,13 +5,27 @@
+ 
+ @layer base {
+   body { @apply bg-gray-50 text-gray-900 font-sans; }
++  /* 글자 크기 설정 변수 */
++  :root { --app-font-size: 16px; }
++  html  { font-size: var(--app-font-size); }
+ }
+ 
+ @layer components {
+-  .badge-pending  { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600; }
++  /* 상태 뱃지 */
++  .badge-pending  { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700; }
+   .badge-received { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700; }
+   .badge-replied  { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700; }
+   .badge-open     { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700; }
+   .badge-done     { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500; }
+   .badge-urgent   { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700; }
++
++  /* PC 콘텐츠 최대 너비 - 1920px에서도 너무 좁지 않게 */
++  .page-container { @apply max-w-5xl mx-auto px-4 md:px-6 lg:px-8; }
++
++  /* 클릭 가능한 카드 공통 스타일 */
++  .card-clickable {
++    @apply bg-white border border-gray-200 rounded-xl cursor-pointer
++           hover:shadow-md hover:border-primary-200
++           active:scale-[0.99] transition-all duration-150;
++  }
+ }
+diff --git a/src/app/messages/[id]/page.tsx b/src/app/messages/[id]/page.tsx
+index c29b017..86d8cce 100644
+--- a/src/app/messages/[id]/page.tsx
++++ b/src/app/messages/[id]/page.tsx
+@@ -116,7 +116,7 @@ export default function MessageDetailPage() {
+ 
+   return (
+     <AppShell title="전달 상세" back={isHQ ? '/businesses' : '/dashboard'}>
+-      <div className="max-w-2xl mx-auto p-4 space-y-4">
++      <div className="max-w-4xl mx-auto p-4 space-y-4">
+ 
+         {/* 메시지 헤더 */}
+         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+diff --git a/src/app/notices/page.tsx b/src/app/notices/page.tsx
+index 8914363..c69bb88 100644
+--- a/src/app/notices/page.tsx
++++ b/src/app/notices/page.tsx
+@@ -61,7 +61,7 @@ export default function NoticesPage() {
+ 
+   return (
+     <AppShell title="공지사항">
+-      <div className="max-w-2xl mx-auto p-4 space-y-4">
++      <div className="max-w-4xl mx-auto p-4 space-y-4">
+ 
+         {/* 작성 버튼 */}
+         {canWrite && !showForm && (
+diff --git a/src/app/search/page.tsx b/src/app/search/page.tsx
+index 9bc26d1..26db247 100644
+--- a/src/app/search/page.tsx
++++ b/src/app/search/page.tsx
+@@ -36,7 +36,7 @@ export default function SearchPage() {
+ 
+   return (
+     <AppShell title="메시지 검색">
+-      <div className="max-w-2xl mx-auto p-4 space-y-4">
++      <div className="max-w-4xl mx-auto p-4 space-y-4">
+         {/* 검색창 */}
+         <div className="relative">
+           <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"/>
+diff --git a/src/app/settings/page.tsx b/src/app/settings/page.tsx
+index 2a03e85..c7bdab4 100644
+--- a/src/app/settings/page.tsx
++++ b/src/app/settings/page.tsx
+@@ -110,7 +110,7 @@ export default function SettingsPage() {
+   // ── 계정 설정 섹션 ─────────────────────────────────
+   if (section === 'account') return (
+     <AppShell title="계정 설정">
+-      <div className="max-w-lg mx-auto p-4 space-y-4">
++      <div className="max-w-3xl mx-auto p-4 space-y-4">
+         <SectionHeader label="계정 설정"/>
+         <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+           <div>
+@@ -150,7 +150,7 @@ export default function SettingsPage() {
+   // ── 비밀번호 변경 섹션 ────────────────────────────
+   if (section === 'password') return (
+     <AppShell title="비밀번호 변경">
+-      <div className="max-w-lg mx-auto p-4 space-y-4">
++      <div className="max-w-3xl mx-auto p-4 space-y-4">
+         <SectionHeader label="비밀번호 변경"/>
+         <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
+           {[
+@@ -190,7 +190,7 @@ export default function SettingsPage() {
+   // ── 앱 정보 섹션 ──────────────────────────────────
+   if (section === 'appinfo') return (
+     <AppShell title="앱 정보">
+-      <div className="max-w-lg mx-auto p-4 space-y-4">
++      <div className="max-w-3xl mx-auto p-4 space-y-4">
+         <SectionHeader label="앱 정보"/>
+         <div className="bg-white border border-gray-200 rounded-2xl divide-y divide-gray-100">
+           {[
+@@ -223,7 +223,7 @@ export default function SettingsPage() {
+   // ── 메인 설정 화면 ─────────────────────────────────
+   return (
+     <AppShell title="설정">
+-      <div className="max-w-lg mx-auto p-4 space-y-4">
++      <div className="max-w-3xl mx-auto p-4 space-y-4">
+ 
+         {/* 알림 */}
+         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+diff --git a/src/components/AppShell.tsx b/src/components/AppShell.tsx
+index d65a18b..08460af 100644
+--- a/src/components/AppShell.tsx
++++ b/src/components/AppShell.tsx
+@@ -22,26 +22,25 @@ export default function AppShell({ children, title, back }: Props) {
+   const pathname     = usePathname()
+   const [open, setOpen] = useState(false)
+ 
+-  const isAdmin    = user?.role === 'ADMIN'
+-  const isHQChief  = user?.role === 'HQ_CHIEF'
+-  const isHQMember = user?.role === 'HQ_MEMBER'
+-  const isBiz      = user?.role === 'BIZ_REP'
+-  const isHQ       = isAdmin || isHQChief || isHQMember
++  const isAdmin      = user?.role === 'ADMIN'
++  const isHQChief    = user?.role === 'HQ_CHIEF'
++  const isHQMember   = user?.role === 'HQ_MEMBER'
++  const isHQ         = isAdmin || isHQChief || isHQMember
+   const canBroadcast = isAdmin || isHQChief || !!user?.permissions?.canBroadcast
+ 
+   const fontClass = settings.fontSize === 'small' ? 'text-xs' : settings.fontSize === 'large' ? 'text-base' : 'text-sm'
+ 
+   const nav = [
+-    { href: '/dashboard',  label: '대시보드',     icon: LayoutDashboard, show: true },
+-    { href: '/businesses', label: '사업장 현황',   icon: Building2,       show: isHQ },
+-    { href: '/compose',    label: '전달 작성',     icon: Send,            show: canBroadcast },
+-    { href: '/notices',    label: '공지사항',      icon: Megaphone,       show: true },
+-    { href: '/calendar',   label: '캘린더',        icon: Calendar,        show: true },
+-    { href: '/search',     label: '메시지 검색',   icon: Search,          show: true },
+-    { href: '/chat',       label: '운영본부 채팅',  icon: MessageCircle,   show: isHQ },
+-    { href: '/direct',     label: '1:1 메시지',    icon: MessageSquare,   show: true },
+-    { href: '/admin',      label: '멤버 관리',     icon: Users,           show: isAdmin },
+-    { href: '/settings',   label: '설정',          icon: Settings,        show: true },
++    { href: '/dashboard',  label: '대시보드',    icon: LayoutDashboard, show: true },
++    { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ },
++    { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast },
++    { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true },
++    { href: '/calendar',   label: '캘린더',       icon: Calendar,        show: true },
++    { href: '/search',     label: '메시지 검색',  icon: Search,          show: true },
++    { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ },
++    { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true },
++    { href: '/admin',      label: '멤버 관리',    icon: Users,           show: isAdmin },
++    { href: '/settings',   label: '설정',         icon: Settings,        show: true },
+   ].filter(n => n.show)
+ 
+   const handleLogout = async () => { await signOut(auth); router.replace('/login') }
+@@ -51,48 +50,72 @@ export default function AppShell({ children, title, back }: Props) {
+   const displayRole = user?.role === 'ETC' && user?.customRole
+     ? user.customRole : roleLabel[user?.role ?? '']
+ 
+-  return (
+-    <div className={clsx('flex h-screen bg-gray-50', fontClass)}>
+-      <aside className={clsx(
+-        'fixed inset-y-0 left-0 z-40 w-60 bg-primary-900 text-white flex flex-col transition-transform duration-200',
+-        open ? 'translate-x-0' : '-translate-x-full', 'lg:relative lg:translate-x-0'
+-      )}>
+-        <div className="flex items-center gap-2 px-5 py-5 border-b border-primary-800">
+-          <Building2 size={22} className="text-primary-200"/>
+-          <span className="font-bold text-base">본부관리시스템</span>
+-          <button onClick={() => setOpen(false)} className="ml-auto lg:hidden"><X size={18}/></button>
++  const Sidebar = () => (
++    <aside className="flex flex-col h-full bg-primary-900 text-white">
++      {/* 로고 */}
++      <div className="flex items-center gap-2 px-5 py-5 border-b border-primary-800 shrink-0">
++        <Building2 size={22} className="text-primary-200"/>
++        <span className="font-bold text-base">본부관리시스템</span>
++        <button onClick={() => setOpen(false)} className="ml-auto lg:hidden text-primary-300 hover:text-white">
++          <X size={18}/>
++        </button>
++      </div>
++      {/* 네비게이션 */}
++      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
++        {nav.map(({ href, label, icon: Icon }) => (
++          <Link key={href} href={href} onClick={() => setOpen(false)}
++            className={clsx(
++              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
++              (pathname === href || (pathname.startsWith(href) && href !== '/dashboard'))
++                ? 'bg-primary-600 text-white'
++                : 'text-primary-100 hover:bg-primary-800'
++            )}>
++            <Icon size={18}/>{label}
++          </Link>
++        ))}
++      </nav>
++      {/* 유저 정보 */}
++      <div className="p-4 border-t border-primary-800 shrink-0">
++        <div className="flex items-center gap-2 mb-3">
++          <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-sm font-bold shrink-0">
++            {user?.name?.[0] ?? '?'}
++          </div>
++          <div className="min-w-0">
++            <p className="text-sm font-medium truncate">{user?.name}</p>
++            <p className="text-xs text-primary-300">{displayRole}</p>
++          </div>
+         </div>
+-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+-          {nav.map(({ href, label, icon: Icon }) => (
+-            <Link key={href} href={href} onClick={() => setOpen(false)}
+-              className={clsx(
+-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+-                (pathname === href || (pathname.startsWith(href) && href !== '/dashboard'))
+-                  ? 'bg-primary-600 text-white' : 'text-primary-100 hover:bg-primary-800'
+-              )}>
+-              <Icon size={18}/>{label}
+-            </Link>
+-          ))}
+-        </nav>
+-        <div className="p-4 border-t border-primary-800">
+-          <div className="flex items-center gap-2 mb-3">
+-            <div className="w-8 h-8 rounded-full bg-primary-600 flex items-center justify-center text-sm font-bold">
+-              {user?.name?.[0] ?? '?'}
+-            </div>
+-            <div className="min-w-0">
+-              <p className="text-sm font-medium truncate">{user?.name}</p>
+-              <p className="text-xs text-primary-300">{displayRole}</p>
+-            </div>
++        <button onClick={handleLogout}
++          className="flex items-center gap-2 text-primary-300 hover:text-white text-xs w-full px-2 py-1.5 rounded hover:bg-primary-800 transition-colors">
++          <LogOut size={14}/> 로그아웃
++        </button>
++      </div>
++    </aside>
++  )
++
++  return (
++    <div className={clsx('flex h-screen bg-gray-50 overflow-hidden', fontClass)}>
++
++      {/* ── PC: 사이드바 항상 고정 (lg 이상) ── */}
++      <div className="hidden lg:flex lg:w-60 lg:shrink-0 lg:flex-col">
++        <Sidebar/>
++      </div>
++
++      {/* ── 모바일: 드로어 오버레이 ── */}
++      {open && (
++        <div className="fixed inset-0 z-40 flex lg:hidden">
++          <div className="w-60 flex flex-col shadow-2xl">
++            <Sidebar/>
+           </div>
+-          <button onClick={handleLogout}
+-            className="flex items-center gap-2 text-primary-300 hover:text-white text-xs w-full px-2 py-1.5 rounded hover:bg-primary-800 transition-colors">
+-            <LogOut size={14}/> 로그아웃
+-          </button>
++          <div className="flex-1 bg-black/40" onClick={() => setOpen(false)}/>
+         </div>
+-      </aside>
+-      {open && <div className="fixed inset-0 bg-black/40 z-30 lg:hidden" onClick={() => setOpen(false)}/>}
++      )}
++
++      {/* ── 메인 콘텐츠 ── */}
+       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
++        {/* 헤더 */}
+         <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-3 shrink-0">
++          {/* 모바일 햄버거 */}
+           <button onClick={() => setOpen(true)} className="lg:hidden text-gray-500 hover:text-gray-700">
+             <Menu size={22}/>
+           </button>
+@@ -103,7 +126,10 @@ export default function AppShell({ children, title, back }: Props) {
+           )}
+           {title && <h1 className="font-semibold text-gray-900 text-base">{title}</h1>}
+         </header>
+-        <div className="flex-1 overflow-y-auto">{children}</div>
++        {/* 페이지 콘텐츠 */}
++        <div className="flex-1 overflow-y-auto">
++          {children}
++        </div>
+       </main>
+     </div>
+   )
+-- 
+2.43.0
+

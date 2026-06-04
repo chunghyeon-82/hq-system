@@ -1,0 +1,42 @@
+From 4e37df12da854375cbfdc1f8dfdc8fecb54b4fb1 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 04:51:25 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20messages=20detail=20Reply=20=ED=83=80?=
+ =?UTF-8?q?=EC=9E=85=20uid=E2=86=92authorUid=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/messages/[id]/page.tsx | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/src/app/messages/[id]/page.tsx b/src/app/messages/[id]/page.tsx
+index d07b71d..c29b017 100644
+--- a/src/app/messages/[id]/page.tsx
++++ b/src/app/messages/[id]/page.tsx
+@@ -355,15 +355,15 @@ export default function MessageDetailPage() {
+               <h3 className="font-semibold text-gray-900 text-sm">대화</h3>
+             </div>
+             <div className="space-y-3">
+-              {[{ uid: message.authorUid, name: message.authorName, body: message.body, createdAt: '' }, ...replies].map((r, i) => (
+-                <div key={i} className={clsx('flex gap-2', r.uid === user?.uid ? 'flex-row-reverse' : '')}>
++              {[{ authorUid: message.authorUid, authorName: message.authorName, body: message.body, createdAt: '' }, ...replies].map((r, i) => (
++                <div key={i} className={clsx('flex gap-2', r.authorUid === user?.uid ? 'flex-row-reverse' : '')}>
+                   <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
+-                    {r.name?.[0]}
++                    {r.authorName?.[0]}
+                   </div>
+-                  <div className={clsx('max-w-[75%] flex flex-col gap-1', r.uid === user?.uid ? 'items-end' : 'items-start')}>
+-                    <span className="text-xs text-gray-400">{r.name}</span>
++                  <div className={clsx('max-w-[75%] flex flex-col gap-1', r.authorUid === user?.uid ? 'items-end' : 'items-start')}>
++                    <span className="text-xs text-gray-400">{r.authorName}</span>
+                     <div className={clsx('rounded-2xl px-4 py-2.5 text-sm whitespace-pre-wrap',
+-                      r.uid === user?.uid ? 'bg-primary-600 text-white rounded-tr-sm' : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
++                      r.authorUid === user?.uid ? 'bg-primary-600 text-white rounded-tr-sm' : 'bg-gray-100 text-gray-800 rounded-tl-sm')}>
+                       {r.body}
+                     </div>
+                   </div>
+-- 
+2.43.0
+

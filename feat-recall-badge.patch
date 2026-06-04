@@ -1,0 +1,166 @@
+From 0ae96fb01654ac3e4057eec4118709de212f4de6 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 01:10:43 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=EB=A9=94=EC=8B=9C=EC=A7=80=20=EC=82=AD?=
+ =?UTF-8?q?=EC=A0=9C=20=EB=B3=B4=EC=95=88=EA=B7=9C=EC=B9=99,=20recall=20?=
+ =?UTF-8?q?=EA=B8=B0=EB=8A=A5,=20=EC=82=AC=EC=9D=B4=EB=93=9C=EB=B0=94=20?=
+ =?UTF-8?q?=EB=AF=B8=EC=A0=91=EC=88=98=20=EB=B1=83=EC=A7=80=20=EC=B6=94?=
+ =?UTF-8?q?=EA=B0=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/messages/[id]/page.tsx | 28 ++++++++++++++++++++++--
+ src/components/AppShell.tsx    | 40 ++++++++++++++++++++++++++++++++--
+ src/lib/db.ts                  | 12 ++++++++++
+ 3 files changed, 76 insertions(+), 4 deletions(-)
+
+diff --git a/src/app/messages/[id]/page.tsx b/src/app/messages/[id]/page.tsx
+index fb305ce..d549a4d 100644
+--- a/src/app/messages/[id]/page.tsx
++++ b/src/app/messages/[id]/page.tsx
+@@ -3,11 +3,11 @@ import { useEffect, useState } from 'react'
+ import { useParams, useRouter } from 'next/navigation'
+ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+-import { listenMessages, processMessage, completeMessage, closeMessage, reopenMessage, hideMessage, replyDirect, addEventToMyCalendar, addEvent, deleteMessageDoc } from '@/lib/db'
++import { listenMessages, processMessage, completeMessage, closeMessage, reopenMessage, hideMessage, replyDirect, addEventToMyCalendar, addEvent, deleteMessageDoc, recallMessage } from '@/lib/db'
+ import type { Message, Receipt } from '@/types'
+ import {
+   CheckCircle2, Clock, AlertCircle, Send, CheckSquare,
+-  RotateCcw, Lock, Calendar, Link2, ExternalLink, ChevronDown, ChevronUp, EyeOff, Trash2
++  RotateCcw, Lock, Calendar, Link2, ExternalLink, ChevronDown, ChevronUp, EyeOff, Trash2, Undo2
+ } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+@@ -29,6 +29,7 @@ export default function MessageDetailPage() {
+   const [showNote,   setShowNote]   = useState(false)
+   const [addedCal,   setAddedCal]   = useState(false)
+   const [bizExpanded, setBizExpanded] = useState(false)
++  const [recallError,  setRecallError]  = useState('')
+ 
+   const isAdmin = user?.role === 'ADMIN'
+   const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
+@@ -98,6 +99,18 @@ export default function MessageDetailPage() {
+     setDoneNote('')
+   }
+ 
++  // 메시지 회수 (5분 이내)
++  const handleRecall = async () => {
++    setRecallError('')
++    if (!confirm('이 메시지를 회수하시겠습니까?\n수신자 화면에서도 사라집니다.')) return
++    const result = await recallMessage(message.id)
++    if (result.ok) {
++      router.push(isHQ ? '/businesses' : '/dashboard')
++    } else {
++      setRecallError(result.error ?? '회수 실패')
++    }
++  }
++
+   // 메시지 삭제
+   const handleDelete = async () => {
+     if (!confirm('이 메시지를 완전히 삭제하시겠습니까?\n삭제된 메시지는 복구할 수 없습니다.')) return
+@@ -167,6 +180,17 @@ export default function MessageDetailPage() {
+             <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{message.body}</div>
+             <p className="text-xs text-gray-400 mt-3">{message.authorName}</p>
+ 
++            {/* 회수 버튼 - 작성자 본인만, 5분 이내 */}
++            {message.authorUid === user?.uid && !isDone && (
++              <div className="mt-3">
++                <button onClick={handleRecall}
++                  className="flex items-center gap-1.5 text-xs text-orange-500 border border-orange-200 bg-orange-50 px-3 py-1.5 rounded-lg hover:bg-orange-100 transition-colors">
++                  <Undo2 size={12}/> 메시지 회수
++                </button>
++                {recallError && <p className="text-xs text-red-500 mt-1">{recallError}</p>}
++              </div>
++            )}
++
+             {/* 일정 첨부 */}
+             {message.eventDate && (
+               <div className="mt-3 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between">
+diff --git a/src/components/AppShell.tsx b/src/components/AppShell.tsx
+index 08460af..641640e 100644
+--- a/src/components/AppShell.tsx
++++ b/src/components/AppShell.tsx
+@@ -1,8 +1,10 @@
+ 'use client'
+-import { ReactNode, useState } from 'react'
++import { ReactNode, useState, useEffect } from 'react'
+ import Link from 'next/link'
+ import { usePathname, useRouter } from 'next/navigation'
+ import { signOut } from 'firebase/auth'
++import { listenMessagesForHQ, listenMessagesForBiz } from '@/lib/db'
++import type { Message } from '@/types'
+ import { auth } from '@/lib/firebase'
+ import { useAuth } from '@/lib/auth-context'
+ import { useSettings } from '@/lib/settings-context'
+@@ -20,7 +22,41 @@ export default function AppShell({ children, title, back }: Props) {
+   const { settings } = useSettings()
+   const router       = useRouter()
+   const pathname     = usePathname()
+-  const [open, setOpen] = useState(false)
++  const [open,       setOpen]       = useState(false)
++  const [unreadCount, setUnreadCount] = useState(0)
++  const [unreadDirect, setUnreadDirect] = useState(0)
++
++  useEffect(() => {
++    if (!user) return
++    if (isHQ || isAdmin) {
++      return listenMessagesForHQ(user.uid, isAdmin, (msgs: Message[]) => {
++        const pending = msgs.filter(m =>
++          m.type === 'broadcast' && m.status === 'open' &&
++          m.receipts?.some(r => r.status === 'pending')
++        ).length
++        setUnreadCount(pending)
++        const direct = msgs.filter(m =>
++          m.type === 'direct' && m.status === 'open' &&
++          (m.targetUid === user.uid || m.authorUid === user.uid)
++        ).length
++        setUnreadDirect(direct)
++      })
++    }
++    if (isBiz && user.bizId) {
++      return listenMessagesForBiz(user.bizId, user.uid, (msgs: Message[]) => {
++        const pending = msgs.filter(m =>
++          m.type === 'broadcast' &&
++          m.receipts?.some(r => r.bizId === user.bizId && r.status === 'pending')
++        ).length
++        setUnreadCount(pending)
++        const direct = msgs.filter(m =>
++          m.type === 'direct' && m.status === 'open' &&
++          (m.targetUid === user.uid || m.authorUid === user.uid)
++        ).length
++        setUnreadDirect(direct)
++      })
++    }
++  }, [user, isHQ, isAdmin, isBiz])
+ 
+   const isAdmin      = user?.role === 'ADMIN'
+   const isHQChief    = user?.role === 'HQ_CHIEF'
+diff --git a/src/lib/db.ts b/src/lib/db.ts
+index 13e63a1..463ba88 100644
+--- a/src/lib/db.ts
++++ b/src/lib/db.ts
+@@ -179,6 +179,18 @@ export async function deleteMessageDoc(msgId: string) {
+   await deleteDoc(doc(db, 'messages', msgId))
+ }
+ 
++// 메시지 회수 (Recall) - 5분 이내만 가능
++export async function recallMessage(msgId: string): Promise<{ ok: boolean; error?: string }> {
++  const snap = await getDoc(doc(db, 'messages', msgId))
++  if (!snap.exists()) return { ok: false, error: '메시지를 찾을 수 없습니다' }
++  const createdAt = snap.data().createdAt?.toMillis?.() ?? 0
++  if (Date.now() - createdAt > 5 * 60 * 1000) {
++    return { ok: false, error: '전송 후 5분이 지나 회수할 수 없습니다' }
++  }
++  await deleteDoc(doc(db, 'messages', msgId))
++  return { ok: true }
++}
++
+ export async function closeMessage(msgId: string) {
+   await updateDoc(doc(db, 'messages', msgId), { status: 'done' as MessageStatus, updatedAt: serverTimestamp() })
+ }
+-- 
+2.43.0
+

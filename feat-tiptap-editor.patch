@@ -1,0 +1,571 @@
+From 19312663edfa7316093ccefb5daadbcda82f0511 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 00:52:53 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20TipTap=20=EC=97=90=EB=94=94=ED=84=B0(?=
+ =?UTF-8?q?=ED=91=9C/=EA=B8=B0=ED=98=B8/=EB=B2=88=ED=98=B8=EC=B2=B4?=
+ =?UTF-8?q?=EA=B3=84),=20=EC=88=98=EC=8B=A0=EC=9E=90=20=EC=84=A0=ED=83=9D?=
+ =?UTF-8?q?=20=ED=8C=9D=EC=97=85?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ package.json                   |  13 +-
+ src/app/approval/[id]/page.tsx |   6 +-
+ src/app/approval/new/page.tsx  | 133 ++++++--------
+ src/components/DocEditor.tsx   | 305 +++++++++++++++++++++++++++++++++
+ 4 files changed, 371 insertions(+), 86 deletions(-)
+ create mode 100644 src/components/DocEditor.tsx
+
+diff --git a/package.json b/package.json
+index fd95646..d4b852e 100644
+--- a/package.json
++++ b/package.json
+@@ -20,7 +20,18 @@
+     "lunar-javascript": "^1.6.2",
+     "resend": "^3.2.0",
+     "jspdf": "^2.5.1",
+-    "html2canvas": "^1.4.1"
++    "html2canvas": "^1.4.1",
++    "@tiptap/react": "^2.4.0",
++    "@tiptap/starter-kit": "^2.4.0",
++    "@tiptap/extension-table": "^2.4.0",
++    "@tiptap/extension-table-row": "^2.4.0",
++    "@tiptap/extension-table-cell": "^2.4.0",
++    "@tiptap/extension-table-header": "^2.4.0",
++    "@tiptap/extension-text-align": "^2.4.0",
++    "@tiptap/extension-underline": "^2.4.0",
++    "@tiptap/extension-color": "^2.4.0",
++    "@tiptap/extension-text-style": "^2.4.0",
++    "@tiptap/extension-placeholder": "^2.4.0"
+   },
+   "devDependencies": {
+     "@types/node": "^20",
+diff --git a/src/app/approval/[id]/page.tsx b/src/app/approval/[id]/page.tsx
+index ba907e2..9d469a1 100644
+--- a/src/app/approval/[id]/page.tsx
++++ b/src/app/approval/[id]/page.tsx
+@@ -253,9 +253,9 @@ export default function ApprovalDetailPage() {
+             <div style={{height:'1px', background:'#ccc', margin:'16px 0'}}/>
+ 
+             {/* 본문 */}
+-            <div style={{fontSize:'11pt', lineHeight:'1.9', margin:'20px 0', whiteSpace:'pre-wrap'}}>
+-              {doc.body}
+-            </div>
++            <div style={{fontSize:'11pt', lineHeight:'1.9', margin:'20px 0'}}
++              dangerouslySetInnerHTML={{__html: doc.body}}
++            />
+ 
+             {/* 붙임 */}
+             {doc.attachments?.length > 0 && (
+diff --git a/src/app/approval/new/page.tsx b/src/app/approval/new/page.tsx
+index 438ba46..a75c754 100644
+--- a/src/app/approval/new/page.tsx
++++ b/src/app/approval/new/page.tsx
+@@ -8,7 +8,8 @@ import {
+   createApprovalDoc, saveApprovalTemplate, listenOfficialSeals
+ } from '@/lib/db'
+ import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal } from '@/types'
+-import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff } from 'lucide-react'
++import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff, Users } from 'lucide-react'
++import DocEditor from '@/components/DocEditor'
+ import clsx from 'clsx'
+ 
+ const ROLE_LABEL: Record<string,string> = {
+@@ -23,41 +24,7 @@ const DEFAULT_TEMPLATES = [
+   { id:'t5', name:'출장신청서',   body:'1. 출장 목적:\n\n2. 출장 기간:\n\n3. 출장지:\n\n4. 소요 예산: ' },
+ ]
+ 
+-// 공문 말머리 레벨 순서
+-const HEADING_LEVELS = ['1.','가.','1)','가)','(1)','(가)']
+-
+-function getNextHeading(currentLine: string): string {
+-  for (let i = 0; i < HEADING_LEVELS.length - 1; i++) {
+-    if (currentLine.trimStart().startsWith(HEADING_LEVELS[i])) {
+-      // 같은 레벨 다음 번호
+-      const prefix = HEADING_LEVELS[i]
+-      if (/^\d+\./.test(prefix)) {
+-        const num = parseInt(currentLine.trim())
+-        return `${num + 1}. `
+-      }
+-      if (/^[가-힣]\./.test(prefix)) {
+-        const ch = currentLine.trim()[0]
+-        const next = String.fromCharCode(ch.charCodeAt(0) + 1)
+-        return `${next}. `
+-      }
+-      if (/^\d+\)/.test(prefix)) {
+-        const num = parseInt(currentLine.trim())
+-        return `${num + 1}) `
+-      }
+-      if (/^[가-힣]\)/.test(prefix)) {
+-        const ch = currentLine.trim()[0]
+-        const next = String.fromCharCode(ch.charCodeAt(0) + 1)
+-        return `${next}) `
+-      }
+-    }
+-  }
+-  // 기본: 1. 로 시작
+-  if (/^\d+\. /.test(currentLine.trimStart())) {
+-    const num = parseInt(currentLine.trimStart())
+-    return `${num + 1}. `
+-  }
+-  return ''
+-}
++
+ 
+ type Step = 'line' | 'write'
+ 
+@@ -74,6 +41,7 @@ function ApprovalNewPageInner() {
+   const [seals,     setSeals]     = useState<OfficialSeal[]>([])
+   const [showTplPicker, setShowTplPicker] = useState(false)
+   const [showSaveTpl,   setShowSaveTpl]   = useState(false)
++  const [showRecipientPicker, setShowRecipientPicker] = useState(false)
+   const [showPreview,   setShowPreview]   = useState(true)
+   const [tplName,       setTplName]       = useState('')
+ 
+@@ -101,7 +69,6 @@ function ApprovalNewPageInner() {
+   const [isPublic,    setIsPublic]    = useState('공개')
+   const [saving,      setSaving]      = useState(false)
+ 
+-  const bodyRef = useRef<HTMLTextAreaElement>(null)
+   const isHQ = user && ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
+ 
+   useEffect(() => {
+@@ -167,33 +134,7 @@ function ApprovalNewPageInner() {
+     setTplName(''); setShowSaveTpl(false)
+   }
+ 
+-  // 본문 Enter 시 공문 서식 자동화
+-  const handleBodyKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+-    if (e.key !== 'Enter') return
+-    const ta = bodyRef.current
+-    if (!ta) return
+-    const pos   = ta.selectionStart
+-    const lines = body.substring(0, pos).split('\n')
+-    const cur   = lines[lines.length - 1]
+-    const next  = getNextHeading(cur)
+-    if (next) {
+-      e.preventDefault()
+-      const newBody = body.substring(0, pos) + '\n' + next + body.substring(pos)
+-      setBody(newBody)
+-      setTimeout(() => {
+-        ta.selectionStart = ta.selectionEnd = pos + 1 + next.length
+-      }, 0)
+-    }
+-  }
+ 
+-  // 본문 마지막에 '끝.' 자동 추가 (blur 시)
+-  const handleBodyBlur = () => {
+-    if (!body.trim()) return
+-    const trimmed = body.trimEnd()
+-    if (!trimmed.endsWith('끝.') && !trimmed.endsWith('끝. ')) {
+-      setBody(trimmed + '  끝.')
+-    }
+-  }
+ 
+   const handleSubmit = async (isDraft=false) => {
+     if (!user) return
+@@ -268,9 +209,9 @@ function ApprovalNewPageInner() {
+         <span style={{fontWeight:700}}>{title || '제목'}</span>
+       </div>
+       <div style={{height:'1px', background:'#ccc', margin:'12px 0'}}/>
+-      <div style={{whiteSpace:'pre-wrap', marginBottom:'16px', fontSize:'10pt'}}>
+-        {body || '본문을 입력하세요'}
+-      </div>
++      <div style={{marginBottom:'16px', fontSize:'10pt'}}
++        dangerouslySetInnerHTML={{__html: body || '<p style="color:#aaa">본문을 입력하세요</p>'}}
++      />
+       {attachNames.filter(Boolean).length > 0 && (
+         <div style={{marginBottom:'16px', fontSize:'9.5pt'}}>
+           <span style={{fontWeight:700}}>붙임&nbsp;&nbsp;</span>
+@@ -494,11 +435,10 @@ function ApprovalNewPageInner() {
+             {/* 입력 필드들 */}
+             <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+               {[
+-                { label:'조직명 *',  value:orgName,   set:setOrgName,   ph:'예: 총부사업기관 원창' },
+-                { label:'수신자 *',  value:recipient, set:setRecipient, ph:'예: 재정부원장' },
+-                { label:'(경유)',    value:via,       set:setVia,       ph:'경유자 (선택)' },
+-                { label:'문서번호',  value:docNo,     set:setDocNo,     ph:'예: 총부사업기관원창2026-10' },
+-                { label:'제목 *',    value:title,     set:setTitle,     ph:'제목을 입력하세요', bold:true },
++                { label:'조직명 *', value:orgName, set:setOrgName, ph:'예: 총부사업기관 원창' },
++                { label:'(경유)',   value:via,     set:setVia,     ph:'경유자 (선택)' },
++                { label:'문서번호', value:docNo,   set:setDocNo,   ph:'예: 총부사업기관원창2026-10' },
++                { label:'제목 *',   value:title,   set:setTitle,   ph:'제목을 입력하세요', bold:true },
+               ].map(f => (
+                 <div key={f.label}>
+                   <label className="text-xs font-medium text-gray-500 block mb-1">{f.label}</label>
+@@ -507,20 +447,49 @@ function ApprovalNewPageInner() {
+                 </div>
+               ))}
+ 
++              {/* 수신자 - 선택 또는 직접 입력 */}
+               <div>
+-                <div className="flex items-center justify-between mb-1">
+-                  <label className="text-xs font-medium text-gray-500">본문 *</label>
+-                  <span className="text-xs text-gray-300">Enter: 다음 항목 자동 생성</span>
++                <label className="text-xs font-medium text-gray-500 block mb-1">수신자 *</label>
++                <div className="relative">
++                  <input value={recipient} onChange={e=>setRecipient(e.target.value)}
++                    placeholder="예: 재정부원장"
++                    onFocus={() => setShowRecipientPicker(true)}
++                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++                  {showRecipientPicker && allUsers.length > 0 && (
++                    <div className="absolute top-full left-0 right-0 z-10 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto">
++                      <div className="p-2 border-b border-gray-100">
++                        <p className="text-xs text-gray-400">시스템 내 멤버 선택 또는 직접 입력</p>
++                      </div>
++                      {allUsers.map(u => (
++                        <button key={u.uid}
++                          onClick={() => { setRecipient(u.name); setShowRecipientPicker(false) }}
++                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors text-left">
++                          <div className="w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
++                            {u.name[0]}
++                          </div>
++                          <div>
++                            <p className="text-sm text-gray-800">{u.name}</p>
++                            <p className="text-xs text-gray-400">{{'ADMIN':'관리자','HQ_CHIEF':'본부장','HQ_MEMBER':'본부멤버','BIZ_REP':'사업장대표'}[u.role]??u.role}</p>
++                          </div>
++                        </button>
++                      ))}
++                      <button onClick={() => setShowRecipientPicker(false)}
++                        className="w-full py-2 text-xs text-gray-400 hover:bg-gray-50 border-t border-gray-100">
++                        닫기
++                      </button>
++                    </div>
++                  )}
+                 </div>
+-                <textarea
+-                  ref={bodyRef}
++              </div>
++
++              <div>
++                <label className="text-xs font-medium text-gray-500 block mb-1">본문 *</label>
++                <DocEditor
+                   value={body}
+-                  onChange={e=>setBody(e.target.value)}
+-                  onKeyDown={handleBodyKeyDown}
+-                  onBlur={handleBodyBlur}
+-                  placeholder={'1. 본문 내용을 입력하세요\n\n   Enter를 누르면 2. 가 자동으로 생성됩니다'}
+-                  rows={10}
+-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none font-mono"/>
++                  onChange={setBody}
++                  placeholder="1. 본문 내용을 입력하세요"
++                  minHeight={280}
++                />
+               </div>
+ 
+               <div>
+diff --git a/src/components/DocEditor.tsx b/src/components/DocEditor.tsx
+new file mode 100644
+index 0000000..2634868
+--- /dev/null
++++ b/src/components/DocEditor.tsx
+@@ -0,0 +1,305 @@
++'use client'
++import { useEditor, EditorContent } from '@tiptap/react'
++import StarterKit from '@tiptap/starter-kit'
++import Table from '@tiptap/extension-table'
++import TableRow from '@tiptap/extension-table-row'
++import TableCell from '@tiptap/extension-table-cell'
++import TableHeader from '@tiptap/extension-table-header'
++import TextAlign from '@tiptap/extension-text-align'
++import Underline from '@tiptap/extension-underline'
++import TextStyle from '@tiptap/extension-text-style'
++import Placeholder from '@tiptap/extension-placeholder'
++import { useState, useEffect } from 'react'
++import clsx from 'clsx'
++
++// 공문 번호 레벨
++const LEVELS = ['1.','가.','1)','가)','(1)','(가)']
++const KO_CHARS = ['가','나','다','라','마','바','사','아','자','차','카','타','파','하']
++
++function getNextBullet(text: string): string {
++  const t = text.trimStart()
++  // 숫자. 레벨
++  const numDot = t.match(/^(\d+)\.\s/)
++  if (numDot) return `${parseInt(numDot[1]) + 1}. `
++  // 한글. 레벨
++  const koDot = t.match(/^([가-하])\.\s/)
++  if (koDot) {
++    const idx = KO_CHARS.indexOf(koDot[1])
++    if (idx >= 0 && idx < KO_CHARS.length - 1) return `${KO_CHARS[idx+1]}. `
++  }
++  // 숫자) 레벨
++  const numPar = t.match(/^(\d+)\)\s/)
++  if (numPar) return `${parseInt(numPar[1]) + 1}) `
++  // 한글) 레벨
++  const koPar = t.match(/^([가-하])\)\s/)
++  if (koPar) {
++    const idx = KO_CHARS.indexOf(koPar[1])
++    if (idx >= 0 && idx < KO_CHARS.length - 1) return `${KO_CHARS[idx+1]}) `
++  }
++  // (숫자) 레벨
++  const numBr = t.match(/^\((\d+)\)\s/)
++  if (numBr) return `(${parseInt(numBr[1]) + 1}) `
++  // (한글) 레벨
++  const koBr = t.match(/^\(([가-하])\)\s/)
++  if (koBr) {
++    const idx = KO_CHARS.indexOf(koBr[1])
++    if (idx >= 0 && idx < KO_CHARS.length - 1) return `(${KO_CHARS[idx+1]}) `
++  }
++  return ''
++}
++
++// 기호 목록
++const SYMBOLS = [
++  { label: '일반', items: ['○','●','△','▲','□','■','◇','◆','☆','★','→','←','↑','↓','↔','◎','※','§','¶','†'] },
++  { label: '단위', items: ['㎡','㎢','㎞','㎝','㎜','㎏','㎎','㏄','℃','℉','°','\'','\"','%','‰','㎾','㎿'] },
++  { label: '숫자', items: ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','Ⅰ','Ⅱ','Ⅲ','Ⅳ','Ⅴ'] },
++  { label: '화살', items: ['➀','➁','➂','➃','➄','➅','➆','➇','➈','➉','⇒','⇐','⇑','⇓','⇔','⟹','⟸','↗','↘','↙'] },
++]
++
++interface Props {
++  value: string
++  onChange: (html: string) => void
++  placeholder?: string
++  minHeight?: number
++}
++
++export default function DocEditor({ value, onChange, placeholder = '본문을 입력하세요', minHeight = 300 }: Props) {
++  const [showSymbol, setShowSymbol] = useState(false)
++  const [symbolTab,  setSymbolTab]  = useState(0)
++  const [showTable,  setShowTable]  = useState(false)
++  const [tableRows,  setTableRows]  = useState(3)
++  const [tableCols,  setTableCols]  = useState(3)
++
++  const editor = useEditor({
++    extensions: [
++      StarterKit.configure({
++        bulletList: false,
++        orderedList: false,
++      }),
++      Table.configure({ resizable: true }),
++      TableRow,
++      TableCell,
++      TableHeader,
++      TextAlign.configure({ types: ['heading', 'paragraph'] }),
++      Underline,
++      TextStyle,
++      Placeholder.configure({ placeholder }),
++    ],
++    content: value || '',
++    onUpdate: ({ editor }) => {
++      onChange(editor.getHTML())
++    },
++    editorProps: {
++      handleKeyDown: (view, event) => {
++        if (event.key !== 'Enter') return false
++        const { state } = view
++        const { $from } = state.selection
++        const lineText = $from.nodeBefore?.textContent ?? ''
++        const next = getNextBullet(lineText)
++        if (next) {
++          // 다음 번호 자동 삽입
++          setTimeout(() => {
++            editor?.commands.insertContent(next)
++          }, 0)
++        }
++        return false
++      },
++    },
++  })
++
++  useEffect(() => {
++    if (editor && value !== editor.getHTML()) {
++      editor.commands.setContent(value || '')
++    }
++  }, [value])
++
++  if (!editor) return null
++
++  const insertTable = () => {
++    editor.chain().focus().insertTable({ rows: tableRows, cols: tableCols, withHeaderRow: true }).run()
++    setShowTable(false)
++  }
++
++  const insertSymbol = (sym: string) => {
++    editor.chain().focus().insertContent(sym).run()
++  }
++
++  const addEndMark = () => {
++    editor.chain().focus().command(({ tr, dispatch, state }) => {
++      const end = state.doc.content.size
++      if (dispatch) {
++        tr.insertText('  끝.', end - 1)
++        dispatch(tr)
++      }
++      return true
++    }).run()
++  }
++
++  return (
++    <div className="border border-gray-300 rounded-xl overflow-hidden">
++      {/* 툴바 */}
++      <div className="flex items-center gap-0.5 px-2 py-1.5 bg-gray-50 border-b border-gray-200 flex-wrap">
++        {/* 텍스트 서식 */}
++        <button onClick={() => editor.chain().focus().toggleBold().run()}
++          className={clsx('px-2 py-1 rounded text-sm font-bold transition-colors', editor.isActive('bold') ? 'bg-primary-100 text-primary-800' : 'hover:bg-gray-200 text-gray-600')}>
++          B
++        </button>
++        <button onClick={() => editor.chain().focus().toggleItalic().run()}
++          className={clsx('px-2 py-1 rounded text-sm italic transition-colors', editor.isActive('italic') ? 'bg-primary-100 text-primary-800' : 'hover:bg-gray-200 text-gray-600')}>
++          I
++        </button>
++        <button onClick={() => editor.chain().focus().toggleUnderline().run()}
++          className={clsx('px-2 py-1 rounded text-sm underline transition-colors', editor.isActive('underline') ? 'bg-primary-100 text-primary-800' : 'hover:bg-gray-200 text-gray-600')}>
++          U
++        </button>
++
++        <div className="w-px h-5 bg-gray-300 mx-1"/>
++
++        {/* 정렬 */}
++        {[
++          { align: 'left',    icon: '≡' },
++          { align: 'center',  icon: '≡' },
++          { align: 'right',   icon: '≡' },
++        ].map(({ align, icon }) => (
++          <button key={align} onClick={() => editor.chain().focus().setTextAlign(align).run()}
++            className={clsx('px-2 py-1 rounded text-xs transition-colors', editor.isActive({ textAlign: align }) ? 'bg-primary-100 text-primary-800' : 'hover:bg-gray-200 text-gray-600')}>
++            {align === 'left' ? '◧' : align === 'center' ? '◫' : '◨'}
++          </button>
++        ))}
++
++        <div className="w-px h-5 bg-gray-300 mx-1"/>
++
++        {/* 번호 체계 버튼 */}
++        {LEVELS.map(lv => (
++          <button key={lv} onClick={() => editor.chain().focus().insertContent(lv + ' ').run()}
++            className="px-1.5 py-1 rounded text-xs text-gray-600 hover:bg-gray-200 font-mono transition-colors">
++            {lv}
++          </button>
++        ))}
++
++        <div className="w-px h-5 bg-gray-300 mx-1"/>
++
++        {/* 표 */}
++        <div className="relative">
++          <button onClick={() => { setShowTable(v=>!v); setShowSymbol(false) }}
++            className={clsx('px-2 py-1 rounded text-xs transition-colors', showTable ? 'bg-primary-100 text-primary-800' : 'hover:bg-gray-200 text-gray-600')}>
++            ⊞ 표
++          </button>
++          {showTable && (
++            <div className="absolute top-8 left-0 z-20 bg-white border border-gray-200 rounded-xl p-3 shadow-lg w-44">
++              <p className="text-xs font-medium text-gray-600 mb-2">표 크기 설정</p>
++              <div className="flex items-center gap-2 mb-2">
++                <div className="flex-1">
++                  <label className="text-xs text-gray-400">행(가로)</label>
++                  <input type="number" min={1} max={20} value={tableRows}
++                    onChange={e => setTableRows(+e.target.value)}
++                    className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-400"/>
++                </div>
++                <div className="flex-1">
++                  <label className="text-xs text-gray-400">열(세로)</label>
++                  <input type="number" min={1} max={10} value={tableCols}
++                    onChange={e => setTableCols(+e.target.value)}
++                    className="w-full border border-gray-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-400"/>
++                </div>
++              </div>
++              <button onClick={insertTable}
++                className="w-full py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-800">
++                표 삽입
++              </button>
++              {editor.isActive('table') && (
++                <div className="mt-2 space-y-1 border-t border-gray-100 pt-2">
++                  <button onClick={() => editor.chain().focus().addRowAfter().run()}
++                    className="w-full py-1 text-xs text-gray-600 hover:bg-gray-50 rounded">+ 행 추가</button>
++                  <button onClick={() => editor.chain().focus().addColumnAfter().run()}
++                    className="w-full py-1 text-xs text-gray-600 hover:bg-gray-50 rounded">+ 열 추가</button>
++                  <button onClick={() => editor.chain().focus().deleteRow().run()}
++                    className="w-full py-1 text-xs text-red-400 hover:bg-red-50 rounded">- 행 삭제</button>
++                  <button onClick={() => editor.chain().focus().deleteColumn().run()}
++                    className="w-full py-1 text-xs text-red-400 hover:bg-red-50 rounded">- 열 삭제</button>
++                  <button onClick={() => editor.chain().focus().deleteTable().run()}
++                    className="w-full py-1 text-xs text-red-500 hover:bg-red-50 rounded font-medium">표 삭제</button>
++                </div>
++              )}
++            </div>
++          )}
++        </div>
++
++        {/* 기호 */}
++        <div className="relative">
++          <button onClick={() => { setShowSymbol(v=>!v); setShowTable(false) }}
++            className={clsx('px-2 py-1 rounded text-xs transition-colors', showSymbol ? 'bg-primary-100 text-primary-800' : 'hover:bg-gray-200 text-gray-600')}>
++            Ω 기호
++          </button>
++          {showSymbol && (
++            <div className="absolute top-8 left-0 z-20 bg-white border border-gray-200 rounded-xl shadow-lg w-64">
++              <div className="flex border-b border-gray-100">
++                {SYMBOLS.map((s, i) => (
++                  <button key={i} onClick={() => setSymbolTab(i)}
++                    className={clsx('flex-1 py-1.5 text-xs font-medium transition-colors',
++                      symbolTab === i ? 'bg-primary-50 text-primary-700 border-b-2 border-primary-500' : 'text-gray-500 hover:bg-gray-50')}>
++                    {s.label}
++                  </button>
++                ))}
++              </div>
++              <div className="grid grid-cols-10 gap-0.5 p-2">
++                {SYMBOLS[symbolTab].items.map(sym => (
++                  <button key={sym} onClick={() => insertSymbol(sym)}
++                    className="w-6 h-6 flex items-center justify-center text-sm hover:bg-gray-100 rounded transition-colors">
++                    {sym}
++                  </button>
++                ))}
++              </div>
++            </div>
++          )}
++        </div>
++
++        {/* 끝. 추가 */}
++        <button onClick={addEndMark}
++          className="px-2 py-1 rounded text-xs text-gray-600 hover:bg-gray-200 transition-colors ml-auto">
++          끝. 추가
++        </button>
++      </div>
++
++      {/* 에디터 본문 */}
++      <EditorContent
++        editor={editor}
++        className="prose prose-sm max-w-none"
++        style={{ minHeight, padding: '12px 16px', fontFamily: 'Nanum Myeongjo, serif', fontSize: '11pt', lineHeight: '1.8' }}
++      />
++
++      {/* 표 스타일 */}
++      <style>{`
++        @import url('https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700&display=swap');
++        .ProseMirror { outline: none; }
++        .ProseMirror p { margin: 0 0 4px; }
++        .ProseMirror p.is-editor-empty:first-child::before {
++          content: attr(data-placeholder);
++          color: #aaa; float: left; pointer-events: none; height: 0;
++        }
++        .ProseMirror table {
++          border-collapse: collapse; width: 100%; margin: 8px 0;
++          font-size: 10pt;
++        }
++        .ProseMirror table td, .ProseMirror table th {
++          border: 1px solid #555; padding: 4px 8px;
++          min-width: 40px; position: relative;
++        }
++        .ProseMirror table th {
++          background: #f5f5f5; font-weight: 700; text-align: center;
++        }
++        .ProseMirror table .selectedCell::after {
++          background: rgba(83,74,183,0.15);
++          content: ''; left: 0; right: 0; top: 0; bottom: 0;
++          pointer-events: none; position: absolute; z-index: 2;
++        }
++        .ProseMirror .column-resize-handle {
++          background: #534AB7; bottom: -2px; position: absolute;
++          right: -2px; top: 0; width: 4px; pointer-events: none;
++        }
++        .ProseMirror strong { font-weight: 700; }
++        .ProseMirror em { font-style: italic; }
++        .ProseMirror u { text-decoration: underline; }
++      `}</style>
++    </div>
++  )
++}
+-- 
+2.43.0
+

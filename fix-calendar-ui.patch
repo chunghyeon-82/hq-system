@@ -1,0 +1,141 @@
+From 7141d26a5a809f0563947d79a30ec05d95e66254 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 05:21:52 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EC=B2=B4=ED=81=AC=EB=B0=95=EC=8A=A4=20?=
+ =?UTF-8?q?=EC=83=89=EC=83=81,=20=EB=8C=80=EC=8B=9C=EB=B3=B4=EB=93=9C=20?=
+ =?UTF-8?q?=EC=9D=B4=EB=B2=88=EC=A3=BC=EC=9D=BC=EC=A0=95=20UI,=20=EC=BA=98?=
+ =?UTF-8?q?=EB=A6=B0=EB=8D=94=20=EA=B3=B5=EC=9C=A0=EC=88=98=EB=9D=BD=20?=
+ =?UTF-8?q?=EB=B3=B4=EC=95=88=EA=B7=9C=EC=B9=99?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/calendar/page.tsx  |  8 +++--
+ src/app/dashboard/page.tsx | 70 +++++++++++++++-----------------------
+ 2 files changed, 34 insertions(+), 44 deletions(-)
+
+diff --git a/src/app/calendar/page.tsx b/src/app/calendar/page.tsx
+index 71e7735..56f740b 100644
+--- a/src/app/calendar/page.tsx
++++ b/src/app/calendar/page.tsx
+@@ -616,8 +616,12 @@ export default function CalendarPage() {
+                           <p className="text-xs text-gray-400">{ROLE_LABEL[u.role] ?? u.role}</p>
+                         </div>
+                         <div className={clsx('w-5 h-5 rounded border-2 flex items-center justify-center shrink-0',
+-                          sharedUids.includes(u.uid) ? 'border-primary-500 bg-primary-500' : 'border-gray-300')}>
+-                          {sharedUids.includes(u.uid) && <span className="text-white text-xs font-bold">✓</span>}
++                          sharedUids.includes(u.uid) ? 'border-primary-600 bg-primary-600' : 'border-gray-400 bg-white')}>
++                          {sharedUids.includes(u.uid) && (
++                            <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
++                              <path d="M1 4L4.5 7.5L11 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
++                            </svg>
++                          )}
+                         </div>
+                       </button>
+                     ))}
+diff --git a/src/app/dashboard/page.tsx b/src/app/dashboard/page.tsx
+index 4461c08..f04b9f3 100644
+--- a/src/app/dashboard/page.tsx
++++ b/src/app/dashboard/page.tsx
+@@ -69,8 +69,11 @@ export default function DashboardPage() {
+     const { days, todayStr, sunStr, satStr } = getThisWeek()
+     const weekEvents = events
+       .filter(e => e.date >= sunStr && e.date <= satStr && !e.isDone)
+-      .sort((a, b) => a.date.localeCompare(b.date))
+-    const DOW = ['일', '월', '화', '수', '목', '금', '토']
++      .sort((a, b) => {
++        if (a.date !== b.date) return a.date.localeCompare(b.date)
++        return (a.time ?? '99:99').localeCompare(b.time ?? '99:99')
++      })
++    const DOW_KO = ['일','월','화','수','목','금','토']
+     return (
+       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+@@ -83,60 +86,43 @@ export default function DashboardPage() {
+             전체 보기 <ArrowUpRight size={11}/>
+           </button>
+         </div>
+-        {/* 달력 */}
+-        <div className="px-4 pt-3 pb-2">
+-          <div className="grid grid-cols-7 mb-2">
+-            {DOW.map((d, i) => (
+-              <div key={d} className={clsx('text-center text-xs font-medium',
+-                i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-gray-400')}>
+-                {d}
+-              </div>
+-            ))}
+-          </div>
+-          <div className="grid grid-cols-7 gap-1">
+-            {days.map((d, i) => {
+-              const dStr    = d.toISOString().slice(0, 10)
+-              const isToday = dStr === todayStr
+-              const hasEv   = weekEvents.some(e => e.date === dStr)
+-              return (
+-                <div key={i} className="flex flex-col items-center">
+-                  <div className={clsx(
+-                    'w-7 h-7 flex items-center justify-center text-xs rounded-full relative',
+-                    isToday ? 'bg-primary-600 text-white font-medium' : 'text-gray-700'
+-                  )}>
+-                    {d.getDate()}
+-                    {hasEv && !isToday && (
+-                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-red-400"/>
+-                    )}
+-                  </div>
+-                </div>
+-              )
+-            })}
+-          </div>
+-        </div>
+-        {/* 일정 목록 */}
+         {weekEvents.length > 0 ? (
+-          <div className="px-4 pb-3 space-y-1.5 border-t border-gray-50 pt-2">
+-            {weekEvents.slice(0, 4).map(e => {
++          <div className="divide-y divide-gray-50">
++            {weekEvents.slice(0, 5).map(e => {
+               const d = new Date(e.date + 'T00:00:00')
+-              const label = d.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })
++              const dow = DOW_KO[d.getDay()]
++              const isToday = e.date === todayStr
+               return (
+                 <button key={e.id} onClick={() => router.push('/calendar')}
+-                  className="w-full flex items-center gap-2.5 py-1.5 hover:bg-gray-50 rounded-lg px-1 transition-colors">
+-                  <span className="w-1.5 h-1.5 rounded-full bg-primary-500 shrink-0"/>
+-                  <span className="text-sm text-gray-800 flex-1 text-left truncate">{e.title}</span>
+-                  <span className="text-xs text-gray-400 shrink-0">{label}{e.time ? ` ${e.time}` : ''}</span>
++                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
++                  <div className={clsx('w-10 text-center shrink-0', isToday ? 'text-primary-600' : 'text-gray-400')}>
++                    <div className="text-xs font-medium">{dow}</div>
++                    <div className={clsx('text-lg font-bold leading-tight',
++                      isToday ? 'text-primary-600' : 'text-gray-700')}>{d.getDate()}</div>
++                  </div>
++                  <div className={clsx('w-0.5 h-8 rounded-full shrink-0',
++                    isToday ? 'bg-primary-400' : 'bg-gray-200')}/>
++                  <div className="flex-1 min-w-0 text-left">
++                    <p className={clsx('text-sm font-medium truncate',
++                      isToday ? 'text-primary-800' : 'text-gray-900')}>{e.title}</p>
++                    <p className="text-xs text-gray-400 mt-0.5">
++                      {e.time ? e.time : '종일'}
++                      {(e as CalendarEvent & {location?:string}).location
++                        ? ` · ${(e as CalendarEvent & {location?:string}).location}` : ''}
++                    </p>
++                  </div>
+                 </button>
+               )
+             })}
+           </div>
+         ) : (
+-          <p className="text-center text-xs text-gray-400 py-4">이번 주 일정이 없습니다</p>
++          <p className="text-center text-xs text-gray-400 py-6">이번 주 일정이 없습니다</p>
+         )}
+       </div>
+     )
+   }
+ 
++
+   // ── 본부용 대시보드 ────────────────────────────────────
+   if (isHQ) {
+     const broadcastMsgs = messages.filter(m => m.type === 'broadcast')
+-- 
+2.43.0
+

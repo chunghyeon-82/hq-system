@@ -1,0 +1,183 @@
+From 19b65ab420ae8d2ab23935e18c9199ee06f41583 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 23:18:26 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?feat:=20=EB=A9=94=EC=8B=9C=EC=A7=80=20?=
+ =?UTF-8?q?=EC=82=AD=EC=A0=9C=20=EA=B8=B0=EB=8A=A5=20=EC=B6=94=EA=B0=80=20?=
+ =?UTF-8?q?-=20=EC=9E=91=EC=84=B1=EC=9E=90=20=EB=B3=B8=EC=9D=B8/=EA=B4=80?=
+ =?UTF-8?q?=EB=A6=AC=EC=9E=90=EB=A7=8C=20=EC=82=AD=EC=A0=9C=20=EA=B0=80?=
+ =?UTF-8?q?=EB=8A=A5?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/messages/[id]/page.tsx | 65 ++++++++++++++++++++++++----------
+ src/lib/db.ts                  |  4 +++
+ 2 files changed, 51 insertions(+), 18 deletions(-)
+
+diff --git a/src/app/messages/[id]/page.tsx b/src/app/messages/[id]/page.tsx
+index cd14aaa..ad8c749 100644
+--- a/src/app/messages/[id]/page.tsx
++++ b/src/app/messages/[id]/page.tsx
+@@ -3,11 +3,11 @@ import { useEffect, useState } from 'react'
+ import { useParams, useRouter } from 'next/navigation'
+ import AppShell from '@/components/AppShell'
+ import { useAuth } from '@/lib/auth-context'
+-import { listenMessages, processMessage, completeMessage, closeMessage, reopenMessage, hideMessage, replyDirect, addEventToMyCalendar, addEvent } from '@/lib/db'
++import { listenMessages, processMessage, completeMessage, closeMessage, reopenMessage, hideMessage, replyDirect, addEventToMyCalendar, addEvent, deleteMessageDoc } from '@/lib/db'
+ import type { Message, Receipt } from '@/types'
+ import {
+   CheckCircle2, Clock, AlertCircle, Send, CheckSquare,
+-  RotateCcw, Lock, Calendar, Link2, ExternalLink, ChevronDown, ChevronUp, EyeOff
++  RotateCcw, Lock, Calendar, Link2, ExternalLink, ChevronDown, ChevronUp, EyeOff, Trash2
+ } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+@@ -98,6 +98,13 @@ export default function MessageDetailPage() {
+     setDoneNote('')
+   }
+ 
++  // 메시지 삭제
++  const handleDelete = async () => {
++    if (!confirm('이 메시지를 완전히 삭제하시겠습니까?\n삭제된 메시지는 복구할 수 없습니다.')) return
++    await deleteMessageDoc(message.id)
++    router.push(isHQ ? '/businesses' : '/dashboard')
++  }
++
+   // 본부 완결 처리
+   const handleClose  = async () => { await closeMessage(message.id) }
+   const handleReopen = async () => { await reopenMessage(message.id) }
+@@ -292,10 +299,18 @@ export default function MessageDetailPage() {
+               )}
+ 
+               {myReceipt.status === 'done' && (
+-                <button onClick={handleHide}
+-                  className="w-full flex items-center justify-center gap-2 border border-gray-200 text-gray-400 rounded-xl py-2.5 text-sm hover:bg-gray-50 transition-colors">
+-                  <EyeOff size={14}/> 목록에서 숨기기
+-                </button>
++                <div className="flex gap-2">
++                  <button onClick={handleHide}
++                    className="flex-1 flex items-center justify-center gap-2 border border-gray-200 text-gray-400 rounded-xl py-2.5 text-sm hover:bg-gray-50 transition-colors">
++                    <EyeOff size={14}/> 목록에서 숨기기
++                  </button>
++                  {message.authorUid === user?.uid && (
++                    <button onClick={handleDelete}
++                      className="flex items-center gap-2 border border-red-200 text-red-400 rounded-xl px-4 py-2.5 text-sm hover:bg-red-50 transition-colors">
++                      <Trash2 size={14}/> 삭제
++                    </button>
++                  )}
++                </div>
+               )}
+             </div>
+           </div>
+@@ -364,6 +379,12 @@ export default function MessageDetailPage() {
+                       <RotateCcw size={15}/> 재오픈
+                     </button>
+                 }
++                {(isAdmin || message.authorUid === user?.uid) && (
++                  <button onClick={handleDelete}
++                    className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
++                    <Trash2 size={15}/> 삭제
++                  </button>
++                )}
+               </div>
+             </div>
+           </div>
+@@ -403,18 +424,26 @@ export default function MessageDetailPage() {
+                 </button>
+               </div>
+             )}
+-            {isHQ && (
+-              <div className="pt-1 border-t border-gray-100">
+-                {!isDone
+-                  ? <button onClick={handleClose} className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800">
+-                      <CheckSquare size={14}/> 완결 처리
+-                    </button>
+-                  : <button onClick={handleReopen} className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600">
+-                      <RotateCcw size={14}/> 재오픈
+-                    </button>
+-                }
+-              </div>
+-            )}
++            <div className="pt-1 border-t border-gray-100 flex gap-2">
++              {isHQ && (
++                <>
++                  {!isDone
++                    ? <button onClick={handleClose} className="flex items-center gap-2 bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800">
++                        <CheckSquare size={14}/> 완결 처리
++                      </button>
++                    : <button onClick={handleReopen} className="flex items-center gap-2 bg-amber-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-amber-600">
++                        <RotateCcw size={14}/> 재오픈
++                      </button>
++                  }
++                </>
++              )}
++              {(isAdmin || message.authorUid === user?.uid) && (
++                <button onClick={handleDelete}
++                  className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
++                  <Trash2 size={14}/> 삭제
++                </button>
++              )}
++            </div>
+           </div>
+         )}
+       </div>
+diff --git a/src/lib/db.ts b/src/lib/db.ts
+index 5e2fdc8..13e63a1 100644
+--- a/src/lib/db.ts
++++ b/src/lib/db.ts
+@@ -175,6 +175,10 @@ export async function replyDirect(msgId: string, authorUid: string, authorName:
+   })
+ }
+ 
++export async function deleteMessageDoc(msgId: string) {
++  await deleteDoc(doc(db, 'messages', msgId))
++}
++
+ export async function closeMessage(msgId: string) {
+   await updateDoc(doc(db, 'messages', msgId), { status: 'done' as MessageStatus, updatedAt: serverTimestamp() })
+ }
+-- 
+2.43.0
+
+
+From 8d3eb94936fc35b460a510aada464df1897e2764 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 23:18:51 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?fix:=20=EB=A9=94=EC=8B=9C=EC=A7=80=20?=
+ =?UTF-8?q?=EC=82=AD=EC=A0=9C=20=EA=B6=8C=ED=95=9C=20-=20=EA=B4=80?=
+ =?UTF-8?q?=EB=A6=AC=EC=9E=90/=EC=9E=91=EC=84=B1=EC=9E=90/=EC=88=98?=
+ =?UTF-8?q?=EC=8B=A0=EC=9E=90=20=EB=AA=A8=EB=91=90=20=EA=B0=80=EB=8A=A5?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/messages/[id]/page.tsx | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/messages/[id]/page.tsx b/src/app/messages/[id]/page.tsx
+index ad8c749..fb305ce 100644
+--- a/src/app/messages/[id]/page.tsx
++++ b/src/app/messages/[id]/page.tsx
+@@ -379,7 +379,7 @@ export default function MessageDetailPage() {
+                       <RotateCcw size={15}/> 재오픈
+                     </button>
+                 }
+-                {(isAdmin || message.authorUid === user?.uid) && (
++                {(isAdmin || message.authorUid === user?.uid || message.targetUid === user?.uid || (user?.bizId && message.targetBizIds?.includes(user.bizId))) && (
+                   <button onClick={handleDelete}
+                     className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
+                     <Trash2 size={15}/> 삭제
+@@ -437,7 +437,7 @@ export default function MessageDetailPage() {
+                   }
+                 </>
+               )}
+-              {(isAdmin || message.authorUid === user?.uid) && (
++              {(isAdmin || message.authorUid === user?.uid || message.targetUid === user?.uid || (user?.bizId && message.targetBizIds?.includes(user.bizId))) && (
+                 <button onClick={handleDelete}
+                   className="flex items-center gap-2 bg-white border border-red-200 text-red-500 px-4 py-2 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors ml-auto">
+                   <Trash2 size={14}/> 삭제
+-- 
+2.43.0
+

@@ -1,0 +1,42 @@
+From 087c21bd79d471b8a8dedd200bd2c120542f128a Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 05:14:00 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20VAPID=20=EC=84=A4=EC=A0=95=EC=9D=84=20?=
+ =?UTF-8?q?=EC=9A=94=EC=B2=AD=20=EC=8B=9C=EC=A0=90=EC=9C=BC=EB=A1=9C=20?=
+ =?UTF-8?q?=EC=9D=B4=EB=8F=99?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/api/push/route.ts | 13 ++++++-------
+ 1 file changed, 6 insertions(+), 7 deletions(-)
+
+diff --git a/src/app/api/push/route.ts b/src/app/api/push/route.ts
+index d4ad9aa..13252ad 100644
+--- a/src/app/api/push/route.ts
++++ b/src/app/api/push/route.ts
+@@ -17,14 +17,13 @@ function getAdminDb() {
+   return getFirestore()
+ }
+ 
+-// VAPID 설정
+-webpush.setVapidDetails(
+-  'mailto:admin@hq-system.app',
+-  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+-  process.env.VAPID_PRIVATE_KEY!
+-)
+-
+ export async function POST(req: NextRequest) {
++  // VAPID 설정 (요청 시점에 환경변수 읽기)
++  webpush.setVapidDetails(
++    'mailto:admin@hq-system.app',
++    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? '',
++    process.env.VAPID_PRIVATE_KEY ?? ''
++  )
+   try {
+     const { title, body, url, targetUids } = await req.json()
+ 
+-- 
+2.43.0
+

@@ -24,6 +24,7 @@ const MENU: MenuItem[] = [
     children: [
       { label: '공문 작성',  path: '/approval/new' },
       { label: '공문 접수',  path: '/approval/incoming/new' },
+      { label: '내부 품의',  path: '/approval/internal/new' },
     ]
   },
   {
@@ -43,6 +44,7 @@ const MENU: MenuItem[] = [
     children: [
       { label: '발신 공문 목록', path: '/approval/docs/outgoing' },
       { label: '수신 공문 목록', path: '/approval/docs/incoming' },
+      { label: '품의서 목록',    path: '/approval/docs/internal' },
       { label: '보관 공문',      path: '/approval/archive' },
     ]
   },

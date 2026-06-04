@@ -1,0 +1,29 @@
+From b5affb4252e41393990c6104bed128eb6d230f3a Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 00:50:11 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20settings=20=ED=83=80=EC=9E=85=20?=
+ =?UTF-8?q?=EC=98=A4=EB=A5=98=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/settings/page.tsx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/app/settings/page.tsx b/src/app/settings/page.tsx
+index 3f36982..2a03e85 100644
+--- a/src/app/settings/page.tsx
++++ b/src/app/settings/page.tsx
+@@ -126,7 +126,7 @@ export default function SettingsPage() {
+           <div>
+             <label className="text-sm font-medium text-gray-700 block mb-1.5">역할</label>
+             <input value={user?.role === 'ETC' && user?.customRole ? user.customRole : (
+-              { ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타' }[user?.role ?? ''] ?? ''
++              ({ ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타' } as Record<string, string>)[user?.role ?? ''] ?? ''
+             )} disabled
+               className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50 text-gray-400"/>
+           </div>
+-- 
+2.43.0
+

@@ -1,0 +1,1839 @@
+From 7fec33142cac8dc171ab083e50c8f048ebb45b4a Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 04:50:29 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=EC=A0=84=EC=9E=90=EA=B2=B0=EC=9E=AC=20?=
+ =?UTF-8?q?=EC=A0=84=EB=A9=B4=20=EA=B0=9C=ED=8E=B8=20-=20=EB=A9=94?=
+ =?UTF-8?q?=EB=89=B4=EA=B5=AC=EC=A1=B0,=20=EA=B3=B5=EB=AC=B8=EB=AA=A9?=
+ =?UTF-8?q?=EB=A1=9D,=20=EB=B3=B4=EA=B4=80=EA=B3=B5=EB=AC=B8,=20=EA=B2=B0?=
+ =?UTF-8?q?=EC=9E=AC=EC=84=A0=EA=B4=80=EB=A6=AC,=20=ED=95=98=EB=8B=A8?=
+ =?UTF-8?q?=EC=A0=95=EB=B3=B4=EC=9E=90=EB=8F=99=EC=9E=85=EB=A0=A5,=20?=
+ =?UTF-8?q?=EC=88=98=EC=8B=A0=EC=9E=90=EA=B4=80=EB=A6=AC?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ firestore.rules                               |   5 +
+ src/app/approval/archive/page.tsx             | 126 ++++++
+ src/app/approval/docs/incoming/page.tsx       |  81 ++++
+ src/app/approval/docs/outgoing/page.tsx       |  86 +++++
+ src/app/approval/incoming/new/page.tsx        |  18 -
+ src/app/approval/new/page.tsx                 |  40 +-
+ src/app/approval/page.tsx                     | 362 ++++++------------
+ .../approval/settings/footer-info/page.tsx    |  71 ++++
+ src/app/approval/settings/lines/page.tsx      | 190 +++++++++
+ src/app/approval/settings/recipients/page.tsx | 117 ++++++
+ src/app/approval/settings/seal/page.tsx       |   8 +
+ src/app/approval/status/done/page.tsx         |  63 +++
+ src/app/approval/status/page.tsx              |   8 +
+ src/app/approval/status/pending/page.tsx      |  95 +++++
+ src/app/approval/status/progress/page.tsx     |  66 ++++
+ src/app/approval/status/viewer/page.tsx       |  50 +++
+ src/components/ApprovalShell.tsx              | 134 +++++++
+ src/lib/db.ts                                 |  32 +-
+ src/types/index.ts                            |  28 +-
+ 19 files changed, 1304 insertions(+), 276 deletions(-)
+ create mode 100644 src/app/approval/archive/page.tsx
+ create mode 100644 src/app/approval/docs/incoming/page.tsx
+ create mode 100644 src/app/approval/docs/outgoing/page.tsx
+ create mode 100644 src/app/approval/settings/footer-info/page.tsx
+ create mode 100644 src/app/approval/settings/lines/page.tsx
+ create mode 100644 src/app/approval/settings/recipients/page.tsx
+ create mode 100644 src/app/approval/settings/seal/page.tsx
+ create mode 100644 src/app/approval/status/done/page.tsx
+ create mode 100644 src/app/approval/status/page.tsx
+ create mode 100644 src/app/approval/status/pending/page.tsx
+ create mode 100644 src/app/approval/status/progress/page.tsx
+ create mode 100644 src/app/approval/status/viewer/page.tsx
+ create mode 100644 src/components/ApprovalShell.tsx
+
+diff --git a/firestore.rules b/firestore.rules
+index 586a1d2..5e56c64 100644
+--- a/firestore.rules
++++ b/firestore.rules
+@@ -173,6 +173,11 @@ service cloud.firestore {
+       allow create: if isSignedIn()
+     }
+ 
++    match /recipientContacts/{cId} {
++      allow read, write: if isSignedIn() && isHQOrAdmin()
++        && (request.method == 'read' || request.resource.data.ownerUid == myUid())
++    }
++
+     match /deletionLogs/{logId} {
+       allow read:  if isAdmin()
+       allow write: if false  // Cloud Functions만 쓰기 가능
+diff --git a/src/app/approval/archive/page.tsx b/src/app/approval/archive/page.tsx
+new file mode 100644
+index 0000000..0edd80e
+--- /dev/null
++++ b/src/app/approval/archive/page.tsx
+@@ -0,0 +1,126 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenApprovalDocs, listenIncomingDocs } from '@/lib/db'
++import type { ApprovalDoc, IncomingDoc } from '@/types'
++import { Search, Archive } from 'lucide-react'
++import clsx from 'clsx'
++
++export default function ArchivePage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [docs,     setDocs]     = useState<ApprovalDoc[]>([])
++  const [incoming, setIncoming] = useState<IncomingDoc[]>([])
++  const [tab,      setTab]      = useState<'outgoing'|'incoming'>('outgoing')
++  const [year,     setYear]     = useState(new Date().getFullYear() - 1)
++  const [query,    setQuery]    = useState('')
++
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    const u1 = listenApprovalDocs(user.uid, setDocs)
++    const u2 = listenIncomingDocs(user.uid, setIncoming)
++    return () => { u1(); u2() }
++  }, [user, loading, router])
++
++  const thisYear = new Date().getFullYear()
++
++  // 과거 연도 목록 추출
++  const allYears = Array.from(new Set([
++    ...docs.map(d => {
++      try { return ((d.createdAt as {toDate?:()=>Date}).toDate?.() ?? new Date(d.createdAt as string)).getFullYear() }
++      catch { return 0 }
++    }),
++    ...incoming.map(d => {
++      try { return ((d.createdAt as {toDate?:()=>Date}).toDate?.() ?? new Date(d.createdAt as string)).getFullYear() }
++      catch { return 0 }
++    }),
++  ])).filter(y => y > 0 && y < thisYear).sort((a,b) => b-a)
++
++  const getYear = (d: unknown) => {
++    try { return ((d as {toDate?:()=>Date}).toDate?.() ?? new Date(d as string)).getFullYear() }
++    catch { return 0 }
++  }
++
++  const filteredOut = docs
++    .filter(d => d.authorUid === user?.uid && d.status === 'approved' && getYear(d.createdAt) === year)
++    .filter(d => !query || d.title.includes(query) || d.orgName?.includes(query) || d.recipient?.includes(query))
++    .sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0)-((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
++
++  const filteredIn = incoming
++    .filter(d => d.authorUid === user?.uid && d.status === 'approved' && getYear(d.createdAt) === year)
++    .filter(d => !query || d.title.includes(query) || d.sender?.includes(query) || d.docNo?.includes(query))
++    .sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0)-((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
++
++  const formatDate = (d: unknown) => {
++    try { return (d as {toDate?:()=>Date}).toDate?.()?.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}) ?? '' } catch { return '' }
++  }
++
++  const current = tab === 'outgoing' ? filteredOut : filteredIn
++
++  return (
++    <ApprovalShell title="보관 공문">
++      <div className="max-w-4xl mx-auto p-6 space-y-4">
++        <div className="flex items-center gap-3">
++          <Archive size={20} className="text-gray-500"/>
++          <h2 className="text-lg font-bold text-gray-900">보관 공문</h2>
++        </div>
++
++        {/* 연도 선택 + 탭 */}
++        <div className="flex items-center gap-3 flex-wrap">
++          <select value={year} onChange={e => setYear(+e.target.value)}
++            className="border border-gray-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
++            {allYears.length === 0
++              ? <option value={thisYear-1}>{thisYear-1}년</option>
++              : allYears.map(y => <option key={y} value={y}>{y}년</option>)
++            }
++          </select>
++          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
++            {(['outgoing','incoming'] as const).map(t => (
++              <button key={t} onClick={() => setTab(t)}
++                className={clsx('px-4 py-1.5 rounded-lg text-sm font-medium transition-colors',
++                  tab === t ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500')}>
++                {t === 'outgoing' ? `보관 발신 (${filteredOut.length})` : `보관 수신 (${filteredIn.length})`}
++              </button>
++            ))}
++          </div>
++        </div>
++
++        {/* 검색 */}
++        <div className="relative">
++          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
++          <input value={query} onChange={e => setQuery(e.target.value)}
++            placeholder="제목, 기관명, 문서번호로 검색"
++            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++        </div>
++
++        {/* 목록 */}
++        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++          <div className="grid grid-cols-12 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-500">
++            <span className="col-span-1">번호</span>
++            <span className="col-span-6">제목</span>
++            <span className="col-span-3">{tab==='outgoing' ? '수신처' : '발신기관'}</span>
++            <span className="col-span-2 text-right">날짜</span>
++          </div>
++          {current.length === 0 ? (
++            <div className="text-center py-12 text-gray-400 text-sm">{year}년 보관 {tab==='outgoing'?'발신':'수신'} 공문이 없습니다</div>
++          ) : current.map((d, i) => (
++            <button key={d.id}
++              onClick={() => router.push(tab==='incoming' ? `/approval/incoming/${d.id}` : `/approval/${d.id}`)}
++              className="w-full grid grid-cols-12 px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors text-left text-sm">
++              <span className="col-span-1 text-gray-400">{current.length - i}</span>
++              <span className="col-span-6 font-medium text-gray-900 truncate pr-2">{d.title}</span>
++              <span className="col-span-3 text-gray-500 truncate pr-2">
++                {tab==='outgoing' ? (d as ApprovalDoc).recipient : (d as IncomingDoc).sender}
++              </span>
++              <span className="col-span-2 text-gray-400 text-xs text-right">{formatDate(d.createdAt)}</span>
++            </button>
++          ))}
++        </div>
++        <p className="text-xs text-gray-400 text-right">총 {current.length}건</p>
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/app/approval/docs/incoming/page.tsx b/src/app/approval/docs/incoming/page.tsx
+new file mode 100644
+index 0000000..538fa1e
+--- /dev/null
++++ b/src/app/approval/docs/incoming/page.tsx
+@@ -0,0 +1,81 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenIncomingDocs } from '@/lib/db'
++import type { IncomingDoc } from '@/types'
++import { Search, ChevronRight, FileInput } from 'lucide-react'
++
++export default function IncomingDocsPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [docs, setDocs] = useState<IncomingDoc[]>([])
++  const [query, setQuery] = useState('')
++
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    return listenIncomingDocs(user.uid, setDocs)
++  }, [user, loading, router])
++
++  const thisYear = new Date().getFullYear()
++  const isThisYear = (d: unknown) => {
++    try { return ((d as {toDate?:()=>Date}).toDate?.() ?? new Date(d as string)).getFullYear() === thisYear }
++    catch { return false }
++  }
++
++  const filtered = docs
++    .filter(d => d.authorUid === user?.uid && d.status === 'approved' && isThisYear(d.createdAt))
++    .filter(d => !query || d.title.includes(query) || d.sender?.includes(query) || d.docNo?.includes(query))
++    .sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0)-((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
++
++  const formatDate = (d: unknown) => {
++    try { return (d as {toDate?:()=>Date}).toDate?.()?.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}) ?? '' } catch { return '' }
++  }
++
++  return (
++    <ApprovalShell title="수신 공문 목록">
++      <div className="max-w-4xl mx-auto p-6 space-y-4">
++        <div className="flex items-center justify-between">
++          <div>
++            <h2 className="text-lg font-bold text-gray-900">수신 공문 목록</h2>
++            <p className="text-xs text-gray-400 mt-0.5">{thisYear}년 접수 완료 공문</p>
++          </div>
++          <button onClick={() => router.push('/approval/incoming/new')}
++            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
++            <FileInput size={15}/> 공문 접수
++          </button>
++        </div>
++        <div className="relative">
++          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
++          <input value={query} onChange={e => setQuery(e.target.value)}
++            placeholder="제목, 발신기관, 문서번호로 검색"
++            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++        </div>
++        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++          <div className="grid grid-cols-12 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-500">
++            <span className="col-span-1">번호</span>
++            <span className="col-span-5">제목</span>
++            <span className="col-span-3">발신기관</span>
++            <span className="col-span-2">문서번호</span>
++            <span className="col-span-1 text-right">수신일</span>
++          </div>
++          {filtered.length === 0 ? (
++            <div className="text-center py-12 text-gray-400 text-sm">수신 공문이 없습니다</div>
++          ) : filtered.map((d, i) => (
++            <button key={d.id} onClick={() => router.push(`/approval/incoming/${d.id}`)}
++              className="w-full grid grid-cols-12 px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors text-left text-sm">
++              <span className="col-span-1 text-gray-400">{filtered.length - i}</span>
++              <span className="col-span-5 font-medium text-gray-900 truncate pr-2">{d.title}</span>
++              <span className="col-span-3 text-gray-500 truncate pr-2">{d.sender || '-'}</span>
++              <span className="col-span-2 text-gray-400 text-xs truncate">{d.docNo || '-'}</span>
++              <span className="col-span-1 text-gray-400 text-xs text-right">{d.receivedAt?.replace(/-/g,'.')}</span>
++            </button>
++          ))}
++        </div>
++        <p className="text-xs text-gray-400 text-right">총 {filtered.length}건</p>
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/app/approval/docs/outgoing/page.tsx b/src/app/approval/docs/outgoing/page.tsx
+new file mode 100644
+index 0000000..ff95b6c
+--- /dev/null
++++ b/src/app/approval/docs/outgoing/page.tsx
+@@ -0,0 +1,86 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenApprovalDocs } from '@/lib/db'
++import type { ApprovalDoc } from '@/types'
++import { Search, ChevronRight, FilePlus } from 'lucide-react'
++import clsx from 'clsx'
++
++export default function OutgoingDocsPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [docs, setDocs] = useState<ApprovalDoc[]>([])
++  const [query, setQuery] = useState('')
++
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    return listenApprovalDocs(user.uid, setDocs)
++  }, [user, loading, router])
++
++  const thisYear = new Date().getFullYear()
++  const isThisYear = (d: unknown) => {
++    try { return ((d as {toDate?:()=>Date}).toDate?.() ?? new Date(d as string)).getFullYear() === thisYear }
++    catch { return false }
++  }
++
++  const filtered = docs
++    .filter(d => d.authorUid === user?.uid && d.status === 'approved' && isThisYear(d.createdAt))
++    .filter(d => !query || d.title.includes(query) || d.orgName?.includes(query) || d.recipient?.includes(query) || d.docNo?.includes(query))
++    .sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0)-((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
++
++  const formatDate = (d: unknown) => {
++    try { return (d as {toDate?:()=>Date}).toDate?.()?.toLocaleDateString('ko-KR',{year:'2-digit',month:'2-digit',day:'2-digit'}) ?? '' } catch { return '' }
++  }
++
++  return (
++    <ApprovalShell title="발신 공문 목록">
++      <div className="max-w-4xl mx-auto p-6 space-y-4">
++        <div className="flex items-center justify-between">
++          <div>
++            <h2 className="text-lg font-bold text-gray-900">발신 공문 목록</h2>
++            <p className="text-xs text-gray-400 mt-0.5">{thisYear}년 발신 완료 공문</p>
++          </div>
++          <button onClick={() => router.push('/approval/new')}
++            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
++            <FilePlus size={15}/> 공문 작성
++          </button>
++        </div>
++
++        {/* 검색 */}
++        <div className="relative">
++          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
++          <input value={query} onChange={e => setQuery(e.target.value)}
++            placeholder="제목, 수신처, 문서번호로 검색"
++            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++        </div>
++
++        {/* 목록 */}
++        <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++          <div className="grid grid-cols-12 px-4 py-2.5 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-500">
++            <span className="col-span-1">번호</span>
++            <span className="col-span-5">제목</span>
++            <span className="col-span-3">수신처</span>
++            <span className="col-span-2">문서번호</span>
++            <span className="col-span-1 text-right">날짜</span>
++          </div>
++          {filtered.length === 0 ? (
++            <div className="text-center py-12 text-gray-400 text-sm">발신 공문이 없습니다</div>
++          ) : filtered.map((d, i) => (
++            <button key={d.id} onClick={() => router.push(`/approval/${d.id}`)}
++              className="w-full grid grid-cols-12 px-4 py-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors text-left text-sm">
++              <span className="col-span-1 text-gray-400">{filtered.length - i}</span>
++              <span className="col-span-5 font-medium text-gray-900 truncate pr-2">{d.title}</span>
++              <span className="col-span-3 text-gray-500 truncate pr-2">{d.recipient || '-'}</span>
++              <span className="col-span-2 text-gray-400 text-xs truncate">{d.docNo || '-'}</span>
++              <span className="col-span-1 text-gray-400 text-xs text-right">{formatDate(d.createdAt)}</span>
++            </button>
++          ))}
++        </div>
++        <p className="text-xs text-gray-400 text-right">총 {filtered.length}건</p>
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/app/approval/incoming/new/page.tsx b/src/app/approval/incoming/new/page.tsx
+index 95983a6..6e8e489 100644
+--- a/src/app/approval/incoming/new/page.tsx
++++ b/src/app/approval/incoming/new/page.tsx
+@@ -127,24 +127,6 @@ function IncomingNewInner() {
+   if (step === 'line') return (
+     <AppShell title="공문 접수" back="/approval">
+       <div className="max-w-2xl mx-auto p-4 space-y-4">
+-        {/* 저장된 결재선 불러오기 */}
+-        {lines.length > 0 && (
+-          <div className="bg-primary-50 border border-primary-200 rounded-2xl p-4">
+-            <p className="text-xs font-semibold text-primary-700 mb-3 flex items-center gap-2">
+-              <Bookmark size={13}/> 저장된 결재선
+-            </p>
+-            <div className="flex flex-wrap gap-2">
+-              {lines.map(line => (
+-                <button key={line.id} onClick={() => applyLine(line)}
+-                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-primary-200 rounded-xl text-xs text-primary-700 hover:bg-primary-100 transition-colors">
+-                  {line.name}
+-                  <span className="text-primary-400">({line.approvers.length + 1}명)</span>
+-                </button>
+-              ))}
+-            </div>
+-          </div>
+-        )}
+-
+         <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-5">
+           <h2 className="font-semibold text-gray-900">결재선 설정</h2>
+ 
+diff --git a/src/app/approval/new/page.tsx b/src/app/approval/new/page.tsx
+index 37f56d8..7a18c00 100644
+--- a/src/app/approval/new/page.tsx
++++ b/src/app/approval/new/page.tsx
+@@ -7,7 +7,7 @@ import {
+   listenUsers, listenApprovalTemplates, listenApprovalDocs,
+   createApprovalDoc, saveApprovalTemplate, listenOfficialSeals
+ } from '@/lib/db'
+-import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal } from '@/types'
++import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal, ApprovalLine, RecipientContact } from '@/types'
+ import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff, Users } from 'lucide-react'
+ import DocEditor from '@/components/DocEditor'
+ import clsx from 'clsx'
+@@ -78,7 +78,21 @@ function ApprovalNewPageInner() {
+     const u2 = listenApprovalTemplates(user.uid, setTemplates)
+     const u3 = listenOfficialSeals(setSeals)
+     const u4 = listenApprovalDocs(user.uid, setAllDocs)
+-    return () => { u1(); u2(); u3(); u4() }
++    const u5 = listenApprovalLines(user.uid, setApprovalLines)
++    const u6 = listenRecipientContacts(user.uid, setRecipientContacts)
++    // 하단 발신 정보 자동 로드
++    getFooterInfo(user.uid).then(fi => {
++      if (!fi) return
++      if (fi.orgName)     setOrgName(fi.orgName)
++      if (fi.sealOrgName) setSealOrgName(fi.sealOrgName)
++      if (fi.zipCode)     setZipCode(fi.zipCode)
++      if (fi.address)     setAddress(fi.address)
++      if (fi.phone)       setPhone(fi.phone)
++      if (fi.fax)         setFax(fi.fax)
++      if (fi.email)       setDocEmail(fi.email)
++      if (fi.homepage)    setHomepage(fi.homepage)
++    })
++    return () => { u1(); u2(); u3(); u4(); u5(); u6() }
+   }, [user, loading, isHQ, router])
+ 
+   // 기존 문서에서 복사
+@@ -272,6 +286,28 @@ function ApprovalNewPageInner() {
+             📋 기존 문서를 복사해서 새 기안을 작성합니다
+           </div>
+         )}
++        {/* 저장된 발신용 결재선 불러오기 */}
++        {approvalLines.filter(l => l.lineType === 'outgoing').length > 0 && (
++          <div className="bg-primary-50 border border-primary-200 rounded-2xl p-4">
++            <p className="text-xs font-semibold text-primary-700 mb-2 flex items-center gap-1">
++              🔖 저장된 발신용 결재선
++            </p>
++            <div className="flex flex-wrap gap-2">
++              {approvalLines.filter(l => l.lineType === 'outgoing').map(line => (
++                <button key={line.id}
++                  onClick={() => {
++                    setMidApprovers(line.approvers)
++                    setFinalApprover(line.finalApprover)
++                  }}
++                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-primary-200 rounded-xl text-xs text-primary-700 hover:bg-primary-100 transition-colors">
++                  {line.name}
++                  <span className="text-primary-400">({line.approvers.length + 1}명)</span>
++                </button>
++              ))}
++            </div>
++          </div>
++        )}
++
+         <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-5">
+           <h2 className="font-semibold text-gray-900">결재선 설정</h2>
+           {/* 기안자 */}
+diff --git a/src/app/approval/page.tsx b/src/app/approval/page.tsx
+index f285756..496e152 100644
+--- a/src/app/approval/page.tsx
++++ b/src/app/approval/page.tsx
+@@ -1,28 +1,18 @@
+ 'use client'
+ import { useEffect, useState } from 'react'
+ import { useRouter } from 'next/navigation'
+-import AppShell from '@/components/AppShell'
++import ApprovalShell from '@/components/ApprovalShell'
+ import { useAuth } from '@/lib/auth-context'
+-import { listenApprovalDocs, deleteApprovalDoc, listenIncomingDocs } from '@/lib/db'
++import { listenApprovalDocs, listenIncomingDocs } from '@/lib/db'
+ import type { ApprovalDoc, IncomingDoc } from '@/types'
+-import { Plus, FileText, ChevronRight, Clock, Copy, Inbox } from 'lucide-react'
++import { FilePlus, FileInput, Clock, CheckCircle2, Inbox } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+-const STATUS_MAP: Record<string, { label: string; color: string }> = {
+-  draft:    { label: '임시저장', color: 'bg-gray-100 text-gray-600' },
+-  pending:  { label: '결재중',   color: 'bg-blue-100 text-blue-700' },
+-  approved: { label: '결재완료', color: 'bg-green-100 text-green-700' },
+-  rejected: { label: '반려',     color: 'bg-red-100 text-red-700' },
+-}
+-
+-type TabType = 'mine' | 'pending' | 'incoming' | 'viewer'
+-
+ export default function ApprovalPage() {
+   const { user, loading } = useAuth()
+   const router = useRouter()
+-  const [docs,    setDocs]    = useState<ApprovalDoc[]>([])
++  const [docs,     setDocs]     = useState<ApprovalDoc[]>([])
+   const [incoming, setIncoming] = useState<IncomingDoc[]>([])
+-  const [tab,  setTab]  = useState<TabType>('mine')
+ 
+   useEffect(() => {
+     if (loading) return
+@@ -40,272 +30,136 @@ export default function ApprovalPage() {
+     </div>
+   )
+ 
+-  const myDocs      = docs.filter(d => d.authorUid === user?.uid)
+-  const draftDocs   = myDocs.filter(d => d.status === 'draft')
+-  const recentDocs  = myDocs.filter(d => d.status !== 'draft')
+-    .sort((a, b) => {
+-      const ta = (a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
+-      const tb = (b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
+-      return tb - ta
+-    }).slice(0, 10)
++  const thisYear = new Date().getFullYear()
++  const isThisYear = (d: unknown) => {
++    try {
++      const ts = (d as {toDate?:()=>Date}).toDate?.() ?? new Date(d as string)
++      return ts.getFullYear() === thisYear
++    } catch { return false }
++  }
++
++  const myDocs     = docs.filter(d => d.authorUid === user?.uid && isThisYear(d.createdAt))
++  const myIncoming = incoming.filter(d => d.authorUid === user?.uid && isThisYear(d.createdAt))
+ 
+-  const pendingDocs = docs.filter(d =>
++  const pendingCount = docs.filter(d =>
+     d.status === 'pending' && (
+-      d.approvers?.some(a => a.uid === user?.uid && a.status === 'waiting' &&
+-        [...(d.approvers ?? [])].slice(0, d.approvers?.findIndex(x => x.uid === a.uid) ?? 0)
+-          .every(x => x.status === 'submitted' || x.status === 'approved')
+-      ) ||
+-      (d.finalApprover?.uid === user?.uid && d.finalApprover?.status === 'waiting' &&
+-        (d.approvers ?? []).every(a => a.status === 'approved' || a.status === 'submitted'))
++      d.approvers?.some(a => a.uid === user?.uid && a.status === 'waiting') ||
++      (d.finalApprover?.uid === user?.uid && d.finalApprover?.status === 'waiting')
+     )
+-  )
+-  const viewerDocs = docs.filter(d =>
+-    d.viewers?.some(v => v.uid === user?.uid) && d.status === 'approved'
+-  )
++  ).length + incoming.filter(d =>
++    d.status === 'pending' && (
++      d.approvers?.some(a => a.uid === user?.uid && a.status === 'waiting') ||
++      (d.finalApprover?.uid === user?.uid && d.finalApprover?.status === 'waiting')
++    )
++  ).length
+ 
+-  const tabDocs = tab === 'mine'
+-    ? myDocs
+-    : tab === 'pending'
+-    ? pendingDocs
+-    : viewerDocs
++  const stats = [
++    { label: '결재 대기',   value: pendingCount,                                           color: 'text-red-500',   bg: 'bg-red-50',   icon: Clock,         path: '/approval/status/pending' },
++    { label: '발신 공문',   value: myDocs.filter(d => d.status === 'approved').length,     color: 'text-blue-500',  bg: 'bg-blue-50',  icon: FilePlus,      path: '/approval/docs/outgoing' },
++    { label: '수신 공문',   value: myIncoming.filter(d => d.status === 'approved').length, color: 'text-green-600', bg: 'bg-green-50', icon: FileInput,     path: '/approval/docs/incoming' },
++    { label: '진행 중',     value: docs.filter(d => d.status === 'pending' && d.authorUid === user?.uid).length, color: 'text-amber-500', bg: 'bg-amber-50', icon: Inbox, path: '/approval/status/progress' },
++  ]
++
++  const recentDocs = [...docs, ...incoming]
++    .filter(d => d.authorUid === user?.uid || 
++      (d as ApprovalDoc).approvers?.some(a => a.uid === user?.uid) ||
++      (d as ApprovalDoc).finalApprover?.uid === user?.uid)
++    .sort((a, b) => {
++      const ta = (a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
++      const tb = (b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
++      return tb - ta
++    }).slice(0, 8)
+ 
+   const formatDate = (d: unknown) => {
+-    if (!d) return ''
+     try {
+       const ts = (d as {toDate?:()=>Date}).toDate?.() ?? new Date(d as string)
+-      return ts.toLocaleDateString('ko-KR', { month:'numeric', day:'numeric' })
++      return ts.toLocaleDateString('ko-KR', { month:'2-digit', day:'2-digit' })
+     } catch { return '' }
+   }
+ 
+   return (
+-    <AppShell title="전자결재">
+-      <div className="max-w-4xl mx-auto p-4 space-y-4">
++    <ApprovalShell title="전자결재">
++      <div className="max-w-4xl mx-auto p-6 space-y-6">
++        <div>
++          <h2 className="text-lg font-bold text-gray-900">{thisYear}년 전자결재 현황</h2>
++          <p className="text-sm text-gray-500 mt-0.5">{user?.name}님의 결재 현황입니다</p>
++        </div>
+ 
+-        {/* 상단 탭 + 기안 버튼 */}
+-        <div className="flex items-center justify-between">
+-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 flex-wrap">
+-            {([
+-              { key: 'mine',     label: `내 문서 ${myDocs.length}` },
+-              { key: 'pending',  label: `결재 대기 ${pendingDocs.length}`, badge: pendingDocs.length > 0 },
+-              { key: 'incoming', label: `공문 접수 ${incoming.length}` },
+-              { key: 'viewer',   label: `공람 ${viewerDocs.length}` },
+-            ] as { key: TabType; label: string; badge?: boolean }[]).map(t => (
+-              <button key={t.key} onClick={() => setTab(t.key)}
+-                className={clsx('px-4 py-2 rounded-lg text-sm font-medium transition-colors relative',
+-                  tab === t.key ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
+-                {t.label}
+-                {t.badge && tab !== t.key && (
+-                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"/>
+-                )}
+-              </button>
+-            ))}
+-          </div>
+-          <div className="flex gap-2">
+-            <button onClick={() => router.push('/approval/incoming/new')}
+-              className="flex items-center gap-2 border border-primary-300 text-primary-700 px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-50 transition-colors">
+-              <Inbox size={15}/> 공문 접수
+-            </button>
+-            <button onClick={() => router.push('/approval/new')}
+-              className="flex items-center gap-2 bg-primary-600 text-white px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
+-              <Plus size={15}/> 기안 작성
++        {/* 통계 카드 */}
++        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
++          {stats.map(s => (
++            <button key={s.label} onClick={() => router.push(s.path)}
++              className={clsx('rounded-2xl p-4 text-left hover:shadow-md transition-all border', s.bg, 'border-transparent')}>
++              <s.icon size={20} className={clsx('mb-2', s.color)}/>
++              <p className={clsx('text-2xl font-bold', s.color)}>{s.value}</p>
++              <p className="text-xs text-gray-600 mt-0.5">{s.label}</p>
+             </button>
+-          </div>
++          ))}
+         </div>
+ 
+-        {/* 내 문서 탭 - 임시저장 + 최근문서 섹션 */}
+-        {tab === 'mine' && (
+-          <>
+-            {/* 작성 중 (임시저장) */}
+-            {draftDocs.length > 0 && (
+-              <div className="bg-white border border-amber-200 rounded-2xl overflow-hidden">
+-                <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-100 flex items-center gap-2">
+-                  <Clock size={13} className="text-amber-500"/>
+-                  <span className="text-xs font-semibold text-amber-700">작성 중인 문서 ({draftDocs.length})</span>
+-                </div>
+-                <div className="divide-y divide-gray-50">
+-                  {draftDocs.map(doc => (
+-                    <div key={doc.id}
+-                      className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
+-                      onClick={() => router.push(`/approval/${doc.id}`)}>
+-                      <div className="flex-1 min-w-0">
+-                        <p className="text-sm font-medium text-gray-900 truncate">{doc.title || '(제목 없음)'}</p>
+-                        <p className="text-xs text-gray-400">{doc.orgName || ''} · {formatDate(doc.createdAt)}</p>
+-                      </div>
+-                      <div className="flex items-center gap-2 shrink-0">
+-                        <button
+-                          onClick={e => {
+-                            e.stopPropagation()
+-                            router.push(`/approval/new?copyFrom=${doc.id}`)
+-                          }}
+-                          className="flex items-center gap-1 px-2.5 py-1.5 border border-primary-200 text-primary-600 rounded-lg text-xs hover:bg-primary-50 transition-colors">
+-                          <Copy size={11}/> 이어 작성
+-                        </button>
+-                        <button
+-                          onClick={async e => {
+-                            e.stopPropagation()
+-                            if (!confirm('임시저장 문서를 삭제하시겠습니까?')) return
+-                            await deleteApprovalDoc(doc.id)
+-                          }}
+-                          className="text-gray-300 hover:text-red-400 p-1 transition-colors">
+-                          ×
+-                        </button>
+-                      </div>
+-                    </div>
+-                  ))}
+-                </div>
+-              </div>
+-            )}
+-
+-            {/* 최근 문서 */}
+-            {recentDocs.length > 0 ? (
+-              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+-                <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+-                  <span className="text-xs font-semibold text-gray-500">최근 문서</span>
+-                  <span className="text-xs text-gray-400">클릭하면 열람 · 양식 재사용 가능</span>
+-                </div>
+-                <div className="divide-y divide-gray-50">
+-                  {recentDocs.map(doc => {
+-                    const st = STATUS_MAP[doc.status] ?? STATUS_MAP.draft
+-                    return (
+-                      <div key={doc.id}
+-                        className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
+-                        onClick={() => router.push(`/approval/${doc.id}`)}>
+-                        <div className="flex-1 min-w-0">
+-                          <div className="flex items-center gap-2 mb-0.5">
+-                            <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', st.color)}>
+-                              {st.label}
+-                            </span>
+-                            {doc.docNo && <span className="text-xs text-gray-400">{doc.docNo}</span>}
+-                          </div>
+-                          <p className="text-sm font-medium text-gray-900 truncate">{doc.title}</p>
+-                          <p className="text-xs text-gray-400">{doc.orgName} · {formatDate(doc.createdAt)}</p>
+-                        </div>
+-                        <div className="flex items-center gap-2 shrink-0">
+-                          {/* 양식 재사용 */}
+-                          <button
+-                            onClick={e => {
+-                              e.stopPropagation()
+-                              if (confirm(`"${doc.title}" 양식으로 새 기안을 작성하시겠습니까?`)) {
+-                                router.push(`/approval/new?copyFrom=${doc.id}`)
+-                              }
+-                            }}
+-                            className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 text-gray-500 rounded-lg text-xs hover:bg-gray-50 hover:border-primary-300 hover:text-primary-600 transition-colors">
+-                            <Copy size={11}/> 양식 재사용
+-                          </button>
+-                          <ChevronRight size={14} className="text-gray-300"/>
+-                        </div>
+-                      </div>
+-                    )
+-                  })}
+-                </div>
+-              </div>
+-            ) : draftDocs.length === 0 && (
+-              <div className="text-center py-16 text-gray-400">
+-                <FileText size={40} className="mx-auto mb-3 opacity-30"/>
+-                <p className="text-sm">작성한 문서가 없습니다</p>
+-                <button onClick={() => router.push('/approval/new')}
+-                  className="mt-4 text-primary-600 text-sm hover:underline">
+-                  첫 기안 작성하기 →
+-                </button>
+-              </div>
+-            )}
+-          </>
+-        )}
+-
+-        {/* 공문 접수 탭 */}
+-        {tab === 'incoming' && (
+-          incoming.length === 0 ? (
+-            <div className="text-center py-16 text-gray-400">
+-              <Inbox size={40} className="mx-auto mb-3 opacity-30"/>
+-              <p className="text-sm">공문 접수 내역이 없습니다</p>
+-              <button onClick={() => router.push('/approval/incoming/new')}
+-                className="mt-4 text-primary-600 text-sm hover:underline">
+-                공문 접수하기 →
+-              </button>
++        {/* 바로가기 */}
++        <div className="grid grid-cols-2 gap-3">
++          <button onClick={() => router.push('/approval/new')}
++            className="flex items-center gap-3 bg-primary-600 text-white px-5 py-4 rounded-2xl hover:bg-primary-800 transition-colors">
++            <FilePlus size={20}/>
++            <div className="text-left">
++              <p className="font-semibold">공문 작성</p>
++              <p className="text-xs text-primary-200">새 기안 작성</p>
+             </div>
+-          ) : (
+-            <div className="space-y-2">
+-              {incoming.map(doc => {
+-                const isDue = doc.hasDueDate && doc.dueDate && (() => {
+-                  const diff = (new Date(doc.dueDate + 'T00:00:00').getTime() - Date.now()) / 86400000
+-                  return diff <= 3
+-                })()
+-                return (
+-                  <div key={doc.id}
+-                    className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-all cursor-pointer"
+-                    onClick={() => router.push(`/approval/incoming/${doc.id}`)}>
+-                    <div className="flex items-start gap-3">
+-                      <div className="flex-1 min-w-0">
+-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+-                          <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full',
+-                            doc.status === 'approved' ? 'bg-green-100 text-green-700' :
+-                            doc.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700')}>
+-                            {doc.status === 'approved' ? '접수완료' : doc.status === 'rejected' ? '반려' : '결재중'}
+-                          </span>
+-                          {isDue && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">⏰ 기한임박</span>}
+-                        </div>
+-                        <p className="text-sm font-semibold text-gray-900 truncate">{doc.title}</p>
+-                        <p className="text-xs text-gray-400 mt-0.5">
+-                          {doc.sender} · {doc.receivedAt?.replace(/-/g, '.')}
+-                          {doc.hasDueDate && doc.dueDate && ` · 기한 ${doc.dueDate.replace(/-/g, '.')}`}
+-                        </p>
+-                      </div>
+-                      <ChevronRight size={14} className="text-gray-300 shrink-0 mt-1"/>
+-                    </div>
+-                  </div>
+-                )
+-              })}
++          </button>
++          <button onClick={() => router.push('/approval/incoming/new')}
++            className="flex items-center gap-3 bg-white border border-primary-200 text-primary-700 px-5 py-4 rounded-2xl hover:bg-primary-50 transition-colors">
++            <FileInput size={20}/>
++            <div className="text-left">
++              <p className="font-semibold">공문 접수</p>
++              <p className="text-xs text-primary-400">외부 공문 접수</p>
+             </div>
+-          )
++          </button>
++        </div>
++
++        {/* 결재 대기 알림 */}
++        {pendingCount > 0 && (
++          <button onClick={() => router.push('/approval/status/pending')}
++            className="w-full flex items-center gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 hover:bg-red-100 transition-colors">
++            <Clock size={18} className="text-red-500 shrink-0"/>
++            <p className="text-sm font-medium text-red-700">결재 대기 문서가 <strong>{pendingCount}건</strong> 있습니다</p>
++            <span className="ml-auto text-xs text-red-400">확인하기 →</span>
++          </button>
+         )}
+ 
+-        {/* 결재 대기 / 공람 탭 */}
+-        {(tab === 'pending' || tab === 'viewer') && (
+-          tabDocs.length === 0 ? (
+-            <div className="text-center py-16 text-gray-400">
+-              <FileText size={40} className="mx-auto mb-3 opacity-30"/>
+-              <p className="text-sm">
+-                {tab === 'pending' ? '결재 대기 문서가 없습니다' : '공람 문서가 없습니다'}
+-              </p>
++        {/* 최근 문서 */}
++        {recentDocs.length > 0 && (
++          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++            <div className="px-4 py-3 border-b border-gray-100">
++              <h3 className="text-sm font-semibold text-gray-700">최근 문서</h3>
+             </div>
+-          ) : (
+-            <div className="space-y-2">
+-              {tabDocs.map(doc => {
+-                const st = STATUS_MAP[doc.status] ?? STATUS_MAP.draft
++            <div className="divide-y divide-gray-50">
++              {recentDocs.map((d, i) => {
++                const isIncoming = 'sender' in d
++                const status = d.status
+                 return (
+-                  <div key={doc.id}
+-                    className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-all cursor-pointer"
+-                    onClick={() => router.push(`/approval/${doc.id}`)}>
+-                    <div className="flex items-start gap-3">
+-                      <div className="flex-1 min-w-0">
+-                        <div className="flex items-center gap-2 mb-1">
+-                          <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full', st.color)}>
+-                            {st.label}
+-                          </span>
+-                          {doc.docNo && <span className="text-xs text-gray-400">{doc.docNo}</span>}
+-                        </div>
+-                        <p className="text-sm font-semibold text-gray-900 truncate">{doc.title}</p>
+-                        <p className="text-xs text-gray-400 mt-0.5">
+-                          {doc.drafter?.name} 기안 · {formatDate(doc.createdAt)}
+-                        </p>
+-                      </div>
+-                      <div className="flex items-center gap-1 shrink-0">
+-                        {[doc.drafter, ...doc.approvers, doc.finalApprover].map((a, i) => (
+-                          <div key={i} className={clsx('w-2 h-2 rounded-full',
+-                            a.status === 'approved' || a.status === 'submitted' ? 'bg-green-400' :
+-                            a.status === 'rejected' ? 'bg-red-400' :
+-                            a.status === 'waiting'  ? 'bg-blue-300' : 'bg-gray-200'
+-                          )}/>
+-                        ))}
+-                      </div>
+-                    </div>
+-                  </div>
++                  <button key={i}
++                    onClick={() => router.push(isIncoming ? `/approval/incoming/${d.id}` : `/approval/${d.id}`)}
++                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
++                    <span className={clsx('text-xs px-2 py-0.5 rounded-full shrink-0 font-medium',
++                      isIncoming ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700')}>
++                      {isIncoming ? '수신' : '발신'}
++                    </span>
++                    <span className={clsx('text-xs px-2 py-0.5 rounded-full shrink-0',
++                      status === 'approved' ? 'bg-green-100 text-green-700' :
++                      status === 'rejected' ? 'bg-red-100 text-red-700' :
++                      status === 'pending'  ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600')}>
++                      {status === 'approved' ? '완료' : status === 'rejected' ? '반려' : status === 'pending' ? '진행중' : '임시'}
++                    </span>
++                    <span className="flex-1 text-sm text-gray-900 truncate">{d.title}</span>
++                    <span className="text-xs text-gray-400 shrink-0">{formatDate(d.createdAt)}</span>
++                  </button>
+                 )
+               })}
+             </div>
+-          )
++          </div>
+         )}
+       </div>
+-    </AppShell>
++    </ApprovalShell>
+   )
+ }
+diff --git a/src/app/approval/settings/footer-info/page.tsx b/src/app/approval/settings/footer-info/page.tsx
+new file mode 100644
+index 0000000..f267055
+--- /dev/null
++++ b/src/app/approval/settings/footer-info/page.tsx
+@@ -0,0 +1,71 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { saveFooterInfo, getFooterInfo } from '@/lib/db'
++import type { FooterInfo } from '@/types'
++import { Save, CheckCircle2 } from 'lucide-react'
++
++const DEFAULT: FooterInfo = { zipCode:'', address:'', phone:'', fax:'', email:'', homepage:'', orgName:'', sealOrgName:'' }
++
++export default function FooterInfoPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [info,   setInfo]   = useState<FooterInfo>(DEFAULT)
++  const [saving, setSaving] = useState(false)
++  const [saved,  setSaved]  = useState(false)
++
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    getFooterInfo(user.uid).then(fi => { if (fi) setInfo(fi) })
++  }, [user, loading, router])
++
++  const set = (k: keyof FooterInfo) => (e: React.ChangeEvent<HTMLInputElement>) =>
++    setInfo(prev => ({ ...prev, [k]: e.target.value }))
++
++  const handleSave = async () => {
++    if (!user) return
++    setSaving(true)
++    await saveFooterInfo(user.uid, info)
++    setSaving(false); setSaved(true)
++    setTimeout(() => setSaved(false), 2000)
++  }
++
++  return (
++    <ApprovalShell title="하단 발신 정보">
++      <div className="max-w-2xl mx-auto p-6 space-y-4">
++        <div>
++          <h2 className="text-lg font-bold text-gray-900">하단 발신 정보 등록</h2>
++          <p className="text-sm text-gray-500 mt-1">저장하면 공문 작성 시 자동으로 입력됩니다</p>
++        </div>
++
++        <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4">
++          {[
++            { label:'조직명',      key:'orgName',     ph:'예: 총부사업기관 원창' },
++            { label:'직인 위 조직명', key:'sealOrgName', ph:'예: 기획운영본부장' },
++            { label:'우편번호',    key:'zipCode',     ph:'예: 54536' },
++            { label:'주소',        key:'address',     ph:'예: 전북 익산시 익산대로 501' },
++            { label:'전화',        key:'phone',       ph:'예: 063-842-3844' },
++            { label:'전송(팩스)',  key:'fax',         ph:'예: 063-857-3844' },
++            { label:'전자우편',    key:'email',       ph:'예: example@won.or.kr' },
++            { label:'홈페이지',    key:'homepage',    ph:'예: www.example.or.kr' },
++          ].map(f => (
++            <div key={f.key}>
++              <label className="text-xs font-medium text-gray-500 block mb-1.5">{f.label}</label>
++              <input value={info[f.key as keyof FooterInfo]} onChange={set(f.key as keyof FooterInfo)}
++                placeholder={f.ph}
++                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++            </div>
++          ))}
++        </div>
++
++        <button onClick={handleSave} disabled={saving}
++          className="w-full py-3.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50 transition-colors flex items-center justify-center gap-2">
++          {saved ? <><CheckCircle2 size={16}/> 저장됨</> : saving ? '저장 중...' : <><Save size={16}/> 저장하기</>}
++        </button>
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/app/approval/settings/lines/page.tsx b/src/app/approval/settings/lines/page.tsx
+new file mode 100644
+index 0000000..3fcc725
+--- /dev/null
++++ b/src/app/approval/settings/lines/page.tsx
+@@ -0,0 +1,190 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenUsers, listenApprovalLines, saveApprovalLine, deleteApprovalLine } from '@/lib/db'
++import type { AppUser, ApprovalLine, ApprovalLineType } from '@/types'
++import { Plus, Trash2, X, Bookmark, FilePlus, FileInput } from 'lucide-react'
++import clsx from 'clsx'
++
++const ROLE_LABEL: Record<string,string> = {
++  ADMIN:'관리자', HQ_CHIEF:'본부장', HQ_MEMBER:'본부멤버', BIZ_REP:'사업장대표', ETC:'기타'
++}
++
++export default function ApprovalLinesPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [allUsers,  setAllUsers]  = useState<AppUser[]>([])
++  const [lines,     setLines]     = useState<ApprovalLine[]>([])
++  const [activeTab, setActiveTab] = useState<ApprovalLineType>('outgoing')
++  const [showForm,  setShowForm]  = useState(false)
++  const [lineName,  setLineName]  = useState('')
++  const [midApprovers,  setMidApprovers]  = useState<{uid:string;name:string;role:string}[]>([])
++  const [finalApprover, setFinalApprover] = useState<{uid:string;name:string;role:string}|null>(null)
++  const [saving, setSaving] = useState(false)
++
++  const isHQ = user && ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
++  useEffect(() => {
++    if (loading) return
++    if (!user || !isHQ) { router.replace('/approval'); return }
++    const u1 = listenUsers(setAllUsers)
++    const u2 = listenApprovalLines(user.uid, setLines)
++    return () => { u1(); u2() }
++  }, [user, loading, isHQ, router])
++
++  const hqUsers = allUsers.filter(u =>
++    ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(u.role) && u.uid !== user?.uid
++  )
++
++  const tabLines = lines.filter(l => l.lineType === activeTab)
++  const canAdd = tabLines.length < 3
++
++  const handleSave = async () => {
++    if (!user || !lineName.trim() || !finalApprover) { alert('이름과 최종결재자를 입력해주세요'); return }
++    if (!canAdd) { alert(`${activeTab === 'outgoing' ? '발신' : '수신'}용 결재선은 최대 3개까지 저장할 수 있습니다`); return }
++    setSaving(true)
++    await saveApprovalLine({ name:lineName.trim(), lineType:activeTab, approvers:midApprovers, finalApprover, ownerUid:user.uid })
++    setLineName(''); setMidApprovers([]); setFinalApprover(null); setShowForm(false); setSaving(false)
++  }
++
++  return (
++    <ApprovalShell title="결재선 관리">
++      <div className="max-w-2xl mx-auto p-6 space-y-4">
++        <div>
++          <h2 className="text-lg font-bold text-gray-900">결재선 관리</h2>
++          <p className="text-sm text-gray-500 mt-1">발신/수신 각 3개까지 저장 가능합니다</p>
++        </div>
++
++        {/* 탭 */}
++        <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
++          {([['outgoing','발신용 결재선',FilePlus],['incoming','수신용 결재선',FileInput]] as const).map(([t,l,Icon]) => (
++            <button key={t} onClick={() => { setActiveTab(t); setShowForm(false) }}
++              className={clsx('flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-colors',
++                activeTab===t ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-500')}>
++              <Icon size={14}/>{l}
++              <span className={clsx('text-xs px-1.5 py-0.5 rounded-full', activeTab===t ? 'bg-primary-100 text-primary-700' : 'bg-gray-200 text-gray-500')}>
++                {lines.filter(l=>l.lineType===t).length}/3
++              </span>
++            </button>
++          ))}
++        </div>
++
++        {/* 추가 버튼 */}
++        {canAdd && !showForm && (
++          <button onClick={() => setShowForm(true)}
++            className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors">
++            <Plus size={15}/> {activeTab==='outgoing' ? '발신용' : '수신용'} 결재선 추가
++          </button>
++        )}
++        {!canAdd && (
++          <p className="text-xs text-center text-gray-400 bg-gray-50 rounded-xl py-3">최대 3개까지 저장됩니다. 기존 결재선을 삭제 후 추가하세요.</p>
++        )}
++
++        {/* 추가 폼 */}
++        {showForm && (
++          <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-4">
++            <h3 className="font-semibold text-sm text-gray-900">
++              {activeTab==='outgoing' ? '📤 발신용' : '📥 수신용'} 결재선 추가
++            </h3>
++            <div>
++              <label className="text-xs font-medium text-gray-500 block mb-1.5">결재선 이름 *</label>
++              <input value={lineName} onChange={e=>setLineName(e.target.value)}
++                placeholder="예: 일반결재, 긴급결재"
++                className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++            </div>
++
++            <div>
++              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
++                {activeTab==='outgoing' ? '기안자 (본인) → 중간결재자 → 최종결재자' : '접수자 (본인) → 중간결재자 → 최종결재자'}
++              </p>
++              <div className="flex items-center gap-2 px-3 py-2 bg-primary-50 rounded-lg mb-2 text-xs text-primary-700">
++                <div className="w-6 h-6 rounded-full bg-primary-200 flex items-center justify-center font-bold text-primary-800 shrink-0">{user?.name?.[0]}</div>
++                {user?.name} ({activeTab==='outgoing' ? '기안자' : '접수자'}) - 자동
++              </div>
++              {midApprovers.map((a,i) => (
++                <div key={a.uid} className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg mb-2">
++                  <span className="text-xs text-gray-400 w-4">{i+1}</span>
++                  <div className="flex-1 text-sm">{a.name} <span className="text-xs text-gray-400">{a.role}</span></div>
++                  <button onClick={() => setMidApprovers(p=>p.filter((_,j)=>j!==i))}><X size={13} className="text-gray-300 hover:text-red-400"/></button>
++                </div>
++              ))}
++              {midApprovers.length < 5 && (
++                <div className="grid grid-cols-2 gap-2 mb-3">
++                  {hqUsers.filter(u => !midApprovers.some(a=>a.uid===u.uid) && u.uid!==finalApprover?.uid).map(u => (
++                    <button key={u.uid} onClick={() => setMidApprovers(p=>[...p,{uid:u.uid,name:u.name,role:ROLE_LABEL[u.role]??u.role}])}
++                      className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-primary-400 hover:bg-primary-50 transition-colors text-left">
++                      <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold shrink-0">{u.name[0]}</div>
++                      <div className="min-w-0"><p className="text-xs font-medium text-gray-700 truncate">{u.name}</p><p className="text-xs text-gray-400">{ROLE_LABEL[u.role]}</p></div>
++                      <Plus size={11} className="text-gray-400 ml-auto shrink-0"/>
++                    </button>
++                  ))}
++                </div>
++              )}
++              <p className="text-xs font-semibold text-gray-400 mb-2">최종결재자 *</p>
++              {finalApprover ? (
++                <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
++                  <div className="flex-1 text-sm text-green-900">{finalApprover.name} <span className="text-xs text-green-600">{finalApprover.role}</span></div>
++                  <button onClick={()=>setFinalApprover(null)}><X size={13} className="text-green-300 hover:text-red-400"/></button>
++                </div>
++              ) : (
++                <div className="grid grid-cols-2 gap-2">
++                  {hqUsers.filter(u=>!midApprovers.some(a=>a.uid===u.uid)).map(u=>(
++                    <button key={u.uid} onClick={()=>setFinalApprover({uid:u.uid,name:u.name,role:ROLE_LABEL[u.role]??u.role})}
++                      className="flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors text-left">
++                      <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold shrink-0">{u.name[0]}</div>
++                      <div className="min-w-0"><p className="text-xs font-medium text-gray-700 truncate">{u.name}</p><p className="text-xs text-gray-400">{ROLE_LABEL[u.role]}</p></div>
++                    </button>
++                  ))}
++                </div>
++              )}
++            </div>
++
++            <div className="flex gap-2">
++              <button onClick={()=>{setShowForm(false);setLineName('');setMidApprovers([]);setFinalApprover(null)}}
++                className="flex-1 py-2.5 border border-gray-200 text-gray-500 rounded-xl text-sm">취소</button>
++              <button onClick={handleSave} disabled={saving||!lineName.trim()||!finalApprover}
++                className="flex-1 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50">
++                {saving ? '저장 중...' : '저장'}
++              </button>
++            </div>
++          </div>
++        )}
++
++        {/* 저장된 결재선 목록 */}
++        {tabLines.length > 0 && (
++          <div className="space-y-3">
++            {tabLines.map(line => (
++              <div key={line.id} className="bg-white border border-gray-200 rounded-2xl p-4">
++                <div className="flex items-center justify-between mb-3">
++                  <div className="flex items-center gap-2">
++                    <Bookmark size={14} className="text-primary-500"/>
++                    <span className="font-semibold text-gray-900 text-sm">{line.name}</span>
++                  </div>
++                  <button onClick={async()=>{if(!confirm(`"${line.name}" 삭제?`))return;await deleteApprovalLine(line.id)}}
++                    className="text-gray-300 hover:text-red-400 transition-colors">
++                    <Trash2 size={15}/>
++                  </button>
++                </div>
++                <div className="flex items-center gap-2 flex-wrap text-xs">
++                  <span className="bg-primary-50 text-primary-700 px-2 py-1 rounded-full">{user?.name} ({activeTab==='outgoing'?'기안자':'접수자'})</span>
++                  {line.approvers.map((a,i) => (
++                    <span key={i} className="bg-gray-100 text-gray-600 px-2 py-1 rounded-full">{a.name}</span>
++                  ))}
++                  <span className="text-gray-300">→</span>
++                  <span className="bg-green-50 text-green-700 px-2 py-1 rounded-full font-medium">{line.finalApprover.name} (최종)</span>
++                </div>
++              </div>
++            ))}
++          </div>
++        )}
++        {tabLines.length === 0 && !showForm && (
++          <div className="text-center py-10 text-gray-400">
++            <Bookmark size={32} className="mx-auto mb-2 opacity-30"/>
++            <p className="text-sm">저장된 {activeTab==='outgoing'?'발신용':'수신용'} 결재선이 없습니다</p>
++          </div>
++        )}
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/app/approval/settings/recipients/page.tsx b/src/app/approval/settings/recipients/page.tsx
+new file mode 100644
+index 0000000..84c67bd
+--- /dev/null
++++ b/src/app/approval/settings/recipients/page.tsx
+@@ -0,0 +1,117 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenRecipientContacts, addRecipientContact, deleteRecipientContact } from '@/lib/db'
++import type { RecipientContact } from '@/types'
++import { Plus, Trash2, Users, Search } from 'lucide-react'
++
++export default function RecipientsPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [contacts, setContacts] = useState<RecipientContact[]>([])
++  const [query,    setQuery]    = useState('')
++  const [name,     setName]     = useState('')
++  const [email,    setEmail]    = useState('')
++  const [org,      setOrg]      = useState('')
++  const [saving,   setSaving]   = useState(false)
++  const [showForm, setShowForm] = useState(false)
++
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    return listenRecipientContacts(user.uid, setContacts)
++  }, [user, loading, router])
++
++  const filtered = contacts.filter(c =>
++    !query || c.name.includes(query) || c.email.includes(query) || (c.org ?? '').includes(query)
++  )
++
++  const handleAdd = async () => {
++    if (!user || !name.trim() || !email.trim()) { alert('이름과 이메일을 입력해주세요'); return }
++    if (!email.includes('@')) { alert('올바른 이메일 주소를 입력해주세요'); return }
++    setSaving(true)
++    await addRecipientContact({ name:name.trim(), email:email.trim(), org:org.trim()||undefined, ownerUid:user.uid })
++    setName(''); setEmail(''); setOrg(''); setShowForm(false); setSaving(false)
++  }
++
++  return (
++    <ApprovalShell title="수신자 관리">
++      <div className="max-w-2xl mx-auto p-6 space-y-4">
++        <div className="flex items-center justify-between">
++          <div>
++            <h2 className="text-lg font-bold text-gray-900">수신자 관리</h2>
++            <p className="text-sm text-gray-500 mt-1">공문 작성 시 수신자/공람자로 바로 선택할 수 있습니다</p>
++          </div>
++          <button onClick={() => setShowForm(v=>!v)}
++            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
++            <Plus size={15}/> 추가
++          </button>
++        </div>
++
++        {showForm && (
++          <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-3">
++            <h3 className="font-semibold text-sm text-gray-900">수신자 추가</h3>
++            {[
++              {label:'이름 *',  value:name,  set:setName,  ph:'예: 홍길동'},
++              {label:'이메일 *',value:email, set:setEmail, ph:'예: example@org.kr'},
++              {label:'소속기관',value:org,   set:setOrg,   ph:'예: 문화체육관광부'},
++            ].map(f=>(
++              <div key={f.label}>
++                <label className="text-xs font-medium text-gray-500 block mb-1">{f.label}</label>
++                <input value={f.value} onChange={e=>f.set(e.target.value)} placeholder={f.ph}
++                  className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++              </div>
++            ))}
++            <div className="flex gap-2">
++              <button onClick={()=>{setShowForm(false);setName('');setEmail('');setOrg('')}}
++                className="flex-1 py-2.5 border border-gray-200 text-gray-500 rounded-xl text-sm">취소</button>
++              <button onClick={handleAdd} disabled={saving||!name.trim()||!email.trim()}
++                className="flex-1 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50">
++                {saving ? '저장 중...' : '추가'}
++              </button>
++            </div>
++          </div>
++        )}
++
++        {/* 검색 */}
++        <div className="relative">
++          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
++          <input value={query} onChange={e=>setQuery(e.target.value)}
++            placeholder="이름, 이메일, 소속기관 검색"
++            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
++        </div>
++
++        {/* 목록 */}
++        {filtered.length === 0 ? (
++          <div className="text-center py-12 text-gray-400">
++            <Users size={36} className="mx-auto mb-2 opacity-30"/>
++            <p className="text-sm">{query ? '검색 결과가 없습니다' : '등록된 수신자가 없습니다'}</p>
++          </div>
++        ) : (
++          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
++            <div className="divide-y divide-gray-50">
++              {filtered.map(c => (
++                <div key={c.id} className="flex items-center gap-3 px-4 py-3">
++                  <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
++                    {c.name[0]}
++                  </div>
++                  <div className="flex-1 min-w-0">
++                    <p className="text-sm font-medium text-gray-900">{c.name}</p>
++                    <p className="text-xs text-gray-400">{c.email}{c.org ? ` · ${c.org}` : ''}</p>
++                  </div>
++                  <button onClick={async()=>{if(!confirm(`"${c.name}" 삭제?`))return;await deleteRecipientContact(c.id)}}
++                    className="text-gray-300 hover:text-red-400 transition-colors p-1">
++                    <Trash2 size={14}/>
++                  </button>
++                </div>
++              ))}
++            </div>
++          </div>
++        )}
++        <p className="text-xs text-gray-400 text-right">총 {filtered.length}명</p>
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/app/approval/settings/seal/page.tsx b/src/app/approval/settings/seal/page.tsx
+new file mode 100644
+index 0000000..11b4d1a
+--- /dev/null
++++ b/src/app/approval/settings/seal/page.tsx
+@@ -0,0 +1,8 @@
++'use client'
++import { useEffect } from 'react'
++import { useRouter } from 'next/navigation'
++export default function SealRedirect() {
++  const router = useRouter()
++  useEffect(() => { router.replace('/settings') }, [router])
++  return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">설정 페이지로 이동 중...</div>
++}
+diff --git a/src/app/approval/status/done/page.tsx b/src/app/approval/status/done/page.tsx
+new file mode 100644
+index 0000000..fc16eed
+--- /dev/null
++++ b/src/app/approval/status/done/page.tsx
+@@ -0,0 +1,63 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenApprovalDocs, listenIncomingDocs } from '@/lib/db'
++import type { ApprovalDoc, IncomingDoc } from '@/types'
++import { ChevronRight } from 'lucide-react'
++import clsx from 'clsx'
++
++export default function DonePage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [docs, setDocs] = useState<ApprovalDoc[]>([])
++  const [incoming, setIncoming] = useState<IncomingDoc[]>([])
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    const u1 = listenApprovalDocs(user.uid, setDocs)
++    const u2 = listenIncomingDocs(user.uid, setIncoming)
++    return () => { u1(); u2() }
++  }, [user, loading, router])
++
++  const doneDocs = [
++    ...docs.filter(d => (d.status==='approved'||d.status==='rejected') && d.authorUid===user?.uid).map(d=>({...d,docType:'outgoing' as const})),
++    ...incoming.filter(d => (d.status==='approved'||d.status==='rejected') && d.authorUid===user?.uid).map(d=>({...d,docType:'incoming' as const})),
++  ].sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0)-((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
++
++  const formatDate = (d: unknown) => {
++    try { return (d as {toDate?:()=>Date}).toDate?.()?.toLocaleDateString('ko-KR',{month:'2-digit',day:'2-digit'}) ?? '' } catch { return '' }
++  }
++
++  return (
++    <ApprovalShell title="완료/반려 문서">
++      <div className="max-w-3xl mx-auto p-6 space-y-4">
++        <h2 className="text-lg font-bold text-gray-900">완료/반려 문서</h2>
++        {doneDocs.length === 0 ? (
++          <div className="text-center py-16 text-gray-400 text-sm">완료된 문서가 없습니다</div>
++        ) : (
++          <div className="space-y-2">
++            {doneDocs.map(d => (
++              <button key={d.id}
++                onClick={() => router.push(d.docType==='incoming' ? `/approval/incoming/${d.id}` : `/approval/${d.id}`)}
++                className="w-full bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-all text-left flex items-center gap-3">
++                <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium shrink-0', d.docType==='incoming' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700')}>
++                  {d.docType==='incoming' ? '수신' : '발신'}
++                </span>
++                <span className={clsx('text-xs px-2 py-0.5 rounded-full shrink-0', d.status==='approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')}>
++                  {d.status==='approved' ? '완료' : '반려'}
++                </span>
++                <div className="flex-1 min-w-0">
++                  <p className="text-sm font-semibold text-gray-900 truncate">{d.title}</p>
++                  <p className="text-xs text-gray-400 mt-0.5">{'sender' in d ? (d as IncomingDoc).sender : (d as ApprovalDoc).orgName} · {formatDate(d.createdAt)}</p>
++                </div>
++                <ChevronRight size={14} className="text-gray-300 shrink-0"/>
++              </button>
++            ))}
++          </div>
++        )}
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/app/approval/status/page.tsx b/src/app/approval/status/page.tsx
+new file mode 100644
+index 0000000..561d5ab
+--- /dev/null
++++ b/src/app/approval/status/page.tsx
+@@ -0,0 +1,8 @@
++'use client'
++import { useEffect } from 'react'
++import { useRouter } from 'next/navigation'
++export default function StatusPage() {
++  const router = useRouter()
++  useEffect(() => { router.replace('/approval/status/pending') }, [router])
++  return null
++}
+diff --git a/src/app/approval/status/pending/page.tsx b/src/app/approval/status/pending/page.tsx
+new file mode 100644
+index 0000000..54f618a
+--- /dev/null
++++ b/src/app/approval/status/pending/page.tsx
+@@ -0,0 +1,95 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenApprovalDocs, listenIncomingDocs } from '@/lib/db'
++import type { ApprovalDoc, IncomingDoc } from '@/types'
++import { Clock, ChevronRight } from 'lucide-react'
++import clsx from 'clsx'
++
++export default function PendingPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [docs,     setDocs]     = useState<ApprovalDoc[]>([])
++  const [incoming, setIncoming] = useState<IncomingDoc[]>([])
++
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    const u1 = listenApprovalDocs(user.uid, setDocs)
++    const u2 = listenIncomingDocs(user.uid, setIncoming)
++    return () => { u1(); u2() }
++  }, [user, loading, router])
++
++  const isMyTurn = (d: ApprovalDoc | IncomingDoc) => {
++    if (d.status !== 'pending') return false
++    const apprs = d.approvers ?? []
++    const myIdx = apprs.findIndex(a => a.uid === user?.uid)
++    if (myIdx >= 0 && apprs[myIdx].status === 'waiting') {
++      const prev = [('receiver' in d ? d.receiver : (d as ApprovalDoc).drafter), ...apprs.slice(0, myIdx)]
++      return prev.every(a => a.status === 'submitted' || a.status === 'approved')
++    }
++    if (d.finalApprover?.uid === user?.uid && d.finalApprover?.status === 'waiting') {
++      return apprs.every(a => a.status === 'approved' || a.status === 'submitted')
++    }
++    return false
++  }
++
++  const pendingDocs = [
++    ...docs.filter(isMyTurn).map(d => ({ ...d, docType: 'outgoing' as const })),
++    ...incoming.filter(isMyTurn).map(d => ({ ...d, docType: 'incoming' as const })),
++  ].sort((a,b) => {
++    const ta = (a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
++    const tb = (b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime() ?? 0
++    return tb - ta
++  })
++
++  const formatDate = (d: unknown) => {
++    try { return (d as {toDate?:()=>Date}).toDate?.()?.toLocaleDateString('ko-KR', {month:'2-digit',day:'2-digit'}) ?? '' }
++    catch { return '' }
++  }
++
++  return (
++    <ApprovalShell title="결재 대기">
++      <div className="max-w-3xl mx-auto p-6 space-y-4">
++        <div className="flex items-center gap-3">
++          <Clock size={20} className="text-red-500"/>
++          <h2 className="text-lg font-bold text-gray-900">결재 대기</h2>
++          {pendingDocs.length > 0 && (
++            <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{pendingDocs.length}</span>
++          )}
++        </div>
++        {pendingDocs.length === 0 ? (
++          <div className="text-center py-16 text-gray-400">
++            <Clock size={40} className="mx-auto mb-3 opacity-30"/>
++            <p className="text-sm">결재 대기 문서가 없습니다</p>
++          </div>
++        ) : (
++          <div className="space-y-2">
++            {pendingDocs.map(d => (
++              <button key={d.id}
++                onClick={() => router.push(d.docType === 'incoming' ? `/approval/incoming/${d.id}` : `/approval/${d.id}`)}
++                className="w-full bg-white border border-red-200 rounded-xl p-4 hover:shadow-sm transition-all text-left">
++                <div className="flex items-center gap-3">
++                  <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium shrink-0',
++                    d.docType === 'incoming' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700')}>
++                    {d.docType === 'incoming' ? '수신' : '발신'}
++                  </span>
++                  <div className="flex-1 min-w-0">
++                    <p className="text-sm font-semibold text-gray-900 truncate">{d.title}</p>
++                    <p className="text-xs text-gray-400 mt-0.5">
++                      {'sender' in d ? (d as IncomingDoc).sender : (d as ApprovalDoc).orgName} · {formatDate(d.createdAt)}
++                    </p>
++                  </div>
++                  <span className="text-xs text-red-500 shrink-0 font-medium">결재 필요</span>
++                  <ChevronRight size={14} className="text-gray-300 shrink-0"/>
++                </div>
++              </button>
++            ))}
++          </div>
++        )}
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/app/approval/status/progress/page.tsx b/src/app/approval/status/progress/page.tsx
+new file mode 100644
+index 0000000..fc421f3
+--- /dev/null
++++ b/src/app/approval/status/progress/page.tsx
+@@ -0,0 +1,66 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenApprovalDocs, listenIncomingDocs } from '@/lib/db'
++import type { ApprovalDoc, IncomingDoc } from '@/types'
++import { ChevronRight } from 'lucide-react'
++import clsx from 'clsx'
++
++export default function ProgressPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [docs, setDocs] = useState<ApprovalDoc[]>([])
++  const [incoming, setIncoming] = useState<IncomingDoc[]>([])
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    const u1 = listenApprovalDocs(user.uid, setDocs)
++    const u2 = listenIncomingDocs(user.uid, setIncoming)
++    return () => { u1(); u2() }
++  }, [user, loading, router])
++
++  const progressDocs = [
++    ...docs.filter(d => d.status === 'pending' && d.authorUid === user?.uid).map(d => ({ ...d, docType: 'outgoing' as const })),
++    ...incoming.filter(d => d.status === 'pending' && d.authorUid === user?.uid).map(d => ({ ...d, docType: 'incoming' as const })),
++  ].sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0) - ((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
++
++  const formatDate = (d: unknown) => {
++    try { return (d as {toDate?:()=>Date}).toDate?.()?.toLocaleDateString('ko-KR',{month:'2-digit',day:'2-digit'}) ?? '' } catch { return '' }
++  }
++  const getStep = (d: ApprovalDoc | IncomingDoc) => {
++    const all = ['receiver' in d ? d.receiver : (d as ApprovalDoc).drafter, ...d.approvers, d.finalApprover]
++    const done = all.filter(a => a.status === 'approved' || a.status === 'submitted').length
++    return `${done}/${all.length}`
++  }
++
++  return (
++    <ApprovalShell title="결재 진행상황">
++      <div className="max-w-3xl mx-auto p-6 space-y-4">
++        <h2 className="text-lg font-bold text-gray-900">결재 진행상황</h2>
++        {progressDocs.length === 0 ? (
++          <div className="text-center py-16 text-gray-400 text-sm">진행 중인 문서가 없습니다</div>
++        ) : (
++          <div className="space-y-2">
++            {progressDocs.map(d => (
++              <button key={d.id}
++                onClick={() => router.push(d.docType === 'incoming' ? `/approval/incoming/${d.id}` : `/approval/${d.id}`)}
++                className="w-full bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-all text-left flex items-center gap-3">
++                <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium shrink-0', d.docType === 'incoming' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700')}>
++                  {d.docType === 'incoming' ? '수신' : '발신'}
++                </span>
++                <div className="flex-1 min-w-0">
++                  <p className="text-sm font-semibold text-gray-900 truncate">{d.title}</p>
++                  <p className="text-xs text-gray-400 mt-0.5">{'sender' in d ? (d as IncomingDoc).sender : (d as ApprovalDoc).orgName} · {formatDate(d.createdAt)}</p>
++                </div>
++                <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg shrink-0">{getStep(d)} 결재</span>
++                <ChevronRight size={14} className="text-gray-300 shrink-0"/>
++              </button>
++            ))}
++          </div>
++        )}
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/app/approval/status/viewer/page.tsx b/src/app/approval/status/viewer/page.tsx
+new file mode 100644
+index 0000000..f72cd55
+--- /dev/null
++++ b/src/app/approval/status/viewer/page.tsx
+@@ -0,0 +1,50 @@
++'use client'
++import { useEffect, useState } from 'react'
++import { useRouter } from 'next/navigation'
++import ApprovalShell from '@/components/ApprovalShell'
++import { useAuth } from '@/lib/auth-context'
++import { listenApprovalDocs } from '@/lib/db'
++import type { ApprovalDoc } from '@/types'
++import { ChevronRight } from 'lucide-react'
++
++export default function ViewerPage() {
++  const { user, loading } = useAuth()
++  const router = useRouter()
++  const [docs, setDocs] = useState<ApprovalDoc[]>([])
++  useEffect(() => {
++    if (loading) return
++    if (!user) { router.replace('/login'); return }
++    return listenApprovalDocs(user.uid, setDocs)
++  }, [user, loading, router])
++
++  const viewerDocs = docs.filter(d => d.viewers?.some(v => v.uid === user?.uid) && d.status === 'approved')
++    .sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0)-((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
++
++  const formatDate = (d: unknown) => {
++    try { return (d as {toDate?:()=>Date}).toDate?.()?.toLocaleDateString('ko-KR',{month:'2-digit',day:'2-digit'}) ?? '' } catch { return '' }
++  }
++
++  return (
++    <ApprovalShell title="공람 문서">
++      <div className="max-w-3xl mx-auto p-6 space-y-4">
++        <h2 className="text-lg font-bold text-gray-900">공람 문서</h2>
++        {viewerDocs.length === 0 ? (
++          <div className="text-center py-16 text-gray-400 text-sm">공람 문서가 없습니다</div>
++        ) : (
++          <div className="space-y-2">
++            {viewerDocs.map(d => (
++              <button key={d.id} onClick={() => router.push(`/approval/${d.id}`)}
++                className="w-full bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-all text-left flex items-center gap-3">
++                <div className="flex-1 min-w-0">
++                  <p className="text-sm font-semibold text-gray-900 truncate">{d.title}</p>
++                  <p className="text-xs text-gray-400 mt-0.5">{d.orgName} · {formatDate(d.createdAt)}</p>
++                </div>
++                <ChevronRight size={14} className="text-gray-300 shrink-0"/>
++              </button>
++            ))}
++          </div>
++        )}
++      </div>
++    </ApprovalShell>
++  )
++}
+diff --git a/src/components/ApprovalShell.tsx b/src/components/ApprovalShell.tsx
+new file mode 100644
+index 0000000..760a6b9
+--- /dev/null
++++ b/src/components/ApprovalShell.tsx
+@@ -0,0 +1,134 @@
++'use client'
++import { useState, ReactNode } from 'react'
++import { usePathname, useRouter } from 'next/navigation'
++import AppShell from './AppShell'
++import { useAuth } from '@/lib/auth-context'
++import clsx from 'clsx'
++import {
++  FilePlus, FileInput, Clock, CheckCircle2, XCircle,
++  Eye, FileText, Archive, Settings, Stamp, Bookmark,
++  AlignLeft, Users, ChevronDown, ChevronRight
++} from 'lucide-react'
++
++interface MenuItem {
++  label:    string
++  path?:    string
++  icon:     React.ElementType
++  children?: { label: string; path: string }[]
++}
++
++const MENU: MenuItem[] = [
++  {
++    label: '결재 문서',
++    icon: FileText,
++    children: [
++      { label: '공문 작성',  path: '/approval/new' },
++      { label: '공문 접수',  path: '/approval/incoming/new' },
++    ]
++  },
++  {
++    label: '진행 상황',
++    icon: Clock,
++    children: [
++      { label: '결재 대기',      path: '/approval/status/pending' },
++      { label: '결재 진행상황',  path: '/approval/status/progress' },
++      { label: '완료/반려 문서', path: '/approval/status/done' },
++      { label: '공람 문서',      path: '/approval/status/viewer' },
++    ]
++  },
++  {
++    label: '공문 목록',
++    icon: Archive,
++    children: [
++      { label: '발신 공문 목록', path: '/approval/docs/outgoing' },
++      { label: '수신 공문 목록', path: '/approval/docs/incoming' },
++      { label: '보관 공문',      path: '/approval/archive' },
++    ]
++  },
++  {
++    label: '전자결재 설정',
++    icon: Settings,
++    children: [
++      { label: '도장 등록',          path: '/approval/settings/seal' },
++      { label: '결재선 관리',        path: '/approval/settings/lines' },
++      { label: '하단 발신 정보',     path: '/approval/settings/footer-info' },
++      { label: '수신자 관리',        path: '/approval/settings/recipients' },
++    ]
++  },
++]
++
++interface Props {
++  children: ReactNode
++  title?:   string
++}
++
++export default function ApprovalShell({ children, title }: Props) {
++  const pathname = usePathname()
++  const router   = useRouter()
++  const { user } = useAuth()
++
++  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
++    '결재 문서': true,
++    '진행 상황': true,
++    '공문 목록': true,
++    '전자결재 설정': false,
++  })
++
++  const toggleSection = (label: string) =>
++    setOpenSections(prev => ({ ...prev, [label]: !prev[label] }))
++
++  const isActive = (path: string) => pathname === path
++
++  return (
++    <AppShell title={title ?? '전자결재'}>
++      <div className="flex h-full">
++        {/* 전자결재 전용 사이드바 */}
++        <aside className="w-52 shrink-0 bg-white border-r border-gray-200 overflow-y-auto hidden md:flex flex-col">
++          <div className="px-4 py-3 border-b border-gray-100">
++            <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
++              <FileText size={15} className="text-primary-500"/> 전자결재
++            </h2>
++          </div>
++          <nav className="flex-1 py-2">
++            {MENU.map(item => (
++              <div key={item.label}>
++                {/* 섹션 헤더 */}
++                <button
++                  onClick={() => toggleSection(item.label)}
++                  className="w-full flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wide hover:bg-gray-50 transition-colors">
++                  <item.icon size={13}/>
++                  <span className="flex-1 text-left">{item.label}</span>
++                  {openSections[item.label]
++                    ? <ChevronDown size={12}/>
++                    : <ChevronRight size={12}/>}
++                </button>
++                {/* 서브메뉴 */}
++                {openSections[item.label] && item.children && (
++                  <div className="pb-1">
++                    {item.children.map(child => (
++                      <button key={child.path}
++                        onClick={() => router.push(child.path)}
++                        className={clsx(
++                          'w-full text-left pl-8 pr-4 py-2 text-sm transition-colors',
++                          isActive(child.path)
++                            ? 'bg-primary-50 text-primary-700 font-medium border-r-2 border-primary-500'
++                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
++                        )}>
++                        {child.label}
++                      </button>
++                    ))}
++                  </div>
++                )}
++              </div>
++            ))}
++          </nav>
++        </aside>
++
++        {/* 메인 콘텐츠 */}
++        <main className="flex-1 overflow-y-auto bg-gray-50">
++          {children}
++        </main>
++      </div>
++    </AppShell>
++  )
++}
+diff --git a/src/lib/db.ts b/src/lib/db.ts
+index e243a22..cc897b0 100644
+--- a/src/lib/db.ts
++++ b/src/lib/db.ts
+@@ -8,7 +8,7 @@ import type {
+   MessageStatus, MessageType, MessageCategory,
+   Notice, CalendarEvent, MessageTemplate,
+   ApprovalDoc, ApprovalTemplate, SavedEmailContact, OfficialSeal,
+-  IncomingDoc, ApprovalLine
++  IncomingDoc, ApprovalLine, FooterInfo, RecipientContact
+ } from '@/types'
+ 
+ const now = () => new Date().toISOString()
+@@ -500,3 +500,33 @@ export async function saveApprovalLine(data: Omit<ApprovalLine, 'id' | 'createdA
+ export async function deleteApprovalLine(id: string) {
+   await deleteDoc(doc(db, 'approvalLines', id))
+ }
++
++// ── 하단 발신 정보 ─────────────────────────────────────
++export async function saveFooterInfo(uid: string, info: FooterInfo) {
++  await setDoc(doc(db, 'userSettings', uid), { footerInfo: info }, { merge: true })
++}
++
++export async function getFooterInfo(uid: string): Promise<FooterInfo | null> {
++  const snap = await getDoc(doc(db, 'userSettings', uid))
++  return snap.exists() ? (snap.data().footerInfo ?? null) : null
++}
++
++// ── 수신자 연락처 관리 ─────────────────────────────────
++export function listenRecipientContacts(uid: string, cb: (c: RecipientContact[]) => void) {
++  return onSnapshot(
++    query(collection(db, 'recipientContacts'),
++      where('ownerUid', '==', uid),
++      orderBy('createdAt', 'desc')),
++    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as RecipientContact)))
++  )
++}
++
++export async function addRecipientContact(data: Omit<RecipientContact, 'id' | 'createdAt'>) {
++  return await addDoc(collection(db, 'recipientContacts'), {
++    ...data, createdAt: serverTimestamp()
++  })
++}
++
++export async function deleteRecipientContact(id: string) {
++  await deleteDoc(doc(db, 'recipientContacts', id))
++}
+diff --git a/src/types/index.ts b/src/types/index.ts
+index 52d180f..c0bd8a8 100644
+--- a/src/types/index.ts
++++ b/src/types/index.ts
+@@ -273,7 +273,8 @@ export interface IncomingDoc {
+ // ── 결재선 관리 ───────────────────────────────────────
+ export interface ApprovalLine {
+   id:        string
+-  name:      string           // 결재선 이름 (예: 일반결재)
++  name:      string
++  lineType:  ApprovalLineType  // outgoing: 발신용, incoming: 수신용           // 결재선 이름 (예: 일반결재)
+   approvers: {
+     uid:  string
+     name: string
+@@ -287,3 +288,28 @@ export interface ApprovalLine {
+   ownerUid:  string
+   createdAt: unknown
+ }
++
++// ── 하단 발신 정보 ─────────────────────────────────────
++export interface FooterInfo {
++  zipCode:   string
++  address:   string
++  phone:     string
++  fax:       string
++  email:     string
++  homepage:  string
++  orgName:   string      // 조직명
++  sealOrgName: string    // 직인 위 조직명
++}
++
++// ── 수신자 그룹 ───────────────────────────────────────
++export interface RecipientContact {
++  id:        string
++  name:      string
++  email:     string
++  org?:      string      // 소속기관
++  ownerUid:  string
++  createdAt: unknown
++}
++
++// ── 결재선 (발신/수신 구분) ─────────────────────────────
++export type ApprovalLineType = 'outgoing' | 'incoming'
+-- 
+2.43.0
+

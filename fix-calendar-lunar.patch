@@ -1,0 +1,47 @@
+From b6c87defcff2755a317f4d63841aef9db0cc9249 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 01:04:27 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EC=BA=98=EB=A6=B0=EB=8D=94=20=EC=9D=8C?=
+ =?UTF-8?q?=EB=A0=A5/=EA=B3=B5=ED=9C=B4=EC=9D=BC=20=EB=A1=9C=EB=94=A9=20us?=
+ =?UTF-8?q?eEffect=20=EB=88=84=EB=9D=BD=20=EB=B3=B5=EA=B5=AC?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/calendar/page.tsx | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/src/app/calendar/page.tsx b/src/app/calendar/page.tsx
+index 55a8dc9..a30e1bb 100644
+--- a/src/app/calendar/page.tsx
++++ b/src/app/calendar/page.tsx
+@@ -81,6 +81,25 @@ export default function CalendarPage() {
+     return () => { u1(); u2(); u3() }
+   }, [user, router])
+ 
++  // 음력 + 공휴일 로딩 (월 변경 시마다 실행)
++  useEffect(() => {
++    const loadCalendarData = async () => {
++      // 공휴일 API
++      const hols = await fetchHolidays(viewYear, viewMonth + 1)
++      setHolidays(hols)
++
++      // 음력 - 해당 월 전체 계산
++      const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
++      const lunars: Record<string, string> = {}
++      for (let d = 1; d <= daysInMonth; d++) {
++        const key = `${viewYear}-${String(viewMonth + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
++        lunars[key] = getLunarDate(viewYear, viewMonth + 1, d)
++      }
++      setLunarDates(lunars)
++    }
++    loadCalendarData()
++  }, [viewYear, viewMonth])
++
+   // ── 달력 계산 ─────────────────────────────────────
+   const firstDay = new Date(viewYear, viewMonth, 1).getDay()
+   const lastDate = new Date(viewYear, viewMonth + 1, 0).getDate()
+-- 
+2.43.0
+

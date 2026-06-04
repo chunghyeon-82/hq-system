@@ -1,0 +1,185 @@
+From 14636c7a08d29a940537748c238a993f0f872192 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 05:01:33 +0000
+Subject: [PATCH] =?UTF-8?q?feat:=20=ED=91=B8=EC=8B=9C=20=EC=95=8C=EB=A6=BC?=
+ =?UTF-8?q?=20=EC=84=9C=EB=B2=84=20API=20+=20=EC=9E=90=EB=8F=99=EC=82=AD?=
+ =?UTF-8?q?=EC=A0=9C=20=EC=8A=A4=EC=BC=80=EC=A4=84=EB=9F=AC=20=EC=99=84?=
+ =?UTF-8?q?=EC=84=B1?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ next.config.js            |  6 +++-
+ package.json              |  6 ++--
+ src/app/api/push/route.ts | 76 +++++++++++++++++++++++++++++++++++++++
+ src/app/compose/page.tsx  | 11 ++++++
+ src/app/notices/page.tsx  | 10 ++++++
+ 5 files changed, 106 insertions(+), 3 deletions(-)
+ create mode 100644 src/app/api/push/route.ts
+
+diff --git a/next.config.js b/next.config.js
+index d10837f..0cb6a86 100644
+--- a/next.config.js
++++ b/next.config.js
+@@ -1,3 +1,7 @@
+ /** @type {import('next').NextConfig} */
+-const nextConfig = {}
++const nextConfig = {
++  experimental: {
++    serverComponentsExternalPackages: ['firebase-admin', 'web-push'],
++  },
++}
+ module.exports = nextConfig
+diff --git a/package.json b/package.json
+index 7e9367a..44eadb3 100644
+--- a/package.json
++++ b/package.json
+@@ -15,7 +15,8 @@
+     "next": "14.2.3",
+     "react": "^18",
+     "react-dom": "^18",
+-    "firebase-admin": "^12.0.0"
++    "firebase-admin": "^12.0.0",
++    "web-push": "^3.6.7"
+   },
+   "devDependencies": {
+     "@types/node": "^20",
+@@ -24,6 +25,7 @@
+     "autoprefixer": "^10.0.1",
+     "postcss": "^8",
+     "tailwindcss": "^3.3.0",
+-    "typescript": "^5"
++    "typescript": "^5",
++    "@types/web-push": "^3.6.4"
+   }
+ }
+\ No newline at end of file
+diff --git a/src/app/api/push/route.ts b/src/app/api/push/route.ts
+new file mode 100644
+index 0000000..d4ad9aa
+--- /dev/null
++++ b/src/app/api/push/route.ts
+@@ -0,0 +1,76 @@
++import { NextRequest, NextResponse } from 'next/server'
++import webpush from 'web-push'
++import { initializeApp, cert, getApps } from 'firebase-admin/app'
++import { getFirestore } from 'firebase-admin/firestore'
++
++// Firebase Admin 초기화
++function getAdminDb() {
++  if (!getApps().length) {
++    initializeApp({
++      credential: cert({
++        projectId:   process.env.FIREBASE_ADMIN_PROJECT_ID,
++        clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
++        privateKey:  process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n'),
++      }),
++    })
++  }
++  return getFirestore()
++}
++
++// VAPID 설정
++webpush.setVapidDetails(
++  'mailto:admin@hq-system.app',
++  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
++  process.env.VAPID_PRIVATE_KEY!
++)
++
++export async function POST(req: NextRequest) {
++  try {
++    const { title, body, url, targetUids } = await req.json()
++
++    // 인증 확인
++    const auth = req.headers.get('authorization')
++    if (auth !== `Bearer ${process.env.CLEANUP_SECRET}`) {
++      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
++    }
++
++    const db = getAdminDb()
++    let tokens: { uid: string; subscription: webpush.PushSubscription }[] = []
++
++    if (targetUids && targetUids.length > 0) {
++      // 특정 유저에게만 발송
++      for (const uid of targetUids) {
++        const snap = await db.collection('fcmTokens').doc(uid).get()
++        if (snap.exists) {
++          tokens.push({ uid, subscription: snap.data()!.subscription })
++        }
++      }
++    } else {
++      // 전체 발송
++      const snap = await db.collection('fcmTokens').get()
++      tokens = snap.docs.map(d => ({ uid: d.id, subscription: d.data().subscription }))
++    }
++
++    const results = await Promise.allSettled(
++      tokens.map(({ uid, subscription }) =>
++        webpush.sendNotification(
++          subscription,
++          JSON.stringify({ title, body, url: url || '/dashboard', icon: '/icons/icon-192.png' })
++        ).catch(async (err) => {
++          // 구독 만료 시 토큰 삭제
++          if (err.statusCode === 410 || err.statusCode === 404) {
++            await db.collection('fcmTokens').doc(uid).delete()
++          }
++          throw err
++        })
++      )
++    )
++
++    const sent   = results.filter(r => r.status === 'fulfilled').length
++    const failed = results.filter(r => r.status === 'rejected').length
++
++    return NextResponse.json({ ok: true, sent, failed, total: tokens.length })
++  } catch (e) {
++    return NextResponse.json({ error: String(e) }, { status: 500 })
++  }
++}
+diff --git a/src/app/compose/page.tsx b/src/app/compose/page.tsx
+index 253d941..90dc712 100644
+--- a/src/app/compose/page.tsx
++++ b/src/app/compose/page.tsx
+@@ -88,6 +88,17 @@ function ComposeContent() {
+       ...(showEvent && eventDate ? { eventDate, eventTime, eventTitle: eventTitle || title } : {}),
+       ...(showLink && linkUrl    ? { linkUrl, linkLabel: linkLabel || linkUrl }             : {}),
+     })
++    // 수신 사업장 대표에게 푸시 발송
++    const categoryLabel = { instruction: '업무지시', confirm: '확인요청', notice: '단순공지' }[category]
++    fetch('/api/push', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CLEANUP_SECRET}` },
++      body: JSON.stringify({
++        title: `[${categoryLabel}] ${title.trim()}`,
++        body:  body.trim().slice(0, 100),
++        url:   '/dashboard',
++      }),
++    }).catch(() => {})
+     setSent(true)
+     setSending(false)
+   }
+diff --git a/src/app/notices/page.tsx b/src/app/notices/page.tsx
+index c69bb88..b17edc9 100644
+--- a/src/app/notices/page.tsx
++++ b/src/app/notices/page.tsx
+@@ -46,6 +46,16 @@ export default function NoticesPage() {
+       authorName: user.name,
+       expiresAt:  new Date(expiresAt).toISOString(),
+     })
++    // 전체 푸시 발송
++    fetch('/api/push', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CLEANUP_SECRET}` },
++      body: JSON.stringify({
++        title: `[공지] ${title.trim()}`,
++        body:  body.trim().slice(0, 100),
++        url:   '/notices',
++      }),
++    }).catch(() => {})
+     setTitle(''); setBody(''); setExpiresAt('')
+     setShowForm(false)
+     setSaving(false)
+-- 
+2.43.0
+

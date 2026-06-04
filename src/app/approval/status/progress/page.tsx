@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ApprovalShell from '@/components/ApprovalShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenApprovalDocs, listenIncomingDocs } from '@/lib/db'
-import type { ApprovalDoc, IncomingDoc } from '@/types'
+import { listenApprovalDocs, listenIncomingDocs, listenInternalDocs } from '@/lib/db'
+import type { ApprovalDoc, IncomingDoc, InternalDoc } from '@/types'
 import { ChevronRight } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -12,17 +12,20 @@ export default function ProgressPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const [docs, setDocs] = useState<ApprovalDoc[]>([])
-  const [incoming, setIncoming] = useState<IncomingDoc[]>([])
+  const [incoming,  setIncoming]  = useState<IncomingDoc[]>([])
+  const [internal,  setInternal]  = useState<InternalDoc[]>([])
   useEffect(() => {
     if (loading) return
     if (!user) { router.replace('/login'); return }
     const u1 = listenApprovalDocs(user.uid, setDocs)
     const u2 = listenIncomingDocs(user.uid, setIncoming)
-    return () => { u1(); u2() }
+    const u3 = listenInternalDocs(user.uid, setInternal)
+    return () => { u1(); u2(); u3() }
   }, [user, loading, router])
 
   const progressDocs = [
     ...docs.filter(d => d.status === 'pending' && d.authorUid === user?.uid).map(d => ({ ...d, docType: 'outgoing' as const })),
+    ...internal.filter(d => d.authorUid === user?.uid).map(d => ({...d, docType:'internal' as const})),
     ...incoming.filter(d => d.status === 'pending' && d.authorUid === user?.uid).map(d => ({ ...d, docType: 'incoming' as const })),
   ].sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0) - ((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
 
@@ -52,7 +55,7 @@ export default function ProgressPage() {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-gray-900 truncate">{d.title}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{'sender' in d ? (d as IncomingDoc).sender : (d as ApprovalDoc).orgName} · {formatDate(d.createdAt)}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{'sender' in d ? (d as IncomingDoc).sender : 'dept' in d ? (d as InternalDoc).dept : (d as ApprovalDoc).orgName} · {formatDate(d.createdAt)}</p>
                 </div>
                 <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-lg shrink-0">{getStep(d)} 결재</span>
                 <ChevronRight size={14} className="text-gray-300 shrink-0"/>

@@ -1,0 +1,29 @@
+From 07cd372fe1feb86c6905688f958efec199b2c9f8 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Mon, 1 Jun 2026 00:52:06 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20push.ts=20=ED=83=80=EC=9E=85=20=EC=98=A4?=
+ =?UTF-8?q?=EB=A5=98=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/lib/push.ts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/lib/push.ts b/src/lib/push.ts
+index 54a02fd..9d3b021 100644
+--- a/src/lib/push.ts
++++ b/src/lib/push.ts
+@@ -6,7 +6,7 @@ export function urlBase64ToUint8Array(base64String: string) {
+   const padding = '='.repeat((4 - base64String.length % 4) % 4)
+   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+   const rawData = window.atob(base64)
+-  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)))
++  return Uint8Array.from(Array.from(rawData).map(c => c.charCodeAt(0)))
+ }
+ 
+ export async function subscribePush(uid: string): Promise<boolean> {
+-- 
+2.43.0
+

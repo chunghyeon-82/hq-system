@@ -315,3 +315,43 @@ export interface RecipientContact {
 
 // ── 결재선 (발신/수신 구분) ─────────────────────────────
 export type ApprovalLineType = 'outgoing' | 'incoming'
+
+// ── 내부 품의서 ────────────────────────────────────────
+export type InternalDocStatus = 'draft' | 'pending' | 'approved' | 'rejected'
+
+export interface BudgetItem {
+  item:     string   // 항목
+  qty:      number   // 수량
+  unitPrice: number  // 단가
+  amount:   number   // 금액
+  note?:    string   // 비고
+}
+
+export interface InternalDoc {
+  id:           string
+  docType:      'expense' | 'purchase' | 'trip' | 'entertainment' | 'general'
+                // 지출품의 | 구매요청 | 출장품의 | 접대비품의 | 일반품의
+  docNo?:       string
+  title:        string
+  dept:         string        // 부서명
+  purpose:      string        // 목적/사유
+  content:      string        // 상세 내용
+  budgetItems:  BudgetItem[]  // 예산 항목
+  totalAmount:  number        // 합계 금액
+  payMethod?:   string        // 지급방법
+  expectedDate?: string       // 지급예정일
+  effect?:      string        // 기대효과
+  attachments:  { name: string; url: string; size?: number }[]
+
+  // 결재선 (수신자 없음 - 내부 결재만)
+  drafter:      Approver
+  approvers:    Approver[]    // 중간결재자 0~5명
+  finalApprover: Approver     // 최종결재자 (본부장)
+
+  status:       InternalDocStatus
+  authorUid:    string
+  createdAt:    unknown
+  updatedAt?:   unknown
+  approvedAt?:  string
+  rejectedAt?:  string
+}

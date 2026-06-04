@@ -1,0 +1,30 @@
+From dead1eb86807d9227689e2064106edb7f65a3f31 Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 00:58:23 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20approval/new=20=EC=97=AD=ED=95=A0=20?=
+ =?UTF-8?q?=EB=A0=88=EC=9D=B4=EB=B8=94=20=ED=83=80=EC=9E=85=20=EC=98=A4?=
+ =?UTF-8?q?=EB=A5=98=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/approval/new/page.tsx | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/app/approval/new/page.tsx b/src/app/approval/new/page.tsx
+index a75c754..37f56d8 100644
+--- a/src/app/approval/new/page.tsx
++++ b/src/app/approval/new/page.tsx
+@@ -469,7 +469,7 @@ function ApprovalNewPageInner() {
+                           </div>
+                           <div>
+                             <p className="text-sm text-gray-800">{u.name}</p>
+-                            <p className="text-xs text-gray-400">{{'ADMIN':'관리자','HQ_CHIEF':'본부장','HQ_MEMBER':'본부멤버','BIZ_REP':'사업장대표'}[u.role]??u.role}</p>
++                            <p className="text-xs text-gray-400">{ROLE_LABEL[u.role] ?? u.role}</p>
+                           </div>
+                         </button>
+                       ))}
+-- 
+2.43.0
+

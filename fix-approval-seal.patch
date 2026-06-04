@@ -1,0 +1,33 @@
+From 1378a4c70beda5c52d8337898b7b8cfd3b3e379d Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 00:22:07 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20approval/new=20sealOrgName=20=EC=A4=91?=
+ =?UTF-8?q?=EB=B3=B5=20=EC=86=8D=EC=84=B1=20=EC=A0=9C=EA=B1=B0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/approval/new/page.tsx | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/approval/new/page.tsx b/src/app/approval/new/page.tsx
+index 3d8c098..f8b57df 100644
+--- a/src/app/approval/new/page.tsx
++++ b/src/app/approval/new/page.tsx
+@@ -116,10 +116,10 @@ export default function ApprovalNewPage() {
+       const viewerList: Approver[] = viewers.map(v => ({ ...v, status:'waiting' as const }))
+ 
+       await createApprovalDoc({
+-        docNo, title, orgName, sealOrgName, recipient, via, body,
++        docNo, title, orgName, recipient, via, body,
++        sealOrgName: sealOrgName || selectedSeal?.name || '',
+         attachments: attachNames.filter(Boolean).map(n => ({ name:n, url:'' })),
+         sealUrl: selectedSeal?.imageUrl,
+-        sealOrgName: sealOrgName || selectedSeal?.name || '',
+         drafter, approvers:approversList, finalApprover:final, viewers:viewerList,
+         address, zipCode, phone, fax, email:docEmail, homepage,
+         isPublic: isPublic as ApprovalDoc['isPublic'],
+-- 
+2.43.0
+

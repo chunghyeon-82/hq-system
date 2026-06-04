@@ -1,0 +1,40 @@
+From b1719e3fb7aa099a2a3fc07f613003be4b68686a Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Thu, 4 Jun 2026 00:26:16 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20settings=20=EB=8F=84=EC=9E=A5=20?=
+ =?UTF-8?q?=EC=97=85=EB=A1=9C=EB=93=9C=20state=20=EB=88=84=EB=9D=BD=20?=
+ =?UTF-8?q?=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/settings/page.tsx | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/settings/page.tsx b/src/app/settings/page.tsx
+index fe1dc1d..1cac721 100644
+--- a/src/app/settings/page.tsx
++++ b/src/app/settings/page.tsx
+@@ -1,5 +1,5 @@
+ 'use client'
+-import { useEffect, useState } from 'react'
++import { useEffect, useRef, useState } from 'react'
+ import { useRouter } from 'next/navigation'
+ import { uploadImage } from '@/lib/upload'
+ import { updateUserSeal } from '@/lib/db'
+@@ -35,7 +35,10 @@ export default function SettingsPage() {
+   const [newPw2,  setNewPw2]  = useState('')
+   const [showPw,  setShowPw]  = useState(false)
+   const [pwMsg,   setPwMsg]   = useState('')
+-  const [pwError, setPwError] = useState(false)
++  const [pwError,      setPwError]      = useState(false)
++  const [sealPreview,  setSealPreview]  = useState<string>('')
++  const [sealSaving,   setSealSaving]   = useState(false)
++  const sealFileRef = useRef<HTMLInputElement>(null)
+ 
+   useEffect(() => {
+     if (loading) return
+-- 
+2.43.0
+

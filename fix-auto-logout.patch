@@ -1,0 +1,195 @@
+From ff7dcc843e36c944476f79795deccc6f5c732fae Mon Sep 17 00:00:00 2001
+From: HQ Dev <dev@hq-system.app>
+Date: Tue, 2 Jun 2026 05:40:45 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EC=9E=90=EB=8F=99=20=EB=A1=9C=EA=B7=B8?=
+ =?UTF-8?q?=EC=95=84=EC=9B=83=20=EB=B0=A9=EC=A7=80=20-=20auth=20=EC=9E=AC?=
+ =?UTF-8?q?=EC=8B=9C=EB=8F=84,=20loading=20=EC=A4=91=20=EB=A6=AC=EB=8B=A4?=
+ =?UTF-8?q?=EC=9D=B4=EB=A0=89=ED=8A=B8=20=EB=B0=A9=EC=A7=80?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/calendar/page.tsx |  3 ++-
+ src/app/direct/page.tsx   |  3 ++-
+ src/app/notices/page.tsx  |  3 ++-
+ src/app/search/page.tsx   |  3 ++-
+ src/app/settings/page.tsx |  3 ++-
+ src/lib/auth-context.tsx  | 46 ++++++++++++++++++++++++++++++++++-----
+ 6 files changed, 51 insertions(+), 10 deletions(-)
+
+diff --git a/src/app/calendar/page.tsx b/src/app/calendar/page.tsx
+index 9f41c49..a745ff9 100644
+--- a/src/app/calendar/page.tsx
++++ b/src/app/calendar/page.tsx
+@@ -35,7 +35,7 @@ const ROLE_LABEL: Record<string, string> = {
+ }
+ 
+ export default function CalendarPage() {
+-  const { user } = useAuth()
++  const { user, loading } = useAuth()
+   const router   = useRouter()
+ 
+   const [events,   setEvents]   = useState<CalendarEvent[]>([])
+@@ -70,6 +70,7 @@ export default function CalendarPage() {
+   const dragId = useRef<string | null>(null)
+ 
+   useEffect(() => {
++    if (loading) return
+     if (!user) { router.replace('/login'); return }
+     const u1 = listenEvents(user.uid, user.bizId, setEvents)
+     const u2 = listenPendingSharedEvents(user.uid, setPending)
+diff --git a/src/app/direct/page.tsx b/src/app/direct/page.tsx
+index 8341433..5fdc156 100644
+--- a/src/app/direct/page.tsx
++++ b/src/app/direct/page.tsx
+@@ -9,7 +9,7 @@ import { Send, MessageSquare, Lock, ShieldAlert } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+ export default function DirectPage() {
+-  const { user } = useAuth()
++  const { user, loading } = useAuth()
+   const router   = useRouter()
+ 
+   const [allUsers,  setAllUsers]  = useState<AppUser[]>([])
+@@ -35,6 +35,7 @@ export default function DirectPage() {
+   const isBizToBiz    = isBiz && target?.role === 'BIZ_REP'
+ 
+   useEffect(() => {
++    if (loading) return
+     if (!user) { router.replace('/login'); return }
+     if (!isBiz && !isHQ) { router.replace('/dashboard'); return }
+     return listenUsers(setAllUsers)
+diff --git a/src/app/notices/page.tsx b/src/app/notices/page.tsx
+index 2290748..9e1e982 100644
+--- a/src/app/notices/page.tsx
++++ b/src/app/notices/page.tsx
+@@ -9,7 +9,7 @@ import { Megaphone, Plus, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react
+ import clsx from 'clsx'
+ 
+ export default function NoticesPage() {
+-  const { user }   = useAuth()
++  const { user, loading }   = useAuth()
+   const router     = useRouter()
+   const [notices, setNotices]       = useState<Notice[]>([])
+   const [showForm, setShowForm]     = useState(false)
+@@ -37,6 +37,7 @@ export default function NoticesPage() {
+   const prefixes: NoticePrefix[] = user?.role === 'BIZ_REP' ? ['사업장'] : ['본부', '사업장']
+ 
+   useEffect(() => {
++    if (loading) return
+     if (!user) { router.replace('/login'); return }
+     return listenNotices(setNotices)
+   }, [user, router])
+diff --git a/src/app/search/page.tsx b/src/app/search/page.tsx
+index 26db247..b37e2ac 100644
+--- a/src/app/search/page.tsx
++++ b/src/app/search/page.tsx
+@@ -9,7 +9,7 @@ import { Search, X, ChevronRight } from 'lucide-react'
+ import clsx from 'clsx'
+ 
+ export default function SearchPage() {
+-  const { user }  = useAuth()
++  const { user, loading }  = useAuth()
+   const router    = useRouter()
+   const [all,     setAll]     = useState<Message[]>([])
+   const [query,   setQuery]   = useState('')
+@@ -19,6 +19,7 @@ export default function SearchPage() {
+   const isBiz = user?.role === 'BIZ_REP'
+ 
+   useEffect(() => {
++    if (loading) return
+     if (!user) { router.replace('/login'); return }
+     if (isHQ) return listenMessagesForHQ(user.uid, user.role === 'ADMIN', setAll)
+     if (isBiz && user.bizId) return listenMessagesForBiz(user.bizId, user.uid, setAll)
+diff --git a/src/app/settings/page.tsx b/src/app/settings/page.tsx
+index e04f8da..21a1d96 100644
+--- a/src/app/settings/page.tsx
++++ b/src/app/settings/page.tsx
+@@ -14,7 +14,7 @@ import {
+ } from 'lucide-react'
+ 
+ export default function SettingsPage() {
+-  const { user }                   = useAuth()
++  const { user, loading }                   = useAuth()
+   const { settings, updateSettings } = useSettings()
+   const router                     = useRouter()
+ 
+@@ -36,6 +36,7 @@ export default function SettingsPage() {
+   const [pwError, setPwError] = useState(false)
+ 
+   useEffect(() => {
++    if (loading) return
+     if (!user) { router.replace('/login'); return }
+     setName(user.name)
+     getPushPermission().then(setPushPerm)
+diff --git a/src/lib/auth-context.tsx b/src/lib/auth-context.tsx
+index 61c9f60..e9f7a7e 100644
+--- a/src/lib/auth-context.tsx
++++ b/src/lib/auth-context.tsx
+@@ -9,16 +9,51 @@ interface AuthCtx { user: AppUser | null; loading: boolean }
+ const Ctx = createContext<AuthCtx>({ user: null, loading: true })
+ 
+ export function AuthProvider({ children }: { children: ReactNode }) {
+-  const [user, setUser]       = useState<AppUser | null>(null)
++  const [user,    setUser]    = useState<AppUser | null>(null)
+   const [loading, setLoading] = useState(true)
+ 
+   useEffect(() => {
+     return onAuthStateChanged(auth, async (u: User | null) => {
+-      if (u) {
+-        const snap = await getDoc(doc(db, 'users', u.uid))
+-        setUser(snap.exists() ? (snap.data() as AppUser) : null)
+-      } else {
++      if (!u) {
+         setUser(null)
++        setLoading(false)
++        return
++      }
++
++      // Firebase Auth는 유효한데 Firestore 읽기 실패 시 로그아웃 방지
++      // 최대 3번 재시도
++      let retries = 3
++      while (retries > 0) {
++        try {
++          const snap = await getDoc(doc(db, 'users', u.uid))
++          if (snap.exists()) {
++            setUser(snap.data() as AppUser)
++          } else {
++            // Firestore에 유저 문서가 없는 경우 — Firebase Auth 정보로 최소한 설정
++            setUser({
++              uid:   u.uid,
++              email: u.email ?? '',
++              name:  u.displayName ?? u.email ?? '',
++              role:  'ETC',
++            })
++          }
++          break
++        } catch (e) {
++          retries--
++          if (retries === 0) {
++            // 최종 실패 시에도 로그인 상태 유지 (로그아웃 방지)
++            console.warn('Firestore 유저 읽기 실패, 재시도 초과:', e)
++            setUser({
++              uid:   u.uid,
++              email: u.email ?? '',
++              name:  u.displayName ?? u.email ?? '',
++              role:  'ETC',
++            })
++          } else {
++            // 잠시 후 재시도
++            await new Promise(r => setTimeout(r, 1000))
++          }
++        }
+       }
+       setLoading(false)
+     })
+@@ -26,4 +61,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
+ 
+   return <Ctx.Provider value={{ user, loading }}>{children}</Ctx.Provider>
+ }
++
+ export const useAuth = () => useContext(Ctx)
+-- 
+2.43.0
+
