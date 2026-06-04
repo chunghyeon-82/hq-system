@@ -50,6 +50,7 @@ export default function ApprovalDetailPage() {
       doc.approvers.every(a => a.status === 'approved' || a.status === 'submitted'))
   )
   const isAuthor   = doc.authorUid === user?.uid
+  const isHQ       = user && ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
   const isViewer   = doc.viewers?.some(v => v.uid === user?.uid)
   const isApproved = doc.status === 'approved'
 
@@ -162,6 +163,12 @@ export default function ApprovalDetailPage() {
               <button onClick={() => setShowEmail(v=>!v)}
                 className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800">
                 <Mail size={15}/> 이메일 발송
+              </button>
+            )}
+            {isHQ && (
+              <button onClick={() => router.push(`/approval/new?copyFrom=${id}`)}
+                className="flex items-center gap-2 px-4 py-2 border border-primary-200 text-primary-700 rounded-xl text-sm font-medium hover:bg-primary-50 transition-colors">
+                📋 이 양식으로 새 기안
               </button>
             )}
             <button onClick={() => window.print()}

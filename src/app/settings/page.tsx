@@ -82,7 +82,7 @@ export default function SettingsPage() {
     if (!file) return
     setSealSaving(true)
     try {
-      const url = await uploadImage(file, `userSeals/${user.uid}.png`)
+      const url = await uploadImage(file, `userSeals/${user.uid}.png`, true)
       await updateUserSeal(user.uid, url)
       setSealPreview(url)
     } catch (err) {

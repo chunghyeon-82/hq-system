@@ -35,7 +35,7 @@ export default function SealsPage() {
     if (!user || !name.trim() || !file) return
     setSaving(true)
     try {
-      const url = await uploadImage(file, `officialSeals/${user.uid}_${Date.now()}.png`)
+      const url = await uploadImage(file, `officialSeals/${user.uid}_${Date.now()}.png`, true)
       await addOfficialSeal(name.trim(), url, user.uid)
       setName(''); setFile(null); setPreview('')
       if (fileRef.current) fileRef.current.value = ''
