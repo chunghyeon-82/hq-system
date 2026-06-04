@@ -357,17 +357,27 @@ export default function ApprovalDetailPage() {
           </div>
         )}
 
-        {/* 삭제 (기안자+임시저장) */}
+        {/* 임시저장 → 상신 + 삭제 */}
         {isAuthor && doc.status === 'draft' && (
-          <button onClick={async () => {
-            if (!confirm('삭제하시겠습니까?')) return
-            const { deleteApprovalDoc } = await import('@/lib/db')
-            await deleteApprovalDoc(id)
-            router.push('/approval')
-          }}
-            className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 text-red-500 rounded-xl text-sm hover:bg-red-50">
-            <Trash2 size={15}/> 문서 삭제
-          </button>
+          <div className="space-y-2">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+              <span className="text-amber-600 text-sm">⏸ 임시저장된 문서입니다</span>
+              <button
+                onClick={() => router.push(`/approval/new?copyFrom=${id}`)}
+                className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
+                이어 작성 → 상신
+              </button>
+            </div>
+            <button onClick={async () => {
+              if (!confirm('삭제하시겠습니까?')) return
+              const { deleteApprovalDoc } = await import('@/lib/db')
+              await deleteApprovalDoc(id)
+              router.push('/approval')
+            }}
+              className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 text-red-500 rounded-xl text-sm hover:bg-red-50">
+              <Trash2 size={15}/> 문서 삭제
+            </button>
+          </div>
         )}
       </div>
 
