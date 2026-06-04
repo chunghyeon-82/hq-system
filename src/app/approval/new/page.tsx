@@ -116,10 +116,10 @@ export default function ApprovalNewPage() {
       const viewerList: Approver[] = viewers.map(v => ({ ...v, status:'waiting' as const }))
 
       await createApprovalDoc({
-        docNo, title, orgName, sealOrgName, recipient, via, body,
+        docNo, title, orgName, recipient, via, body,
+        sealOrgName: sealOrgName || selectedSeal?.name || '',
         attachments: attachNames.filter(Boolean).map(n => ({ name:n, url:'' })),
         sealUrl: selectedSeal?.imageUrl,
-        sealOrgName: sealOrgName || selectedSeal?.name || '',
         drafter, approvers:approversList, finalApprover:final, viewers:viewerList,
         address, zipCode, phone, fax, email:docEmail, homepage,
         isPublic: isPublic as ApprovalDoc['isPublic'],
