@@ -134,6 +134,11 @@ service cloud.firestore {
     }
 
     // ── 자동 삭제 로그 (스케줄러용) ────────────────────
+    match /officialSeals/{sealId} {
+      allow read: if isSignedIn() && isHQOrAdmin()
+      allow create, update, delete: if isAdmin()
+    }
+
     match /approvals/{docId} {
       allow read: if isSignedIn() && (
         isHQOrAdmin()

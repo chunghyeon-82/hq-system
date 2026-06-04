@@ -11,6 +11,7 @@ export interface AppUser {
   name:         string
   role:         UserRole
   customRole?:  string
+  sealUrl?:    string   // 개인 도장 이미지 URL
   bizId?:       string
   permissions?: UserPermissions
 }
@@ -231,5 +232,14 @@ export interface SavedEmailContact {
   name:      string
   email:     string
   ownerUid:  string
+  createdAt: unknown
+}
+
+// ── 직인 관리 ─────────────────────────────────────────
+export interface OfficialSeal {
+  id:        string
+  name:      string   // 직인 이름 (예: 기획운영본부장)
+  imageUrl:  string   // Firebase Storage URL
+  ownerUid:  string   // 등록한 관리자 uid
   createdAt: unknown
 }

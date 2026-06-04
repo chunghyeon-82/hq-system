@@ -5,9 +5,9 @@ import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
 import {
   listenUsers, listenApprovalTemplates,
-  createApprovalDoc, saveApprovalTemplate
+  createApprovalDoc, saveApprovalTemplate, listenOfficialSeals
 } from '@/lib/db'
-import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver } from '@/types'
+import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal } from '@/types'
 import { Plus, Trash2, X, ChevronRight, Save, FileText } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -56,6 +56,8 @@ export default function ApprovalNewPage() {
   const [homepage,   setHomepage]   = useState('')
   const [isPublic,   setIsPublic]   = useState('공개')
   const [saving,     setSaving]     = useState(false)
+  const [seals,      setSeals]      = useState<OfficialSeal[]>([])
+  const [selectedSeal, setSelectedSeal] = useState<OfficialSeal|null>(null)
 
   const isHQ = user && ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
 
@@ -64,7 +66,8 @@ export default function ApprovalNewPage() {
     if (!user || !isHQ) { router.replace('/dashboard'); return }
     const u1 = listenUsers(setAllUsers)
     const u2 = listenApprovalTemplates(user.uid, setTemplates)
-    return () => { u1(); u2() }
+    const u3 = listenOfficialSeals(setSeals)
+    return () => { u1(); u2(); u3() }
   }, [user, loading, isHQ, router])
 
   const hqUsers = allUsers.filter(u =>
@@ -115,7 +118,8 @@ export default function ApprovalNewPage() {
       await createApprovalDoc({
         docNo, title, orgName, sealOrgName, recipient, via, body,
         attachments: attachNames.filter(Boolean).map(n => ({ name:n, url:'' })),
-        sealUrl: undefined,
+        sealUrl: selectedSeal?.imageUrl,
+        sealOrgName: sealOrgName || selectedSeal?.name || '',
         drafter, approvers:approversList, finalApprover:final, viewers:viewerList,
         address, zipCode, phone, fax, email:docEmail, homepage,
         isPublic: isPublic as ApprovalDoc['isPublic'],
@@ -326,6 +330,33 @@ export default function ApprovalNewPage() {
             <input value={sealOrgName} onChange={e=>setSealOrgName(e.target.value)} placeholder="예: 기획운영본부장"
               className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
           </div>
+
+          {/* 기관 직인 선택 */}
+          {seals.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 block mb-2">기관 직인 선택</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => setSelectedSeal(null)}
+                  className={clsx('flex flex-col items-center gap-1 p-3 border rounded-xl text-xs transition-colors',
+                    !selectedSeal ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50')}>
+                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center text-gray-400 text-lg">✕</div>
+                  <span>없음</span>
+                </button>
+                {seals.map(seal => (
+                  <button key={seal.id}
+                    onClick={() => setSelectedSeal(seal)}
+                    className={clsx('flex flex-col items-center gap-1 p-3 border rounded-xl text-xs transition-colors',
+                      selectedSeal?.id === seal.id ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-500 hover:bg-gray-50')}>
+                    <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center">
+                      <img src={seal.imageUrl} alt={seal.name} className="max-w-full max-h-full object-contain"/>
+                    </div>
+                    <span className="truncate w-full text-center">{seal.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-white border border-gray-200 rounded-2xl p-5">

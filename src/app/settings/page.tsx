@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { uploadImage } from '@/lib/upload'
+import { updateUserSeal } from '@/lib/db'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
 import { useSettings, FontSize } from '@/lib/settings-context'
@@ -71,6 +73,20 @@ export default function SettingsPage() {
   }
 
   // ── 이름 저장 ──────────────────────────────────────
+  const handleSealUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) return
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSealSaving(true)
+    try {
+      const url = await uploadImage(file, `userSeals/${user.uid}.png`)
+      await updateUserSeal(user.uid, url)
+      setSealPreview(url)
+    } catch (err) {
+      console.error(err); alert('업로드 중 오류가 발생했습니다')
+    } finally { setSealSaving(false) }
+  }
+
   const saveName = async () => {
     if (!user || !name.trim()) return
     setSaving(true)

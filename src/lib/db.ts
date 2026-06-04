@@ -7,7 +7,7 @@ import type {
   AppUser, Business, Message, Receipt, Reply,
   MessageStatus, MessageType, MessageCategory,
   Notice, CalendarEvent, MessageTemplate,
-  ApprovalDoc, ApprovalTemplate, SavedEmailContact
+  ApprovalDoc, ApprovalTemplate, SavedEmailContact, OfficialSeal
 } from '@/types'
 
 const now = () => new Date().toISOString()
@@ -428,4 +428,27 @@ export async function saveEmailContact(uid: string, name: string, email: string)
 
 export async function deleteEmailContact(id: string) {
   await deleteDoc(doc(db, 'emailContacts', id))
+}
+
+// ── 기관 직인 관리 (관리자) ──────────────────────────────
+export function listenOfficialSeals(cb: (seals: OfficialSeal[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'officialSeals'), orderBy('createdAt', 'desc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as OfficialSeal)))
+  )
+}
+
+export async function addOfficialSeal(name: string, imageUrl: string, ownerUid: string) {
+  return await addDoc(collection(db, 'officialSeals'), {
+    name, imageUrl, ownerUid, createdAt: serverTimestamp()
+  })
+}
+
+export async function deleteOfficialSeal(id: string) {
+  await deleteDoc(doc(db, 'officialSeals', id))
+}
+
+// 개인 도장 저장 (users 컬렉션의 sealUrl 필드)
+export async function updateUserSeal(uid: string, sealUrl: string) {
+  await updateDoc(doc(db, 'users', uid), { sealUrl })
 }

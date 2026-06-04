@@ -57,11 +57,12 @@ export default function ApprovalDetailPage() {
     if (!user || acting) return
     setActing(true)
     const now = new Date().toISOString()
+    const sealUrl = (user as typeof user & {sealUrl?:string}).sealUrl
     const newApprovers = doc.approvers.map(a =>
-      a.uid === user.uid ? { ...a, status: 'approved' as const, actedAt: now, comment } : a
+      a.uid === user.uid ? { ...a, status: 'approved' as const, actedAt: now, comment, sealUrl } : a
     )
     const finalApprover = doc.finalApprover.uid === user.uid
-      ? { ...doc.finalApprover, status: 'approved' as const, actedAt: now, comment }
+      ? { ...doc.finalApprover, status: 'approved' as const, actedAt: now, comment, sealUrl }
       : doc.finalApprover
 
     const allDone = newApprovers.every(a => a.status === 'approved' || a.status === 'submitted')
@@ -289,7 +290,13 @@ export default function ApprovalDetailPage() {
                   borderRight: i < allApprovers.length-1 ? '0.5px solid #bbb' : 'none',
                 }}>
                   <div style={{fontSize:'8.5pt', fontWeight:700, color:'#333', marginBottom:'2px'}}>{a.role}</div>
-                  <div style={{fontSize:'10pt', fontWeight:700, marginBottom:'2px'}}>{a.name}</div>
+                  <div style={{fontSize:'10pt', fontWeight:700, marginBottom:'2px', position:'relative'}}>
+                    {a.name}
+                    {a.sealUrl && (a.status==='approved'||a.status==='submitted') && (
+                      <img src={a.sealUrl} alt="도장"
+                        style={{position:'absolute', top:'-8px', right:'-8px', width:'32px', height:'32px', opacity:0.85, objectFit:'contain'}}/>
+                    )}
+                  </div>
                   <div style={{fontSize:'7.5pt', color:'#666', lineHeight:'1.4'}}>
                     {a.actedAt ? formatDt(a.actedAt) + (a.status==='submitted'?'상신':a.status==='approved'?'결재':a.status==='rejected'?'반려':'') : '대기'}
                   </div>

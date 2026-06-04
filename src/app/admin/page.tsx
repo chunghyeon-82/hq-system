@@ -194,10 +194,16 @@ export default function AdminPage() {
       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-5">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-500">전체 {users.length}명</p>
-          <button onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 bg-primary-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
-            <UserPlus size={15}/> 계정 추가
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => router.push('/admin/seals')}
+              className="flex items-center gap-2 border border-gray-200 text-gray-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+              🔏 직인 관리
+            </button>
+            <button onClick={() => setShowAdd(true)}
+              className="flex items-center gap-2 bg-primary-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
+              <UserPlus size={15}/> 계정 추가
+            </button>
+          </div>
         </div>
 
         {/* 관리자 */}
