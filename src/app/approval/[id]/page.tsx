@@ -253,9 +253,9 @@ export default function ApprovalDetailPage() {
             <div style={{height:'1px', background:'#ccc', margin:'16px 0'}}/>
 
             {/* 본문 */}
-            <div style={{fontSize:'11pt', lineHeight:'1.9', margin:'20px 0', whiteSpace:'pre-wrap'}}>
-              {doc.body}
-            </div>
+            <div style={{fontSize:'11pt', lineHeight:'1.9', margin:'20px 0'}}
+              dangerouslySetInnerHTML={{__html: doc.body}}
+            />
 
             {/* 붙임 */}
             {doc.attachments?.length > 0 && (

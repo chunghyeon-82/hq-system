@@ -8,7 +8,8 @@ import {
   createApprovalDoc, saveApprovalTemplate, listenOfficialSeals
 } from '@/lib/db'
 import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal } from '@/types'
-import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff } from 'lucide-react'
+import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff, Users } from 'lucide-react'
+import DocEditor from '@/components/DocEditor'
 import clsx from 'clsx'
 
 const ROLE_LABEL: Record<string,string> = {
@@ -23,41 +24,7 @@ const DEFAULT_TEMPLATES = [
   { id:'t5', name:'출장신청서',   body:'1. 출장 목적:\n\n2. 출장 기간:\n\n3. 출장지:\n\n4. 소요 예산: ' },
 ]
 
-// 공문 말머리 레벨 순서
-const HEADING_LEVELS = ['1.','가.','1)','가)','(1)','(가)']
 
-function getNextHeading(currentLine: string): string {
-  for (let i = 0; i < HEADING_LEVELS.length - 1; i++) {
-    if (currentLine.trimStart().startsWith(HEADING_LEVELS[i])) {
-      // 같은 레벨 다음 번호
-      const prefix = HEADING_LEVELS[i]
-      if (/^\d+\./.test(prefix)) {
-        const num = parseInt(currentLine.trim())
-        return `${num + 1}. `
-      }
-      if (/^[가-힣]\./.test(prefix)) {
-        const ch = currentLine.trim()[0]
-        const next = String.fromCharCode(ch.charCodeAt(0) + 1)
-        return `${next}. `
-      }
-      if (/^\d+\)/.test(prefix)) {
-        const num = parseInt(currentLine.trim())
-        return `${num + 1}) `
-      }
-      if (/^[가-힣]\)/.test(prefix)) {
-        const ch = currentLine.trim()[0]
-        const next = String.fromCharCode(ch.charCodeAt(0) + 1)
-        return `${next}) `
-      }
-    }
-  }
-  // 기본: 1. 로 시작
-  if (/^\d+\. /.test(currentLine.trimStart())) {
-    const num = parseInt(currentLine.trimStart())
-    return `${num + 1}. `
-  }
-  return ''
-}
 
 type Step = 'line' | 'write'
 
@@ -74,6 +41,7 @@ function ApprovalNewPageInner() {
   const [seals,     setSeals]     = useState<OfficialSeal[]>([])
   const [showTplPicker, setShowTplPicker] = useState(false)
   const [showSaveTpl,   setShowSaveTpl]   = useState(false)
+  const [showRecipientPicker, setShowRecipientPicker] = useState(false)
   const [showPreview,   setShowPreview]   = useState(true)
   const [tplName,       setTplName]       = useState('')
 
@@ -101,7 +69,6 @@ function ApprovalNewPageInner() {
   const [isPublic,    setIsPublic]    = useState('공개')
   const [saving,      setSaving]      = useState(false)
 
-  const bodyRef = useRef<HTMLTextAreaElement>(null)
   const isHQ = user && ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
 
   useEffect(() => {
@@ -167,33 +134,7 @@ function ApprovalNewPageInner() {
     setTplName(''); setShowSaveTpl(false)
   }
 
-  // 본문 Enter 시 공문 서식 자동화
-  const handleBodyKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key !== 'Enter') return
-    const ta = bodyRef.current
-    if (!ta) return
-    const pos   = ta.selectionStart
-    const lines = body.substring(0, pos).split('\n')
-    const cur   = lines[lines.length - 1]
-    const next  = getNextHeading(cur)
-    if (next) {
-      e.preventDefault()
-      const newBody = body.substring(0, pos) + '\n' + next + body.substring(pos)
-      setBody(newBody)
-      setTimeout(() => {
-        ta.selectionStart = ta.selectionEnd = pos + 1 + next.length
-      }, 0)
-    }
-  }
 
-  // 본문 마지막에 '끝.' 자동 추가 (blur 시)
-  const handleBodyBlur = () => {
-    if (!body.trim()) return
-    const trimmed = body.trimEnd()
-    if (!trimmed.endsWith('끝.') && !trimmed.endsWith('끝. ')) {
-      setBody(trimmed + '  끝.')
-    }
-  }
 
   const handleSubmit = async (isDraft=false) => {
     if (!user) return
@@ -268,9 +209,9 @@ function ApprovalNewPageInner() {
         <span style={{fontWeight:700}}>{title || '제목'}</span>
       </div>
       <div style={{height:'1px', background:'#ccc', margin:'12px 0'}}/>
-      <div style={{whiteSpace:'pre-wrap', marginBottom:'16px', fontSize:'10pt'}}>
-        {body || '본문을 입력하세요'}
-      </div>
+      <div style={{marginBottom:'16px', fontSize:'10pt'}}
+        dangerouslySetInnerHTML={{__html: body || '<p style="color:#aaa">본문을 입력하세요</p>'}}
+      />
       {attachNames.filter(Boolean).length > 0 && (
         <div style={{marginBottom:'16px', fontSize:'9.5pt'}}>
           <span style={{fontWeight:700}}>붙임&nbsp;&nbsp;</span>
@@ -494,11 +435,10 @@ function ApprovalNewPageInner() {
             {/* 입력 필드들 */}
             <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
               {[
-                { label:'조직명 *',  value:orgName,   set:setOrgName,   ph:'예: 총부사업기관 원창' },
-                { label:'수신자 *',  value:recipient, set:setRecipient, ph:'예: 재정부원장' },
-                { label:'(경유)',    value:via,       set:setVia,       ph:'경유자 (선택)' },
-                { label:'문서번호',  value:docNo,     set:setDocNo,     ph:'예: 총부사업기관원창2026-10' },
-                { label:'제목 *',    value:title,     set:setTitle,     ph:'제목을 입력하세요', bold:true },
+                { label:'조직명 *', value:orgName, set:setOrgName, ph:'예: 총부사업기관 원창' },
+                { label:'(경유)',   value:via,     set:setVia,     ph:'경유자 (선택)' },
+                { label:'문서번호', value:docNo,   set:setDocNo,   ph:'예: 총부사업기관원창2026-10' },
+                { label:'제목 *',   value:title,   set:setTitle,   ph:'제목을 입력하세요', bold:true },
               ].map(f => (
                 <div key={f.label}>
                   <label className="text-xs font-medium text-gray-500 block mb-1">{f.label}</label>
@@ -507,20 +447,49 @@ function ApprovalNewPageInner() {
                 </div>
               ))}
 
+              {/* 수신자 - 선택 또는 직접 입력 */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-medium text-gray-500">본문 *</label>
-                  <span className="text-xs text-gray-300">Enter: 다음 항목 자동 생성</span>
+                <label className="text-xs font-medium text-gray-500 block mb-1">수신자 *</label>
+                <div className="relative">
+                  <input value={recipient} onChange={e=>setRecipient(e.target.value)}
+                    placeholder="예: 재정부원장"
+                    onFocus={() => setShowRecipientPicker(true)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
+                  {showRecipientPicker && allUsers.length > 0 && (
+                    <div className="absolute top-full left-0 right-0 z-10 bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto">
+                      <div className="p-2 border-b border-gray-100">
+                        <p className="text-xs text-gray-400">시스템 내 멤버 선택 또는 직접 입력</p>
+                      </div>
+                      {allUsers.map(u => (
+                        <button key={u.uid}
+                          onClick={() => { setRecipient(u.name); setShowRecipientPicker(false) }}
+                          className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 transition-colors text-left">
+                          <div className="w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
+                            {u.name[0]}
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-800">{u.name}</p>
+                            <p className="text-xs text-gray-400">{{'ADMIN':'관리자','HQ_CHIEF':'본부장','HQ_MEMBER':'본부멤버','BIZ_REP':'사업장대표'}[u.role]??u.role}</p>
+                          </div>
+                        </button>
+                      ))}
+                      <button onClick={() => setShowRecipientPicker(false)}
+                        className="w-full py-2 text-xs text-gray-400 hover:bg-gray-50 border-t border-gray-100">
+                        닫기
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <textarea
-                  ref={bodyRef}
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-500 block mb-1">본문 *</label>
+                <DocEditor
                   value={body}
-                  onChange={e=>setBody(e.target.value)}
-                  onKeyDown={handleBodyKeyDown}
-                  onBlur={handleBodyBlur}
-                  placeholder={'1. 본문 내용을 입력하세요\n\n   Enter를 누르면 2. 가 자동으로 생성됩니다'}
-                  rows={10}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none font-mono"/>
+                  onChange={setBody}
+                  placeholder="1. 본문 내용을 입력하세요"
+                  minHeight={280}
+                />
               </div>
 
               <div>
