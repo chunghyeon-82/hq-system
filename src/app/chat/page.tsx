@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context'
 import { listenChatMessages, sendChatMessage, listenUsers } from '@/lib/db'
 import type { ChatMessage } from '@/lib/db'
 import type { AppUser } from '@/types'
-import { Send, Users } from 'lucide-react'
+import { Send, Smile, Users } from 'lucide-react'
 import clsx from 'clsx'
 
 const HQ_ROLES = ['HQ_CHIEF', 'HQ_MEMBER']  // 관리자는 채팅 참여하되 목록에 미노출
@@ -22,6 +22,14 @@ function memberColor(uid: string, members: AppUser[]) {
   return COLORS[idx % COLORS.length] ?? 'bg-gray-500'
 }
 
+const EMOJI_LIST = [
+  '😀','😂','🤣','😊','😍','🥰','😎','🤔','😅','🙏',
+  '👍','👎','👏','🙌','🤝','✌️','🤞','💪','🫡','👀',
+  '❤️','🔥','✅','⭐','🎉','🎊','💯','📌','📢','🔔',
+  '😢','😭','😤','😡','🥺','😴','🤯','😱','🤦','🤷',
+  '🏃','💼','📋','✍️','💡','🔑','📞','📧','🗓️','⏰',
+]
+
 export default function ChatPage() {
   const { user }  = useAuth()
   const router    = useRouter()
@@ -33,6 +41,7 @@ export default function ChatPage() {
   const [showMembers, setShowMembers] = useState(false)
   const bottomRef  = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLTextAreaElement>(null)
+  const [showEmoji, setShowEmoji] = useState(false)
 
   const isHQ = user && HQ_ROLES_ALL.includes(user.role)
 
@@ -222,7 +231,29 @@ export default function ChatPage() {
 
         {/* 입력창 */}
         <div className="bg-white border-t border-gray-200 px-3 py-3 shrink-0">
+          {/* 이모티콘 피커 */}
+          {showEmoji && (
+            <div className="bg-white border border-gray-200 rounded-2xl p-3 mb-2 shadow-lg">
+              <div className="grid grid-cols-10 gap-1">
+                {EMOJI_LIST.map(emoji => (
+                  <button key={emoji}
+                    onClick={() => {
+                      setText(t => t + emoji)
+                      inputRef.current?.focus()
+                    }}
+                    className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 rounded-lg transition-colors">
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex items-end gap-2 bg-gray-100 rounded-2xl px-3 py-2">
+            <button onClick={() => setShowEmoji(v => !v)}
+              className={clsx('shrink-0 mb-0.5 transition-colors',
+                showEmoji ? 'text-primary-500' : 'text-gray-400 hover:text-gray-600')}>
+              <Smile size={20}/>
+            </button>
             <textarea
               ref={inputRef}
               value={text}
