@@ -347,6 +347,40 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* 개인 도장 - 본부멤버 이상 */}
+        {(user.role === 'ADMIN' || user.role === 'HQ_CHIEF' || user.role === 'HQ_MEMBER') && (
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">개인 도장</p>
+              <p className="text-xs text-gray-400 mt-0.5">전자결재 결재란에 사용됩니다</p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              {sealPreview ? (
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center">
+                    <img src={sealPreview} alt="내 도장" className="max-w-full max-h-full object-contain"/>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-1">등록된 도장</p>
+                    <button onClick={() => sealFileRef.current?.click()}
+                      className="text-xs text-primary-600 hover:underline">
+                      {sealSaving ? '업로드 중...' : '변경하기'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => sealFileRef.current?.click()}
+                  disabled={sealSaving}
+                  className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors disabled:opacity-50">
+                  {sealSaving ? '업로드 중...' : '📤 도장 이미지 업로드'}
+                </button>
+              )}
+              <p className="text-xs text-gray-400">PNG 형식, 배경 투명 권장. 업로드 시 흰색 배경 자동 제거됩니다.</p>
+              <input ref={sealFileRef} type="file" accept="image/*" onChange={handleSealUpload} className="hidden"/>
+            </div>
+          </div>
+        )}
+
         {/* 계정 */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
