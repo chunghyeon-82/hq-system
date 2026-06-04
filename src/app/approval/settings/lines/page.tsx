@@ -147,8 +147,7 @@ export default function ApprovalLinesPage() {
             </div>
 
             <div className="flex gap-2">
-              <button onClick={()=>{setShowForm(false);setLineName('');setMidApprovers([]);setFinalApprover(null)}}
-                onClick={()=>{setShowForm(false);setLineName('');setMidApprovers([]);setFinalApprover(null);setEditLine(null)}}
+              <button onClick={()=>{setShowForm(false);setLineName('');setMidApprovers([]);setFinalApprover(null);setEditLine(null)}}
               className="flex-1 py-2.5 border border-gray-200 text-gray-500 rounded-xl text-sm">취소</button>
               <button onClick={handleSave} disabled={saving||!lineName.trim()||!finalApprover}
                 className="flex-1 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50">
