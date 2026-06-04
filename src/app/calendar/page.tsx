@@ -81,6 +81,25 @@ export default function CalendarPage() {
     return () => { u1(); u2(); u3() }
   }, [user, router])
 
+  // 음력 + 공휴일 로딩 (월 변경 시마다 실행)
+  useEffect(() => {
+    const loadCalendarData = async () => {
+      // 공휴일 API
+      const hols = await fetchHolidays(viewYear, viewMonth + 1)
+      setHolidays(hols)
+
+      // 음력 - 해당 월 전체 계산
+      const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
+      const lunars: Record<string, string> = {}
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = `${viewYear}-${String(viewMonth + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+        lunars[key] = getLunarDate(viewYear, viewMonth + 1, d)
+      }
+      setLunarDates(lunars)
+    }
+    loadCalendarData()
+  }, [viewYear, viewMonth])
+
   // ── 달력 계산 ─────────────────────────────────────
   const firstDay = new Date(viewYear, viewMonth, 1).getDay()
   const lastDate = new Date(viewYear, viewMonth + 1, 0).getDate()
