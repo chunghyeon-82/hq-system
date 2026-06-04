@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
@@ -61,7 +61,7 @@ function getNextHeading(currentLine: string): string {
 
 type Step = 'line' | 'write'
 
-export default function ApprovalNewPage() {
+function ApprovalNewPageInner() {
   const { user, loading } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -620,5 +620,17 @@ export default function ApprovalNewPage() {
       </div>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&display=swap');`}</style>
     </AppShell>
+  )
+}
+
+export default function ApprovalNewPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-600 border-t-transparent"/>
+      </div>
+    }>
+      <ApprovalNewPageInner/>
+    </Suspense>
   )
 }
