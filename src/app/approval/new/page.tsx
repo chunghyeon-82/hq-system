@@ -40,6 +40,8 @@ function ApprovalNewPageInner() {
   const [templates, setTemplates] = useState<ApprovalTemplate[]>([])
   const [allDocs,   setAllDocs]   = useState<ApprovalDoc[]>([])
   const [seals,     setSeals]     = useState<OfficialSeal[]>([])
+  const [approvalLines,     setApprovalLines]     = useState<ApprovalLine[]>([])
+  const [recipientContacts, setRecipientContacts] = useState<RecipientContact[]>([])
   const [showTplPicker, setShowTplPicker] = useState(false)
   const [showSaveTpl,   setShowSaveTpl]   = useState(false)
   const [showRecipientPicker, setShowRecipientPicker] = useState(false)
