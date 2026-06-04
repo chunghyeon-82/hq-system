@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { uploadImage } from '@/lib/upload'
 import { updateUserSeal } from '@/lib/db'
@@ -35,7 +35,10 @@ export default function SettingsPage() {
   const [newPw2,  setNewPw2]  = useState('')
   const [showPw,  setShowPw]  = useState(false)
   const [pwMsg,   setPwMsg]   = useState('')
-  const [pwError, setPwError] = useState(false)
+  const [pwError,      setPwError]      = useState(false)
+  const [sealPreview,  setSealPreview]  = useState<string>('')
+  const [sealSaving,   setSealSaving]   = useState(false)
+  const sealFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (loading) return
