@@ -3,8 +3,8 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenApprovalDocs, updateApprovalDoc, listenSavedContacts, saveEmailContact } from '@/lib/db'
-import type { ApprovalDoc, Approver, SavedEmailContact } from '@/types'
+import { listenApprovalDocs, updateApprovalDoc, listenSavedContacts, saveEmailContact, listenRecipientContacts } from '@/lib/db'
+import type { ApprovalDoc, Approver, SavedEmailContact, RecipientContact } from '@/types'
 import { CheckCircle2, XCircle, Mail, Upload, Printer, Plus, X, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -23,6 +23,7 @@ export default function ApprovalDetailPage() {
   const [newEmail, setNewEmail] = useState('')
   const [newName,  setNewName]  = useState('')
   const [sending,  setSending]  = useState(false)
+  const [recipientContacts, setRecipientContacts] = useState<RecipientContact[]>([])
   const [sealFile, setSealFile] = useState<File|null>(null)
   const sealRef = useRef<HTMLInputElement>(null)
 
@@ -31,6 +32,8 @@ export default function ApprovalDetailPage() {
     if (!user) { router.replace('/login'); return }
     const u1 = listenApprovalDocs(user.uid, setDocs)
     const u2 = listenSavedContacts(user.uid, setContacts)
+    const u3 = listenRecipientContacts(user.uid, setRecipientContacts)
+    return () => { u1(); u2(); u3() }
     return () => { u1(); u2() }
   }, [user, loading, router])
 
@@ -191,10 +194,25 @@ export default function ApprovalDetailPage() {
                 </div>
               ))}
             </div>
+            {/* 수신자 연락처 */}
+            {recipientContacts.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 mb-2">수신자 목록</p>
+                <div className="flex flex-wrap gap-2">
+                  {recipientContacts.map(c => (
+                    <button key={c.id} onClick={() => addEmailTo(c.name, c.email)}
+                      disabled={emailTo.some(e=>e.email===c.email)}
+                      className="flex items-center gap-1 px-3 py-1.5 border border-green-200 bg-green-50 rounded-full text-xs text-green-700 hover:bg-green-100 disabled:opacity-40">
+                      <Plus size={10}/> {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* 저장된 연락처 */}
             {contacts.length > 0 && (
               <div>
-                <p className="text-xs text-gray-500 mb-2">저장된 연락처</p>
+                <p className="text-xs text-gray-500 mb-2">이전 발송 연락처</p>
                 <div className="flex flex-wrap gap-2">
                   {contacts.map(c => (
                     <button key={c.id} onClick={() => addEmailTo(c.name, c.email)}

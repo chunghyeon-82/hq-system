@@ -377,10 +377,19 @@ function ApprovalNewPageInner() {
               ))}
             </div>
             <div className="flex flex-wrap gap-2">
+              {/* 시스템 멤버 */}
               {hqUsers.filter(u => !viewers.some(v=>v.uid===u.uid)).map(u => (
                 <button key={u.uid} onClick={() => addViewer(u)}
                   className="flex items-center gap-1 px-3 py-1.5 border border-dashed border-gray-200 rounded-full text-xs text-gray-500 hover:border-gray-400 transition-colors">
                   <Plus size={10}/>{u.name}
+                </button>
+              ))}
+              {/* 저장된 수신자 연락처 - 외부 공람자 */}
+              {recipientContacts.filter(c => !viewers.some(v => v.uid === c.id)).map(c => (
+                <button key={c.id}
+                  onClick={() => setViewers(p => [...p, { uid: c.id, name: c.name, role: c.org ?? '외부' }])}
+                  className="flex items-center gap-1 px-3 py-1.5 border border-dashed border-green-200 rounded-full text-xs text-green-600 hover:border-green-400 transition-colors">
+                  <Plus size={10}/>{c.name} <span className="text-green-400">(외부)</span>
                 </button>
               ))}
             </div>
