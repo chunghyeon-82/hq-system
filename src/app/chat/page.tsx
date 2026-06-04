@@ -22,12 +22,37 @@ function memberColor(uid: string, members: AppUser[]) {
   return COLORS[idx % COLORS.length] ?? 'bg-gray-500'
 }
 
-const EMOJI_LIST = [
-  '😀','😂','🤣','😊','😍','🥰','😎','🤔','😅','🙏',
-  '👍','👎','👏','🙌','🤝','✌️','🤞','💪','🫡','👀',
-  '❤️','🔥','✅','⭐','🎉','🎊','💯','📌','📢','🔔',
-  '😢','😭','😤','😡','🥺','😴','🤯','😱','🤦','🤷',
-  '🏃','💼','📋','✍️','💡','🔑','📞','📧','🗓️','⏰',
+const EMOJI_TABS = [
+  {
+    label: '😊',
+    items: [
+      '😀','😂','🤣','😊','😍','🥰','😎','🤔','😅','😆',
+      '🙏','👍','👎','👏','🙌','🤝','✌️','💪','🫡','👀',
+      '❤️','🔥','✅','⭐','🎉','🎊','💯','📌','😢','😭',
+      '😤','😡','🥺','😴','🤯','😱','🤦','🤷','😏','🤩',
+    ]
+  },
+  {
+    label: '💼',
+    items: [
+      '📋','✍️','💡','🔑','📞','📧','🗓️','⏰','📊','📈',
+      '📉','💰','🏢','🖥️','📱','🖨️','📠','📂','🗂️','📝',
+      '✉️','📬','🔔','🔕','⚠️','✔️','❌','🔍','💼','🏃',
+      '☕','🍱','🚗','🏠','💊','🩺','🛠️','🔧','⚙️','🎯',
+    ]
+  },
+  {
+    label: '💬',
+    items: [
+      '퇴근 ㄱ?','점심 ㄱ?','커피 ㄱ?','회의 ㄱ?',
+      '잠깐요!','ㅋㅋㅋ','ㅎㅎ','ㅠㅠ','ㄴㄴ','ㅇㅇ',
+      '확인했습니다','알겠습니다','감사합니다','수고하세요',
+      '잠시후에요','곧 갑니다','먼저 갑니다','늦을것 같아요',
+      '오늘도 화이팅!','고생많으셨어요','잘 부탁드려요','다음에 봐요',
+      '급합니다!','잠깐 통화될까요?','자리 비웁니다','곧 돌아올게요',
+      '밥은 드셨나요?','오늘 날씨 좋네요','주말 잘 보내세요','월요일 봐요',
+    ]
+  },
 ]
 
 export default function ChatPage() {
@@ -42,6 +67,7 @@ export default function ChatPage() {
   const bottomRef  = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLTextAreaElement>(null)
   const [showEmoji, setShowEmoji] = useState(false)
+  const [emojiTab,   setEmojiTab]   = useState(0)
 
   const isHQ = user && HQ_ROLES_ALL.includes(user.role)
 
@@ -233,16 +259,36 @@ export default function ChatPage() {
         <div className="bg-white border-t border-gray-200 px-3 py-3 shrink-0">
           {/* 이모티콘 피커 */}
           {showEmoji && (
-            <div className="bg-white border border-gray-200 rounded-2xl p-3 mb-2 shadow-lg">
-              <div className="grid grid-cols-10 gap-1">
-                {EMOJI_LIST.map(emoji => (
-                  <button key={emoji}
+            <div className="bg-white border border-gray-200 rounded-2xl mb-2 shadow-lg overflow-hidden">
+              {/* 탭 */}
+              <div className="flex border-b border-gray-100">
+                {EMOJI_TABS.map((tab, i) => (
+                  <button key={i} onClick={() => setEmojiTab(i)}
+                    className={clsx('flex-1 py-2 text-sm font-medium transition-colors',
+                      emojiTab === i ? 'bg-primary-50 text-primary-700 border-b-2 border-primary-500' : 'text-gray-500 hover:bg-gray-50')}>
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              {/* 아이템 */}
+              <div className={clsx(
+                'p-2',
+                emojiTab === 2 ? 'grid grid-cols-2 gap-1' : 'grid grid-cols-10 gap-1'
+              )}>
+                {EMOJI_TABS[emojiTab].items.map(item => (
+                  <button key={item}
                     onClick={() => {
-                      setText(t => t + emoji)
-                      inputRef.current?.focus()
+                      setText(t => t + (emojiTab === 2 ? item : item))
+                      if (emojiTab !== 2) inputRef.current?.focus()
+                      else setShowEmoji(false)
                     }}
-                    className="w-8 h-8 flex items-center justify-center text-lg hover:bg-gray-100 rounded-lg transition-colors">
-                    {emoji}
+                    className={clsx(
+                      'flex items-center justify-center hover:bg-gray-100 rounded-lg transition-colors',
+                      emojiTab === 2
+                        ? 'text-xs text-gray-700 px-2 py-2 font-medium'
+                        : 'w-8 h-8 text-lg'
+                    )}>
+                    {item}
                   </button>
                 ))}
               </div>
