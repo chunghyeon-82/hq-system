@@ -126,6 +126,8 @@ export default function ApprovalDetailPage() {
           html: `<p>${doc.orgName}</p><p>제목: ${doc.title}</p><p>${doc.body.replace(/\n/g,'<br/>')}</p>`,
         }),
       })
+      // 발송 완료 처리
+      await updateApprovalDoc(id, { isSent: true, sentAt: new Date().toISOString() })
       alert('이메일이 발송됐습니다')
       setShowEmail(false)
     } catch(e) {
@@ -274,6 +276,20 @@ export default function ApprovalDetailPage() {
             <div style={{fontSize:'11pt', lineHeight:'1.9', margin:'20px 0'}}
               dangerouslySetInnerHTML={{__html: doc.body}}
             />
+
+            {/* 첨부파일 */}
+            {doc.attachments?.filter(a => a.url).length > 0 && (
+              <div style={{marginTop:'12px', padding:'12px', background:'#f8f9fa', borderRadius:'8px'}}>
+                <p style={{fontSize:'10pt', fontWeight:700, marginBottom:'8px'}}>📎 첨부파일</p>
+                {doc.attachments.filter(a => a.url).map((a, i) => (
+                  <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                    style={{display:'flex', alignItems:'center', gap:'8px', padding:'4px 0', fontSize:'10pt', color:'#1a56db', textDecoration:'none'}}>
+                    📄 {a.name}
+                    {a.size && <span style={{fontSize:'9pt', color:'#888'}}>({(a.size/1024).toFixed(0)}KB)</span>}
+                  </a>
+                ))}
+              </div>
+            )}
 
             {/* 붙임 */}
             {doc.attachments?.length > 0 && (

@@ -203,12 +203,14 @@ export interface ApprovalDoc {
 
   // 상태
   status:       ApprovalStatus
-  currentStep:  number        // 현재 결재 단계 (0: 기안자, 1~: 중간결재자, 999: 최종)
+  currentStep:  number
   authorUid:    string
   createdAt:    unknown
   updatedAt?:   unknown
-  approvedAt?:  string        // 최종 승인 시각
-  rejectedAt?:  string        // 반려 시각
+  approvedAt?:  string
+  rejectedAt?:  string
+  sentAt?:      string
+  isSent?:      boolean
 }
 
 export interface ApprovalTemplate {

@@ -11,6 +11,8 @@ import {
 import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal, ApprovalLine, RecipientContact } from '@/types'
 import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff, Users } from 'lucide-react'
 import DocEditor from '@/components/DocEditor'
+import { storage } from '@/lib/firebase'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import clsx from 'clsx'
 
 const ROLE_LABEL: Record<string,string> = {
@@ -145,6 +147,11 @@ function ApprovalNewPageInner() {
     setShowTplPicker(false)
   }
 
+  const bodyRef     = useRef<HTMLTextAreaElement>(null)
+  const attachRef   = useRef<HTMLInputElement>(null)
+  const [attachFiles, setAttachFiles] = useState<{name:string; url:string; size:number}[]>([])
+  const [uploading,   setUploading]   = useState(false)
+
   const handleSaveTpl = async () => {
     if (!user || !tplName.trim()) return
     await saveApprovalTemplate({ name:tplName.trim(), orgName, sealOrgName, body, address, zipCode, phone, fax, email:docEmail, homepage, ownerUid:user.uid })
@@ -152,6 +159,47 @@ function ApprovalNewPageInner() {
   }
 
 
+
+  const handleAttachFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!user) return
+    const files = Array.from(e.target.files ?? []) as File[]
+    if (attachFiles.length + files.length > 10) { alert('첨부파일은 최대 10개까지 가능합니다'); return }
+    setUploading(true)
+    try {
+      const newAttachments = await Promise.all(files.map(async (f: File) => {
+        // 이미지는 압축, 그 외는 그대로
+        let uploadFile = f
+        const isImage = f.type.startsWith('image/')
+        if (isImage && f.size > 500 * 1024) {
+          uploadFile = await compressAttachment(f)
+        }
+        const maxSize = 10 * 1024 * 1024 // 10MB
+        if (uploadFile.size > maxSize) { alert(`${f.name} 파일이 너무 큽니다 (최대 10MB)`); return null }
+        const path = `attachments/${user.uid}/${Date.now()}_${f.name}`
+        const sr = storageRef(storage, path)
+        await uploadBytes(sr, uploadFile)
+        const url = await getDownloadURL(sr)
+        return { name: f.name, url, size: uploadFile.size }
+      }))
+      const valid = newAttachments.filter((a): a is {name:string;url:string;size:number} => a !== null)
+      setAttachFiles(prev => [...prev, ...valid])
+    } catch(err) { console.error(err); alert('업로드 중 오류가 발생했습니다') }
+    finally { setUploading(false); if (attachRef.current) attachRef.current.value = '' }
+  }
+
+  const compressAttachment = (file: File): Promise<File> => new Promise(resolve => {
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')!
+    const img = new Image()
+    img.onload = () => {
+      const MAX = 1200
+      const ratio = Math.min(MAX/img.width, MAX/img.height, 1)
+      canvas.width = img.width * ratio; canvas.height = img.height * ratio
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+      canvas.toBlob(blob => resolve(new File([blob!], file.name, {type:'image/jpeg'})), 'image/jpeg', 0.8)
+    }
+    img.src = URL.createObjectURL(file)
+  })
 
   const handleSubmit = async (isDraft=false) => {
     if (!user) return
@@ -171,7 +219,10 @@ function ApprovalNewPageInner() {
         sealOrgName: sealOrgName || selectedSeal?.name || '',
         sealUrl: selectedSeal?.imageUrl,
         recipient, via, body,
-        attachments: attachNames.filter(Boolean).map(n => ({ name:n, url:'' })),
+        attachments: [
+          ...attachNames.filter(Boolean).map(n => ({ name:n, url:'' })),
+          ...attachFiles,
+        ],
         drafter, approvers:approversList, finalApprover:final, viewers:viewerList,
         address, zipCode, phone, fax, email:docEmail, homepage,
         isPublic: isPublic as ApprovalDoc['isPublic'],
@@ -541,18 +592,33 @@ function ApprovalNewPageInner() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-medium text-gray-500">붙임</label>
-                  <button onClick={() => setAttachNames(p=>[...p,''])} className="text-xs text-primary-600 flex items-center gap-1"><Plus size={10}/> 추가</button>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-gray-500">붙임 <span className="text-gray-300">({attachFiles.length + attachNames.filter(Boolean).length}/10)</span></label>
+                  <div className="flex gap-2">
+                    <button onClick={() => { if(attachFiles.length + attachNames.filter(Boolean).length >= 10){alert('최대 10개');return}; setAttachNames(p=>[...p,'']) }}
+                      className="text-xs text-gray-500 flex items-center gap-1 hover:text-gray-700"><Plus size={10}/> 이름 입력</button>
+                    <button onClick={() => attachRef.current?.click()} disabled={uploading || attachFiles.length + attachNames.filter(Boolean).length >= 10}
+                      className="text-xs text-primary-600 flex items-center gap-1 hover:text-primary-800 disabled:opacity-40"><Plus size={10}/> 파일 첨부</button>
+                  </div>
                 </div>
+                <input ref={attachRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.bmp,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onChange={handleAttachFiles} className="hidden"/>
+                {uploading && <p className="text-xs text-primary-500 mb-1">📎 업로드 중...</p>}
                 {attachNames.map((n,i) => (
-                  <div key={i} className="flex gap-2 mb-1">
+                  <div key={`n${i}`} className="flex gap-2 mb-1">
                     <input value={n} onChange={e=>setAttachNames(p=>p.map((x,j)=>j===i?e.target.value:x))}
                       placeholder={`${i+1}. 파일명`}
                       className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary-400"/>
                     <button onClick={() => setAttachNames(p=>p.filter((_,j)=>j!==i))}><Trash2 size={13} className="text-gray-300 hover:text-red-400"/></button>
                   </div>
                 ))}
+                {attachFiles.map((f,i) => (
+                  <div key={`f${i}`} className="flex items-center gap-2 mb-1 px-3 py-2 bg-blue-50 border border-blue-100 rounded-lg">
+                    <span className="text-xs text-blue-700 flex-1 truncate">📎 {f.name}</span>
+                    <span className="text-xs text-gray-400">{(f.size/1024).toFixed(0)}KB</span>
+                    <button onClick={() => setAttachFiles(p=>p.filter((_,j)=>j!==i))}><Trash2 size={12} className="text-gray-300 hover:text-red-400"/></button>
+                  </div>
+                ))}
+                <p className="text-xs text-gray-400 mt-1">PDF, JPG, BMP, HWP, HWPX 등 · 최대 10개 · 이미지 자동 압축</p>
               </div>
 
               <div>

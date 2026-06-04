@@ -501,6 +501,10 @@ export async function deleteApprovalLine(id: string) {
   await deleteDoc(doc(db, 'approvalLines', id))
 }
 
+export async function updateApprovalLine(id: string, data: Partial<import('@/types').ApprovalLine>) {
+  await updateDoc(doc(db, 'approvalLines', id), { ...data })
+}
+
 // ── 하단 발신 정보 ─────────────────────────────────────
 export async function saveFooterInfo(uid: string, info: FooterInfo) {
   await setDoc(doc(db, 'userSettings', uid), { footerInfo: info }, { merge: true })

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ApprovalShell from '@/components/ApprovalShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenUsers, listenApprovalLines, saveApprovalLine, deleteApprovalLine } from '@/lib/db'
+import { listenUsers, listenApprovalLines, saveApprovalLine, deleteApprovalLine, updateApprovalLine } from '@/lib/db'
 import type { AppUser, ApprovalLine, ApprovalLineType } from '@/types'
 import { Plus, Trash2, X, Bookmark, FilePlus, FileInput } from 'lucide-react'
 import clsx from 'clsx'
@@ -22,7 +22,8 @@ export default function ApprovalLinesPage() {
   const [lineName,  setLineName]  = useState('')
   const [midApprovers,  setMidApprovers]  = useState<{uid:string;name:string;role:string}[]>([])
   const [finalApprover, setFinalApprover] = useState<{uid:string;name:string;role:string}|null>(null)
-  const [saving, setSaving] = useState(false)
+  const [saving,    setSaving]    = useState(false)
+  const [editLine,  setEditLine]   = useState<ApprovalLine|null>(null)
 
   const isHQ = user && ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
   useEffect(() => {
@@ -44,7 +45,12 @@ export default function ApprovalLinesPage() {
     if (!user || !lineName.trim() || !finalApprover) { alert('이름과 최종결재자를 입력해주세요'); return }
     if (!canAdd) { alert(`${activeTab === 'outgoing' ? '발신' : '수신'}용 결재선은 최대 3개까지 저장할 수 있습니다`); return }
     setSaving(true)
-    await saveApprovalLine({ name:lineName.trim(), lineType:activeTab, approvers:midApprovers, finalApprover, ownerUid:user.uid })
+    if (editLine) {
+      await updateApprovalLine(editLine.id, { name:lineName.trim(), approvers:midApprovers, finalApprover })
+      setEditLine(null)
+    } else {
+      await saveApprovalLine({ name:lineName.trim(), lineType:activeTab, approvers:midApprovers, finalApprover, ownerUid:user.uid })
+    }
     setLineName(''); setMidApprovers([]); setFinalApprover(null); setShowForm(false); setSaving(false)
   }
 
@@ -85,7 +91,7 @@ export default function ApprovalLinesPage() {
         {showForm && (
           <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-4">
             <h3 className="font-semibold text-sm text-gray-900">
-              {activeTab==='outgoing' ? '📤 발신용' : '📥 수신용'} 결재선 추가
+              {editLine ? '✏️ 결재선 수정' : (activeTab==='outgoing' ? '📤 발신용' : '📥 수신용') + ' 결재선 추가'}
             </h3>
             <div>
               <label className="text-xs font-medium text-gray-500 block mb-1.5">결재선 이름 *</label>
@@ -142,10 +148,11 @@ export default function ApprovalLinesPage() {
 
             <div className="flex gap-2">
               <button onClick={()=>{setShowForm(false);setLineName('');setMidApprovers([]);setFinalApprover(null)}}
-                className="flex-1 py-2.5 border border-gray-200 text-gray-500 rounded-xl text-sm">취소</button>
+                onClick={()=>{setShowForm(false);setLineName('');setMidApprovers([]);setFinalApprover(null);setEditLine(null)}}
+              className="flex-1 py-2.5 border border-gray-200 text-gray-500 rounded-xl text-sm">취소</button>
               <button onClick={handleSave} disabled={saving||!lineName.trim()||!finalApprover}
                 className="flex-1 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50">
-                {saving ? '저장 중...' : '저장'}
+                {saving ? '저장 중...' : editLine ? '수정 완료' : '저장'}
               </button>
             </div>
           </div>
@@ -161,10 +168,22 @@ export default function ApprovalLinesPage() {
                     <Bookmark size={14} className="text-primary-500"/>
                     <span className="font-semibold text-gray-900 text-sm">{line.name}</span>
                   </div>
-                  <button onClick={async()=>{if(!confirm(`"${line.name}" 삭제?`))return;await deleteApprovalLine(line.id)}}
-                    className="text-gray-300 hover:text-red-400 transition-colors">
-                    <Trash2 size={15}/>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => {
+                      setLineName(line.name)
+                      setMidApprovers(line.approvers)
+                      setFinalApprover(line.finalApprover)
+                      setEditLine(line)
+                      setShowForm(true)
+                    }}
+                      className="flex items-center gap-1 px-3 py-1.5 border border-blue-200 text-blue-500 rounded-lg text-xs hover:bg-blue-50 transition-colors">
+                      ✏️ 수정
+                    </button>
+                    <button onClick={async()=>{if(!confirm(`"${line.name}" 삭제?`))return;await deleteApprovalLine(line.id)}}
+                      className="flex items-center gap-1 px-3 py-1.5 border border-red-200 text-red-500 rounded-lg text-xs hover:bg-red-50 transition-colors font-medium">
+                      🗑 삭제
+                    </button>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap text-xs">
                   <span className="bg-primary-50 text-primary-700 px-2 py-1 rounded-full">{user?.name} ({activeTab==='outgoing'?'기안자':'접수자'})</span>

@@ -30,10 +30,11 @@ const MENU: MenuItem[] = [
     label: '진행 상황',
     icon: Clock,
     children: [
-      { label: '결재 대기',      path: '/approval/status/pending' },
-      { label: '결재 진행상황',  path: '/approval/status/progress' },
-      { label: '완료/반려 문서', path: '/approval/status/done' },
-      { label: '공람 문서',      path: '/approval/status/viewer' },
+      { label: '결재 대기',    path: '/approval/status/pending' },
+      { label: '결재 진행상황',path: '/approval/status/progress' },
+      { label: '완료 문서',    path: '/approval/status/done' },
+      { label: '반려 문서',    path: '/approval/status/rejected' },
+      { label: '공람 문서',    path: '/approval/status/viewer' },
     ]
   },
   {
