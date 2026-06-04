@@ -5,7 +5,8 @@ import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
 import {
   listenUsers, listenApprovalTemplates, listenApprovalDocs,
-  createApprovalDoc, saveApprovalTemplate, listenOfficialSeals
+  createApprovalDoc, saveApprovalTemplate, listenOfficialSeals,
+  listenApprovalLines, listenRecipientContacts, getFooterInfo
 } from '@/lib/db'
 import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal, ApprovalLine, RecipientContact } from '@/types'
 import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff, Users } from 'lucide-react'
