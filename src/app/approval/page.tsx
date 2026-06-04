@@ -62,7 +62,7 @@ export default function ApprovalPage() {
   }
 
   return (
-    <AppShell title="품의서">
+    <AppShell title="전자결재">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
 
         {/* 상단 버튼 */}

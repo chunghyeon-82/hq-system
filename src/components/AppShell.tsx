@@ -3,8 +3,8 @@ import { ReactNode, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { signOut } from 'firebase/auth'
-import { listenMessagesForHQ, listenMessagesForBiz, listenNotices, listenChatMessages, listenEvents } from '@/lib/db'
-import type { Message, Notice, CalendarEvent } from '@/types'
+import { listenMessagesForHQ, listenMessagesForBiz, listenNotices, listenChatMessages, listenEvents, listenApprovalDocs } from '@/lib/db'
+import type { Message, Notice, CalendarEvent, ApprovalDoc } from '@/types'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/auth-context'
 import { useSettings } from '@/lib/settings-context'
@@ -34,6 +34,7 @@ export default function AppShell({ children, title, back }: Props) {
   const [unreadCount,  setUnreadCount]  = useState(0)
   const [unreadDirect, setUnreadDirect] = useState(0)
   const [unreadChat,   setUnreadChat]   = useState(0)
+  const [unreadApproval, setUnreadApproval] = useState(0)
   const [unreadNotice, setUnreadNotice] = useState(0)
   const [unreadCal,    setUnreadCal]    = useState(0)
   const [lastSeenChat, setLastSeenChat] = useState<string>(() =>
@@ -93,6 +94,24 @@ export default function AppShell({ children, title, back }: Props) {
     return 0
   }
 
+  // 전자결재 대기 카운트
+  useEffect(() => {
+    if (!user || !isHQ) return
+    return listenApprovalDocs(user.uid, (docs: ApprovalDoc[]) => {
+      const waiting = docs.filter(d =>
+        d.status === 'pending' && (
+          d.approvers?.some(a => a.uid === user.uid && a.status === 'waiting' &&
+            [...(d.approvers ?? [])].slice(0, d.approvers?.findIndex(x => x.uid === a.uid) ?? 0)
+              .every(x => x.status === 'submitted' || x.status === 'approved')
+          ) ||
+          (d.finalApprover?.uid === user.uid && d.finalApprover?.status === 'waiting' &&
+            (d.approvers ?? []).every(a => a.status === 'approved' || a.status === 'submitted'))
+        )
+      ).length
+      setUnreadApproval(waiting)
+    })
+  }, [user, isHQ])
+
   // 운영본부 채팅 미읽음
   useEffect(() => {
     if (!user || !isHQ) return
@@ -134,7 +153,7 @@ export default function AppShell({ children, title, back }: Props) {
     { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ,          badge: unreadCount,  group: '업무' },
     { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast,  badge: 0,            group: '업무' },
     { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true,          badge: unreadNotice, group: '업무' },
-    { href: '/approval',   label: '품의서',       icon: ClipboardList,   show: isHQ,          badge: 0,            group: '업무' },
+    { href: '/approval',   label: '전자결재',      icon: ClipboardList,   show: isHQ,          badge: unreadApproval, group: '업무' },
     { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ,          badge: unreadChat,   group: '메시지' },
     { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true,          badge: unreadDirect, group: '메시지' },
     { href: '/search',     label: '메시지 검색',  icon: Search,          show: true,          badge: 0,            group: '메시지' },
@@ -224,6 +243,7 @@ export default function AppShell({ children, title, back }: Props) {
                     setOpen(false)
                     const ms = Date.now().toString()
                     if (href === '/chat')    { localStorage.setItem('lastSeenChat',   ms); setLastSeenChat(ms);   setUnreadChat(0) }
+                if (href === '/approval') { setUnreadApproval(0) }
                     if (href === '/notices') { localStorage.setItem('lastSeenNotice', ms); setLastSeenNotice(ms); setUnreadNotice(0) }
                     if (href === '/calendar'){ localStorage.setItem('lastSeenCal',    ms); setLastSeenCal(ms);    setUnreadCal(0) }
                     if (href === '/direct')  { setUnreadDirect(0) }
