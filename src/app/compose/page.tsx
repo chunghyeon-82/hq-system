@@ -75,7 +75,7 @@ function ComposeContent() {
   const handleSend = async () => {
     if (!user || !title.trim() || !body.trim() || selected.size === 0) return
     setSending(true)
-    const receipts: Receipt[] = Array.from(selected).map(bizId => ({
+    const receipts: Receipt[] = Array.from(selected).map((bizId: string) => ({
       bizId,
       bizName: businesses.find(b => b.id === bizId)?.name ?? bizId,
       status: 'pending' as const,
