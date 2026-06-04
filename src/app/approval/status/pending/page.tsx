@@ -24,7 +24,7 @@ export default function PendingPage() {
     return () => { u1(); u2(); u3() }
   }, [user, loading, router])
 
-  const isMyTurn = (d: ApprovalDoc | IncomingDoc) => {
+  const isMyTurn = (d: ApprovalDoc | IncomingDoc | InternalDoc) => {
     if (d.status !== 'pending') return false
     const apprs = d.approvers ?? []
     const myIdx = apprs.findIndex(a => a.uid === user?.uid)

@@ -34,7 +34,7 @@ export default function RejectedPage() {
   }
 
   // 반려 사유 찾기
-  const getRejectReason = (d: ApprovalDoc | IncomingDoc) => {
+  const getRejectReason = (d: ApprovalDoc | IncomingDoc | InternalDoc) => {
     const allApprovers = [
       ...( d.approvers ?? []),
       d.finalApprover,

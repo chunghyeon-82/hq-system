@@ -32,7 +32,7 @@ export default function ProgressPage() {
   const formatDate = (d: unknown) => {
     try { return (d as {toDate?:()=>Date}).toDate?.()?.toLocaleDateString('ko-KR',{month:'2-digit',day:'2-digit'}) ?? '' } catch { return '' }
   }
-  const getStep = (d: ApprovalDoc | IncomingDoc) => {
+  const getStep = (d: ApprovalDoc | IncomingDoc | InternalDoc) => {
     const all = ['receiver' in d ? d.receiver : (d as ApprovalDoc).drafter, ...d.approvers, d.finalApprover]
     const done = all.filter(a => a.status === 'approved' || a.status === 'submitted').length
     return `${done}/${all.length}`
