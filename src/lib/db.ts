@@ -7,7 +7,8 @@ import type {
   AppUser, Business, Message, Receipt, Reply,
   MessageStatus, MessageType, MessageCategory,
   Notice, CalendarEvent, MessageTemplate,
-  ApprovalDoc, ApprovalTemplate, SavedEmailContact, OfficialSeal
+  ApprovalDoc, ApprovalTemplate, SavedEmailContact, OfficialSeal,
+  IncomingDoc, ApprovalLine
 } from '@/types'
 
 const now = () => new Date().toISOString()
@@ -451,4 +452,51 @@ export async function deleteOfficialSeal(id: string) {
 // 개인 도장 저장 (users 컬렉션의 sealUrl 필드)
 export async function updateUserSeal(uid: string, sealUrl: string) {
   await updateDoc(doc(db, 'users', uid), { sealUrl })
+}
+
+// ── 공문 접수 ─────────────────────────────────────────
+export function listenIncomingDocs(uid: string, cb: (docs: IncomingDoc[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'incomingDocs'), orderBy('createdAt', 'desc')),
+    snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as IncomingDoc))
+      cb(all.filter(d =>
+        d.authorUid === uid ||
+        d.approvers?.some(a => a.uid === uid) ||
+        d.finalApprover?.uid === uid
+      ))
+    }
+  )
+}
+
+export async function createIncomingDoc(data: Omit<IncomingDoc, 'id' | 'createdAt'>) {
+  return await addDoc(collection(db, 'incomingDocs'), {
+    ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  })
+}
+
+export async function updateIncomingDoc(id: string, data: Partial<IncomingDoc>) {
+  await updateDoc(doc(db, 'incomingDocs', id), { ...data, updatedAt: serverTimestamp() })
+}
+
+export async function deleteIncomingDoc(id: string) {
+  await deleteDoc(doc(db, 'incomingDocs', id))
+}
+
+// ── 결재선 관리 ───────────────────────────────────────
+export function listenApprovalLines(uid: string, cb: (lines: ApprovalLine[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'approvalLines'), where('ownerUid', '==', uid)),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalLine)))
+  )
+}
+
+export async function saveApprovalLine(data: Omit<ApprovalLine, 'id' | 'createdAt'>) {
+  return await addDoc(collection(db, 'approvalLines'), {
+    ...data, createdAt: serverTimestamp(),
+  })
+}
+
+export async function deleteApprovalLine(id: string) {
+  await deleteDoc(doc(db, 'approvalLines', id))
 }

@@ -243,3 +243,47 @@ export interface OfficialSeal {
   ownerUid:  string   // 등록한 관리자 uid
   createdAt: unknown
 }
+
+// ── 공문 접수 ─────────────────────────────────────────
+export interface IncomingDoc {
+  id:           string
+  docNo:        string        // 문서번호
+  title:        string        // 제목
+  sender:       string        // 발신기관
+  receivedAt:   string        // 수신일자 (YYYY-MM-DD)
+  dueDate?:     string        // 처리기한 (YYYY-MM-DD)
+  hasDueDate:   boolean       // 처리기한 여부
+  pdfUrl?:      string        // 첨부 PDF URL
+  pdfName?:     string        // PDF 파일명
+  memo?:        string        // 비고
+
+  // 결재선
+  receiver:     Approver      // 접수자 (본인)
+  approvers:    Approver[]    // 검토자 0~3명
+  finalApprover: Approver     // 최종 결재자
+
+  status:       ApprovalStatus
+  authorUid:    string
+  createdAt:    unknown
+  updatedAt?:   unknown
+  approvedAt?:  string
+  rejectedAt?:  string
+}
+
+// ── 결재선 관리 ───────────────────────────────────────
+export interface ApprovalLine {
+  id:        string
+  name:      string           // 결재선 이름 (예: 일반결재)
+  approvers: {
+    uid:  string
+    name: string
+    role: string
+  }[]
+  finalApprover: {
+    uid:  string
+    name: string
+    role: string
+  }
+  ownerUid:  string
+  createdAt: unknown
+}

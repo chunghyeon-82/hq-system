@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenApprovalDocs, deleteApprovalDoc } from '@/lib/db'
-import type { ApprovalDoc } from '@/types'
-import { Plus, FileText, ChevronRight, Clock, Copy } from 'lucide-react'
+import { listenApprovalDocs, deleteApprovalDoc, listenIncomingDocs } from '@/lib/db'
+import type { ApprovalDoc, IncomingDoc } from '@/types'
+import { Plus, FileText, ChevronRight, Clock, Copy, Inbox } from 'lucide-react'
 import clsx from 'clsx'
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -15,12 +15,13 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   rejected: { label: '반려',     color: 'bg-red-100 text-red-700' },
 }
 
-type TabType = 'mine' | 'pending' | 'viewer'
+type TabType = 'mine' | 'pending' | 'incoming' | 'viewer'
 
 export default function ApprovalPage() {
   const { user, loading } = useAuth()
   const router = useRouter()
-  const [docs, setDocs] = useState<ApprovalDoc[]>([])
+  const [docs,    setDocs]    = useState<ApprovalDoc[]>([])
+  const [incoming, setIncoming] = useState<IncomingDoc[]>([])
   const [tab,  setTab]  = useState<TabType>('mine')
 
   useEffect(() => {
@@ -28,7 +29,9 @@ export default function ApprovalPage() {
     if (!user) { router.replace('/login'); return }
     const isHQ = ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
     if (!isHQ) { router.replace('/dashboard'); return }
-    return listenApprovalDocs(user.uid, setDocs)
+    const u1 = listenApprovalDocs(user.uid, setDocs)
+    const u2 = listenIncomingDocs(user.uid, setIncoming)
+    return () => { u1(); u2() }
   }, [user, loading, router])
 
   if (loading) return (
@@ -80,11 +83,12 @@ export default function ApprovalPage() {
 
         {/* 상단 탭 + 기안 버튼 */}
         <div className="flex items-center justify-between">
-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 flex-wrap">
             {([
-              { key: 'mine',    label: `내 문서 ${myDocs.length}` },
-              { key: 'pending', label: `결재 대기 ${pendingDocs.length}`, badge: pendingDocs.length > 0 },
-              { key: 'viewer',  label: `공람 ${viewerDocs.length}` },
+              { key: 'mine',     label: `내 문서 ${myDocs.length}` },
+              { key: 'pending',  label: `결재 대기 ${pendingDocs.length}`, badge: pendingDocs.length > 0 },
+              { key: 'incoming', label: `공문 접수 ${incoming.length}` },
+              { key: 'viewer',   label: `공람 ${viewerDocs.length}` },
             ] as { key: TabType; label: string; badge?: boolean }[]).map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
                 className={clsx('px-4 py-2 rounded-lg text-sm font-medium transition-colors relative',
@@ -96,10 +100,16 @@ export default function ApprovalPage() {
               </button>
             ))}
           </div>
-          <button onClick={() => router.push('/approval/new')}
-            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
-            <Plus size={16}/> 기안 작성
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => router.push('/approval/incoming/new')}
+              className="flex items-center gap-2 border border-primary-300 text-primary-700 px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-50 transition-colors">
+              <Inbox size={15}/> 공문 접수
+            </button>
+            <button onClick={() => router.push('/approval/new')}
+              className="flex items-center gap-2 bg-primary-600 text-white px-3 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
+              <Plus size={15}/> 기안 작성
+            </button>
+          </div>
         </div>
 
         {/* 내 문서 탭 - 임시저장 + 최근문서 섹션 */}
@@ -202,8 +212,55 @@ export default function ApprovalPage() {
           </>
         )}
 
+        {/* 공문 접수 탭 */}
+        {tab === 'incoming' && (
+          incoming.length === 0 ? (
+            <div className="text-center py-16 text-gray-400">
+              <Inbox size={40} className="mx-auto mb-3 opacity-30"/>
+              <p className="text-sm">공문 접수 내역이 없습니다</p>
+              <button onClick={() => router.push('/approval/incoming/new')}
+                className="mt-4 text-primary-600 text-sm hover:underline">
+                공문 접수하기 →
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {incoming.map(doc => {
+                const isDue = doc.hasDueDate && doc.dueDate && (() => {
+                  const diff = (new Date(doc.dueDate + 'T00:00:00').getTime() - Date.now()) / 86400000
+                  return diff <= 3
+                })()
+                return (
+                  <div key={doc.id}
+                    className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-all cursor-pointer"
+                    onClick={() => router.push(`/approval/incoming/${doc.id}`)}>
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={clsx('text-xs font-medium px-2 py-0.5 rounded-full',
+                            doc.status === 'approved' ? 'bg-green-100 text-green-700' :
+                            doc.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700')}>
+                            {doc.status === 'approved' ? '접수완료' : doc.status === 'rejected' ? '반려' : '결재중'}
+                          </span>
+                          {isDue && <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">⏰ 기한임박</span>}
+                        </div>
+                        <p className="text-sm font-semibold text-gray-900 truncate">{doc.title}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {doc.sender} · {doc.receivedAt?.replace(/-/g, '.')}
+                          {doc.hasDueDate && doc.dueDate && ` · 기한 ${doc.dueDate.replace(/-/g, '.')}`}
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-gray-300 shrink-0 mt-1"/>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )
+        )}
+
         {/* 결재 대기 / 공람 탭 */}
-        {tab !== 'mine' && (
+        {(tab === 'pending' || tab === 'viewer') && (
           tabDocs.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <FileText size={40} className="mx-auto mb-3 opacity-30"/>

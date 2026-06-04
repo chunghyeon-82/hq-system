@@ -381,6 +381,23 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* 전자결재 설정 - 본부멤버 이상 */}
+        {user && (user.role === 'ADMIN' || user.role === 'HQ_CHIEF' || user.role === 'HQ_MEMBER') && (
+          <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+            <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">전자결재</p>
+            </div>
+            <button onClick={() => router.push('/settings/approval-lines')}
+              className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 border-b border-gray-100 last:border-0">
+              <div className="flex items-center gap-3">
+                <span className="text-gray-500">🔖</span>
+                <span className="text-sm font-medium text-gray-800">결재선 관리</span>
+              </div>
+              <ChevronRight size={16} className="text-gray-400"/>
+            </button>
+          </div>
+        )}
+
         {/* 계정 */}
         <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">

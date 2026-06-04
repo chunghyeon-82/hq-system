@@ -139,6 +139,18 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin()
     }
 
+    match /incomingDocs/{docId} {
+      allow read: if isSignedIn() && isHQOrAdmin()
+      allow create: if isSignedIn() && isHQOrAdmin()
+      allow update: if isSignedIn() && isHQOrAdmin()
+      allow delete: if isSignedIn() && (isAdmin() || resource.data.authorUid == myUid())
+    }
+
+    match /approvalLines/{lineId} {
+      allow read, write: if isSignedIn() && isHQOrAdmin()
+        && (request.method == 'read' || request.resource.data.ownerUid == myUid())
+    }
+
     match /approvals/{docId} {
       allow read: if isSignedIn() && (
         isHQOrAdmin()
