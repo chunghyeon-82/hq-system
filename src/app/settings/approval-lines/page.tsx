@@ -46,6 +46,7 @@ export default function ApprovalLinesPage() {
     setSaving(true)
     await saveApprovalLine({
       name: lineName.trim(),
+      lineType: 'outgoing',
       approvers: midApprovers,
       finalApprover,
       ownerUid: user.uid,
