@@ -469,7 +469,7 @@ function ApprovalNewPageInner() {
                           </div>
                           <div>
                             <p className="text-sm text-gray-800">{u.name}</p>
-                            <p className="text-xs text-gray-400">{{'ADMIN':'관리자','HQ_CHIEF':'본부장','HQ_MEMBER':'본부멤버','BIZ_REP':'사업장대표'}[u.role]??u.role}</p>
+                            <p className="text-xs text-gray-400">{ROLE_LABEL[u.role] ?? u.role}</p>
                           </div>
                         </button>
                       ))}
