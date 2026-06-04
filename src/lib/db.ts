@@ -8,7 +8,7 @@ import type {
   MessageStatus, MessageType, MessageCategory,
   Notice, CalendarEvent, MessageTemplate,
   ApprovalDoc, ApprovalTemplate, SavedEmailContact, OfficialSeal,
-  IncomingDoc, ApprovalLine
+  IncomingDoc, ApprovalLine, FooterInfo, RecipientContact
 } from '@/types'
 
 const now = () => new Date().toISOString()
@@ -499,4 +499,34 @@ export async function saveApprovalLine(data: Omit<ApprovalLine, 'id' | 'createdA
 
 export async function deleteApprovalLine(id: string) {
   await deleteDoc(doc(db, 'approvalLines', id))
+}
+
+// ── 하단 발신 정보 ─────────────────────────────────────
+export async function saveFooterInfo(uid: string, info: FooterInfo) {
+  await setDoc(doc(db, 'userSettings', uid), { footerInfo: info }, { merge: true })
+}
+
+export async function getFooterInfo(uid: string): Promise<FooterInfo | null> {
+  const snap = await getDoc(doc(db, 'userSettings', uid))
+  return snap.exists() ? (snap.data().footerInfo ?? null) : null
+}
+
+// ── 수신자 연락처 관리 ─────────────────────────────────
+export function listenRecipientContacts(uid: string, cb: (c: RecipientContact[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'recipientContacts'),
+      where('ownerUid', '==', uid),
+      orderBy('createdAt', 'desc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as RecipientContact)))
+  )
+}
+
+export async function addRecipientContact(data: Omit<RecipientContact, 'id' | 'createdAt'>) {
+  return await addDoc(collection(db, 'recipientContacts'), {
+    ...data, createdAt: serverTimestamp()
+  })
+}
+
+export async function deleteRecipientContact(id: string) {
+  await deleteDoc(doc(db, 'recipientContacts', id))
 }

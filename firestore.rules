@@ -173,6 +173,11 @@ service cloud.firestore {
       allow create: if isSignedIn()
     }
 
+    match /recipientContacts/{cId} {
+      allow read, write: if isSignedIn() && isHQOrAdmin()
+        && (request.method == 'read' || request.resource.data.ownerUid == myUid())
+    }
+
     match /deletionLogs/{logId} {
       allow read:  if isAdmin()
       allow write: if false  // Cloud Functions만 쓰기 가능

@@ -273,7 +273,8 @@ export interface IncomingDoc {
 // ── 결재선 관리 ───────────────────────────────────────
 export interface ApprovalLine {
   id:        string
-  name:      string           // 결재선 이름 (예: 일반결재)
+  name:      string
+  lineType:  ApprovalLineType  // outgoing: 발신용, incoming: 수신용           // 결재선 이름 (예: 일반결재)
   approvers: {
     uid:  string
     name: string
@@ -287,3 +288,28 @@ export interface ApprovalLine {
   ownerUid:  string
   createdAt: unknown
 }
+
+// ── 하단 발신 정보 ─────────────────────────────────────
+export interface FooterInfo {
+  zipCode:   string
+  address:   string
+  phone:     string
+  fax:       string
+  email:     string
+  homepage:  string
+  orgName:   string      // 조직명
+  sealOrgName: string    // 직인 위 조직명
+}
+
+// ── 수신자 그룹 ───────────────────────────────────────
+export interface RecipientContact {
+  id:        string
+  name:      string
+  email:     string
+  org?:      string      // 소속기관
+  ownerUid:  string
+  createdAt: unknown
+}
+
+// ── 결재선 (발신/수신 구분) ─────────────────────────────
+export type ApprovalLineType = 'outgoing' | 'incoming'

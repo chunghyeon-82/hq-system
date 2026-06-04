@@ -7,7 +7,7 @@ import {
   listenUsers, listenApprovalTemplates, listenApprovalDocs,
   createApprovalDoc, saveApprovalTemplate, listenOfficialSeals
 } from '@/lib/db'
-import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal } from '@/types'
+import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal, ApprovalLine, RecipientContact } from '@/types'
 import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff, Users } from 'lucide-react'
 import DocEditor from '@/components/DocEditor'
 import clsx from 'clsx'
@@ -78,7 +78,21 @@ function ApprovalNewPageInner() {
     const u2 = listenApprovalTemplates(user.uid, setTemplates)
     const u3 = listenOfficialSeals(setSeals)
     const u4 = listenApprovalDocs(user.uid, setAllDocs)
-    return () => { u1(); u2(); u3(); u4() }
+    const u5 = listenApprovalLines(user.uid, setApprovalLines)
+    const u6 = listenRecipientContacts(user.uid, setRecipientContacts)
+    // 하단 발신 정보 자동 로드
+    getFooterInfo(user.uid).then(fi => {
+      if (!fi) return
+      if (fi.orgName)     setOrgName(fi.orgName)
+      if (fi.sealOrgName) setSealOrgName(fi.sealOrgName)
+      if (fi.zipCode)     setZipCode(fi.zipCode)
+      if (fi.address)     setAddress(fi.address)
+      if (fi.phone)       setPhone(fi.phone)
+      if (fi.fax)         setFax(fi.fax)
+      if (fi.email)       setDocEmail(fi.email)
+      if (fi.homepage)    setHomepage(fi.homepage)
+    })
+    return () => { u1(); u2(); u3(); u4(); u5(); u6() }
   }, [user, loading, isHQ, router])
 
   // 기존 문서에서 복사
@@ -272,6 +286,28 @@ function ApprovalNewPageInner() {
             📋 기존 문서를 복사해서 새 기안을 작성합니다
           </div>
         )}
+        {/* 저장된 발신용 결재선 불러오기 */}
+        {approvalLines.filter(l => l.lineType === 'outgoing').length > 0 && (
+          <div className="bg-primary-50 border border-primary-200 rounded-2xl p-4">
+            <p className="text-xs font-semibold text-primary-700 mb-2 flex items-center gap-1">
+              🔖 저장된 발신용 결재선
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {approvalLines.filter(l => l.lineType === 'outgoing').map(line => (
+                <button key={line.id}
+                  onClick={() => {
+                    setMidApprovers(line.approvers)
+                    setFinalApprover(line.finalApprover)
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-white border border-primary-200 rounded-xl text-xs text-primary-700 hover:bg-primary-100 transition-colors">
+                  {line.name}
+                  <span className="text-primary-400">({line.approvers.length + 1}명)</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-5">
           <h2 className="font-semibold text-gray-900">결재선 설정</h2>
           {/* 기안자 */}
