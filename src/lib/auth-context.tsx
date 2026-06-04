@@ -1,7 +1,7 @@
 'use client'
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import { onAuthStateChanged, User } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, onSnapshot } from 'firebase/firestore'
 import { auth, db } from './firebase'
 import type { AppUser } from '@/types'
 
@@ -13,23 +13,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    return onAuthStateChanged(auth, async (u: User | null) => {
+    let unsubUser: (() => void) | null = null
+
+    const unsubAuth = onAuthStateChanged(auth, (u: User | null) => {
+      // 이전 user 리스너 해제
+      if (unsubUser) { unsubUser(); unsubUser = null }
+
       if (!u) {
         setUser(null)
         setLoading(false)
         return
       }
 
-      // Firebase Auth는 유효한데 Firestore 읽기 실패 시 로그아웃 방지
-      // 최대 3번 재시도
-      let retries = 3
-      while (retries > 0) {
-        try {
-          const snap = await getDoc(doc(db, 'users', u.uid))
+      // Firestore user 문서를 실시간으로 구독
+      // → 도장 업로드, 이름 변경 등 즉시 반영
+      unsubUser = onSnapshot(
+        doc(db, 'users', u.uid),
+        snap => {
           if (snap.exists()) {
             setUser(snap.data() as AppUser)
           } else {
-            // Firestore에 유저 문서가 없는 경우 — Firebase Auth 정보로 최소한 설정
             setUser({
               uid:   u.uid,
               email: u.email ?? '',
@@ -37,26 +40,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               role:  'ETC',
             })
           }
-          break
-        } catch (e) {
-          retries--
-          if (retries === 0) {
-            // 최종 실패 시에도 로그인 상태 유지 (로그아웃 방지)
-            console.warn('Firestore 유저 읽기 실패, 재시도 초과:', e)
-            setUser({
-              uid:   u.uid,
-              email: u.email ?? '',
-              name:  u.displayName ?? u.email ?? '',
-              role:  'ETC',
-            })
-          } else {
-            // 잠시 후 재시도
-            await new Promise(r => setTimeout(r, 1000))
-          }
+          setLoading(false)
+        },
+        err => {
+          console.warn('Firestore user 구독 오류:', err)
+          // 오류 시에도 로그아웃 방지
+          setUser(prev => prev ?? {
+            uid:   u.uid,
+            email: u.email ?? '',
+            name:  u.displayName ?? u.email ?? '',
+            role:  'ETC',
+          })
+          setLoading(false)
         }
-      }
-      setLoading(false)
+      )
     })
+
+    return () => {
+      unsubAuth()
+      if (unsubUser) unsubUser()
+    }
   }, [])
 
   return <Ctx.Provider value={{ user, loading }}>{children}</Ctx.Provider>
