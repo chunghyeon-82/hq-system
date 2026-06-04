@@ -5,7 +5,7 @@ import ApprovalShell from '@/components/ApprovalShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenIncomingDocs } from '@/lib/db'
 import type { IncomingDoc } from '@/types'
-import { Search, ChevronRight, FileInput } from 'lucide-react'
+import { Search, ChevronRight } from 'lucide-react'
 
 export default function IncomingDocsPage() {
   const { user, loading } = useAuth()
@@ -37,15 +37,9 @@ export default function IncomingDocsPage() {
   return (
     <ApprovalShell title="수신 공문 목록">
       <div className="max-w-4xl mx-auto p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">수신 공문 목록</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{thisYear}년 접수 완료 공문</p>
-          </div>
-          <button onClick={() => router.push('/approval/incoming/new')}
-            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
-            <FileInput size={15}/> 공문 접수
-          </button>
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">수신 공문 목록</h2>
+          <p className="text-xs text-gray-400 mt-0.5">{thisYear}년 접수 완료 공문 (결재 완료된 수신 문서)</p>
         </div>
         <div className="relative">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>

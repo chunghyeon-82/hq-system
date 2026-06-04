@@ -5,7 +5,7 @@ import ApprovalShell from '@/components/ApprovalShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenApprovalDocs } from '@/lib/db'
 import type { ApprovalDoc } from '@/types'
-import { Search, ChevronRight, FilePlus } from 'lucide-react'
+import { Search, ChevronRight } from 'lucide-react'
 import clsx from 'clsx'
 
 export default function OutgoingDocsPage() {
@@ -27,7 +27,7 @@ export default function OutgoingDocsPage() {
   }
 
   const filtered = docs
-    .filter(d => d.authorUid === user?.uid && d.status === 'approved' && isThisYear(d.createdAt))
+    .filter(d => d.authorUid === user?.uid && d.status === 'approved' && d.isSent === true && isThisYear(d.createdAt))
     .filter(d => !query || d.title.includes(query) || d.orgName?.includes(query) || d.recipient?.includes(query) || d.docNo?.includes(query))
     .sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0)-((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
 
@@ -38,15 +38,9 @@ export default function OutgoingDocsPage() {
   return (
     <ApprovalShell title="발신 공문 목록">
       <div className="max-w-4xl mx-auto p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">발신 공문 목록</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{thisYear}년 발신 완료 공문</p>
-          </div>
-          <button onClick={() => router.push('/approval/new')}
-            className="flex items-center gap-2 bg-primary-600 text-white px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-primary-800 transition-colors">
-            <FilePlus size={15}/> 공문 작성
-          </button>
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">발신 공문 목록</h2>
+          <p className="text-xs text-gray-400 mt-0.5">{thisYear}년 발신 완료 공문 (결재 완료 후 발송된 문서)</p>
         </div>
 
         {/* 검색 */}

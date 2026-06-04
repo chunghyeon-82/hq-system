@@ -45,7 +45,7 @@ export default function ArchivePage() {
   }
 
   const filteredOut = docs
-    .filter(d => d.authorUid === user?.uid && d.status === 'approved' && getYear(d.createdAt) === year)
+    .filter(d => d.authorUid === user?.uid && d.status === 'approved' && d.isSent === true && getYear(d.createdAt) === year)
     .filter(d => !query || d.title.includes(query) || d.orgName?.includes(query) || d.recipient?.includes(query))
     .sort((a,b) => ((b.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0)-((a.createdAt as {toDate?:()=>Date}).toDate?.()?.getTime()??0))
 
