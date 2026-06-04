@@ -1,16 +1,8 @@
 // ── 음력 변환 ──────────────────────────────────────────
-// lunar-javascript 패키지 사용
-let LunarLib: any = null
-async function getLunarLib() {
-  if (!LunarLib) {
-    LunarLib = (await import('lunar-javascript')).default ?? (await import('lunar-javascript'))
-  }
-  return LunarLib
-}
+import { Lunar } from 'lunar-javascript'
 
-export async function getLunarDate(year: number, month: number, day: number): Promise<string> {
+export function getLunarDate(year: number, month: number, day: number): string {
   try {
-    const { Lunar } = await getLunarLib()
     const lunar = Lunar.fromDate(new Date(year, month - 1, day))
     const lm = lunar.getMonth()
     const ld = lunar.getDay()
