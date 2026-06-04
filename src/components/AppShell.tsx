@@ -11,7 +11,7 @@ import { useSettings } from '@/lib/settings-context'
 import {
   LayoutDashboard, Building2, Send, Users, LogOut, Menu, X,
   ChevronRight, MessageSquare, MessageCircle, Settings,
-  Megaphone, Calendar, Search, GripVertical
+  Megaphone, Calendar, Search, GripVertical, ClipboardList
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -134,6 +134,7 @@ export default function AppShell({ children, title, back }: Props) {
     { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ,          badge: unreadCount,  group: '업무' },
     { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast,  badge: 0,            group: '업무' },
     { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true,          badge: unreadNotice, group: '업무' },
+    { href: '/approval',   label: '품의서',       icon: ClipboardList,   show: isHQ,          badge: 0,            group: '업무' },
     { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ,          badge: unreadChat,   group: '메시지' },
     { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true,          badge: unreadDirect, group: '메시지' },
     { href: '/search',     label: '메시지 검색',  icon: Search,          show: true,          badge: 0,            group: '메시지' },

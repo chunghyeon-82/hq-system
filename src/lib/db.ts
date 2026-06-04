@@ -355,3 +355,76 @@ export async function getBizOrder(uid: string): Promise<string[]> {
 export async function saveBizOrder(uid: string, order: string[]) {
   await setDoc(doc(db, 'bizOrder', uid), { order, updatedAt: serverTimestamp() })
 }
+
+// ── 품의서 결재 ─────────────────────────────────────────
+
+export function listenApprovalDocs(uid: string, cb: (docs: ApprovalDoc[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'approvals'), orderBy('createdAt', 'desc')),
+    snap => {
+      const all = snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalDoc))
+      cb(all.filter(d =>
+        d.authorUid === uid ||
+        d.approvers?.some(a => a.uid === uid) ||
+        d.finalApprover?.uid === uid ||
+        d.viewers?.some(v => v.uid === uid)
+      ))
+    }
+  )
+}
+
+export async function createApprovalDoc(data: Omit<ApprovalDoc, 'id' | 'createdAt'>) {
+  return await addDoc(collection(db, 'approvals'), {
+    ...data,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function updateApprovalDoc(id: string, data: Partial<ApprovalDoc>) {
+  await updateDoc(doc(db, 'approvals', id), {
+    ...data,
+    updatedAt: serverTimestamp(),
+  })
+}
+
+export async function deleteApprovalDoc(id: string) {
+  await deleteDoc(doc(db, 'approvals', id))
+}
+
+// 템플릿
+export function listenApprovalTemplates(uid: string, cb: (templates: ApprovalTemplate[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'approvalTemplates'), where('ownerUid', '==', uid)),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as ApprovalTemplate)))
+  )
+}
+
+export async function saveApprovalTemplate(data: Omit<ApprovalTemplate, 'id' | 'createdAt'>) {
+  return await addDoc(collection(db, 'approvalTemplates'), {
+    ...data,
+    createdAt: serverTimestamp(),
+  })
+}
+
+export async function deleteApprovalTemplate(id: string) {
+  await deleteDoc(doc(db, 'approvalTemplates', id))
+}
+
+// 저장된 이메일 연락처
+export function listenSavedContacts(uid: string, cb: (contacts: SavedEmailContact[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'emailContacts'), where('ownerUid', '==', uid)),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as SavedEmailContact)))
+  )
+}
+
+export async function saveEmailContact(uid: string, name: string, email: string) {
+  return await addDoc(collection(db, 'emailContacts'), {
+    name, email, ownerUid: uid, createdAt: serverTimestamp(),
+  })
+}
+
+export async function deleteEmailContact(id: string) {
+  await deleteDoc(doc(db, 'emailContacts', id))
+}
