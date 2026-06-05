@@ -1,4 +1,4 @@
-const CACHE = 'hq-v4'
+const CACHE = 'hq-v5'
 const OFFLINE_URLS = ['/', '/dashboard', '/login']
 
 self.addEventListener('install', e => {
@@ -16,20 +16,22 @@ self.addEventListener('activate', e => {
 })
 
 self.addEventListener('fetch', e => {
-  // POST/PUT/DELETE 등 GET 아닌 요청 — 네트워크 직접 통과
-  if (e.request.method !== 'GET') {
-    e.respondWith(fetch(e.request))
-    return
-  }
-  // /api/ 경로 — 캐시 없이 네트워크 직접 통과
-  if (e.request.url.includes('/api/')) {
-    e.respondWith(fetch(e.request))
-    return
-  }
-  e.respondWith(fetch(e.request).catch(() => caches.match(e.request)))
+  const url = e.request.url
+
+  // POST/PUT/DELETE 등 GET 아닌 요청 — 서비스 워커 개입 없이 통과
+  if (e.request.method !== 'GET') return
+
+  // /api/ 경로 — 캐시 없이 네트워크 직접
+  if (url.includes('/api/')) return
+
+  // vercel.app 외부 요청 — 통과
+  if (!url.includes('hq-system-jade.vercel.app') && !url.startsWith('/')) return
+
+  e.respondWith(
+    fetch(e.request).catch(() => caches.match(e.request))
+  )
 })
 
-// 푸시 알림 수신
 self.addEventListener('push', e => {
   if (!e.data) return
   let payload
@@ -46,7 +48,6 @@ self.addEventListener('push', e => {
   )
 })
 
-// 푸시 알림 클릭 시 해당 페이지 열기
 self.addEventListener('notificationclick', e => {
   e.notification.close()
   const url = e.notification.data?.url || '/dashboard'
