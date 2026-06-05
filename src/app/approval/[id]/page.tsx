@@ -24,8 +24,6 @@ export default function ApprovalDetailPage() {
   const [newName,  setNewName]  = useState('')
   const [sending,  setSending]  = useState(false)
   const [recipientContacts, setRecipientContacts] = useState<RecipientContact[]>([])
-  const [sealFile, setSealFile] = useState<File|null>(null)
-  const sealRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (loading) return
@@ -33,15 +31,14 @@ export default function ApprovalDetailPage() {
     const u1 = listenApprovalDocs(user.uid, setDocs)
     const u2 = listenSavedContacts(user.uid, setContacts)
     const u3 = listenRecipientContacts(user.uid, setRecipientContacts)
-    return () => { u1(); u2(); u3() }
-    return () => { u1(); u2() }
+    return () => { u1(); u2(); u3() }  // dead code 제거
   }, [user, loading, router])
 
   const doc = docs.find(d => d.id === id)
 
   if (loading || !doc) return (
-    <AppShell title="품의서 상세" back="/approval">
-      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">불러오는 중...</div>
+    <AppShell title="발신공문 상세" back="/approval">
+      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">불러오는 중..</div>
     </AppShell>
   )
 
@@ -63,10 +60,10 @@ export default function ApprovalDetailPage() {
     const now = new Date().toISOString()
     const sealUrl = (user as typeof user & {sealUrl?:string}).sealUrl
     const newApprovers = doc.approvers.map(a =>
-      a.uid === user.uid ? { ...a, status: 'approved' as const, actedAt: now, comment, sealUrl } : a
+      a.uid === user.uid ? { ...a, status: 'approved' as const, actedAt: now, comment, ...(sealUrl ? { sealUrl } : {}) } : a
     )
     const finalApprover = doc.finalApprover.uid === user.uid
-      ? { ...doc.finalApprover, status: 'approved' as const, actedAt: now, comment, sealUrl }
+      ? { ...doc.finalApprover, status: 'approved' as const, actedAt: now, comment, ...(sealUrl ? { sealUrl } : {}) }
       : doc.finalApprover
 
     const allDone = newApprovers.every(a => a.status === 'approved' || a.status === 'submitted')
@@ -76,19 +73,18 @@ export default function ApprovalDetailPage() {
       approvers: newApprovers,
       finalApprover,
       status: isFinalStep ? 'approved' : 'pending',
-      approvedAt: isFinalStep ? now : undefined,
+      ...(isFinalStep ? { approvedAt: now } : {}),
     })
 
-    // 다음 결재자 또는 기안자에게 알림
     if (isFinalStep) {
       fetch('/api/push', {
         method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
-        body: JSON.stringify({ title:'✅ 결재 완료', body:`"${doc.title}" 최종 결재가 완료됐습니다`, url:'/approval', targetUids:[doc.authorUid] }),
+        body: JSON.stringify({ title:'새 결재 완료', body:`"${doc.title}" 최종 결재가 완료됐습니다`, url:'/approval', targetUids:[doc.authorUid] }),
       }).catch(()=>{})
     } else if (allDone) {
       fetch('/api/push', {
         method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
-        body: JSON.stringify({ title:'📋 결재 요청', body:`"${doc.title}" 결재를 요청합니다`, url:'/approval', targetUids:[doc.finalApprover.uid] }),
+        body: JSON.stringify({ title:'새 결재 요청', body:`"${doc.title}" 결재를 요청합니다`, url:'/approval', targetUids:[doc.finalApprover.uid] }),
       }).catch(()=>{})
     }
     setComment(''); setActing(false)
@@ -108,7 +104,7 @@ export default function ApprovalDetailPage() {
     await updateApprovalDoc(id, { approvers: newApprovers, finalApprover, status: 'rejected', rejectedAt: now })
     fetch('/api/push', {
       method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
-      body: JSON.stringify({ title:'❌ 결재 반려', body:`"${doc.title}" 결재가 반려됐습니다. 사유: ${comment}`, url:'/approval', targetUids:[doc.authorUid] }),
+      body: JSON.stringify({ title:'결재 반려', body:`"${doc.title}" 결재가 반려됐습니다. 사유: ${comment}`, url:'/approval', targetUids:[doc.authorUid] }),
     }).catch(()=>{})
     setComment(''); setActing(false)
   }
@@ -117,21 +113,25 @@ export default function ApprovalDetailPage() {
     if (!emailTo.length) { alert('수신자를 선택해주세요'); return }
     setSending(true)
     try {
-      await fetch('/api/email', {
+      const res = await fetch('/api/email', {
         method:'POST',
         headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
         body: JSON.stringify({
           to: emailTo.map(e => e.email),
           subject: `[공문] ${doc.title}`,
-          html: `<p>${doc.orgName}</p><p>제목: ${doc.title}</p><p>${doc.body.replace(/\n/g,'<br/>')}</p>`,
+          html: `<p><b>${doc.orgName}</b></p><hr/><p><b>수신:</b> ${doc.recipient}</p><p><b>제목:</b> ${doc.title}</p><br/><div>${doc.body.replace(/\n/g,'<br/>')}</div>`,
         }),
       })
-      // 발송 완료 처리
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
       await updateApprovalDoc(id, { isSent: true, sentAt: new Date().toISOString() })
       alert('이메일이 발송됐습니다')
       setShowEmail(false)
-    } catch(e) {
-      alert('발송 실패')
+    } catch(e: unknown) {
+      const msg = e instanceof Error ? e.message : '알 수 없는 오류'
+      alert(`발송 실패: ${msg}`)
     } finally { setSending(false) }
   }
 
@@ -155,7 +155,7 @@ export default function ApprovalDetailPage() {
   const STATUS_LABEL: Record<string,string> = { draft:'임시저장', pending:'결재중', approved:'결재완료', rejected:'반려' }
 
   return (
-    <AppShell title="전자결재" back="/approval">
+    <AppShell title="발신공문" back="/approval">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
 
         {/* 상태 + 액션 버튼 */}
@@ -173,7 +173,7 @@ export default function ApprovalDetailPage() {
             {isHQ && (
               <button onClick={() => router.push(`/approval/new?copyFrom=${id}`)}
                 className="flex items-center gap-2 px-4 py-2 border border-primary-200 text-primary-700 rounded-xl text-sm font-medium hover:bg-primary-50 transition-colors">
-                📋 이 양식으로 새 기안
+                이 문서로 새 기안
               </button>
             )}
             <button onClick={() => window.print()}
@@ -187,7 +187,6 @@ export default function ApprovalDetailPage() {
         {showEmail && (
           <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-4">
             <h3 className="font-semibold text-gray-900 text-sm">이메일 발송</h3>
-            {/* 수신자 목록 */}
             <div className="flex flex-wrap gap-2">
               {emailTo.map(e => (
                 <div key={e.email} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 border border-primary-200 rounded-full text-xs text-primary-800">
@@ -196,7 +195,6 @@ export default function ApprovalDetailPage() {
                 </div>
               ))}
             </div>
-            {/* 수신자 연락처 */}
             {recipientContacts.length > 0 && (
               <div>
                 <p className="text-xs text-gray-500 mb-2">수신자 목록</p>
@@ -211,7 +209,6 @@ export default function ApprovalDetailPage() {
                 </div>
               </div>
             )}
-            {/* 저장된 연락처 */}
             {contacts.length > 0 && (
               <div>
                 <p className="text-xs text-gray-500 mb-2">이전 발송 연락처</p>
@@ -226,7 +223,6 @@ export default function ApprovalDetailPage() {
                 </div>
               </div>
             )}
-            {/* 직접 입력 */}
             <div className="flex gap-2">
               <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="이름"
                 className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
@@ -240,7 +236,7 @@ export default function ApprovalDetailPage() {
             </div>
             <button onClick={handleSendEmail} disabled={sending || !emailTo.length}
               className="w-full py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50">
-              {sending ? '발송 중...' : `${emailTo.length}명에게 이메일 발송`}
+              {sending ? '발송 중..' : `${emailTo.length}명에게 이메일 발송`}
             </button>
           </div>
         )}
@@ -248,15 +244,11 @@ export default function ApprovalDetailPage() {
         {/* 공문 본문 (인쇄용) */}
         <div id="print-area" className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
           <div style={{fontFamily:'Nanum Myeongjo, serif', padding:'48px 56px', color:'#111'}}>
-
-            {/* 조직명 */}
             <h1 style={{textAlign:'center', fontSize:'22pt', fontWeight:800, marginBottom:'32px', letterSpacing:'2px'}}>
               {doc.orgName}
             </h1>
-
-            {/* 수신/경유/제목 */}
             <div style={{marginBottom:'6px', display:'flex', gap:'12px', fontSize:'11pt'}}>
-              <span style={{fontWeight:700, minWidth:'48px'}}>수 신</span>
+              <span style={{fontWeight:700, minWidth:'48px'}}>수신</span>
               <span>{doc.recipient}</span>
             </div>
             {doc.via && (
@@ -266,18 +258,13 @@ export default function ApprovalDetailPage() {
               </div>
             )}
             <div style={{marginBottom:'6px', display:'flex', gap:'12px', fontSize:'11pt'}}>
-              <span style={{fontWeight:700, minWidth:'48px'}}>제 목</span>
+              <span style={{fontWeight:700, minWidth:'48px'}}>제목</span>
               <span style={{fontWeight:700, fontSize:'12pt'}}>{doc.title}</span>
             </div>
-
             <div style={{height:'1px', background:'#ccc', margin:'16px 0'}}/>
-
-            {/* 본문 */}
             <div style={{fontSize:'11pt', lineHeight:'1.9', margin:'20px 0'}}
               dangerouslySetInnerHTML={{__html: doc.body}}
             />
-
-            {/* 첨부파일 */}
             {doc.attachments?.filter(a => a.url).length > 0 && (
               <div style={{marginTop:'12px', padding:'12px', background:'#f8f9fa', borderRadius:'8px'}}>
                 <p style={{fontSize:'10pt', fontWeight:700, marginBottom:'8px'}}>📎 첨부파일</p>
@@ -290,18 +277,14 @@ export default function ApprovalDetailPage() {
                 ))}
               </div>
             )}
-
-            {/* 붙임 */}
             {doc.attachments?.length > 0 && (
               <div style={{marginTop:'16px', fontSize:'10.5pt'}}>
                 <span style={{fontWeight:700}}>붙임&nbsp;&nbsp;</span>
                 {doc.attachments.map((a,i) => (
-                  <span key={i}>{i > 0 ? <>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</> : ''}{i+1}. {a.name}{i < doc.attachments.length-1 ? '\n' : '. 끝.'}</span>
+                  <span key={i}>{i > 0 ? <>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</> : ''}{i+1}. {a.name}{i < doc.attachments.length-1 ? '\n' : '. 끝'}</span>
                 ))}
               </div>
             )}
-
-            {/* 직인 + 조직명 */}
             {doc.sealOrgName && (
               <div style={{textAlign:'center', margin:'36px 0 24px', position:'relative'}}>
                 <span style={{fontSize:'16pt', fontWeight:700, letterSpacing:'1px', position:'relative', display:'inline-block'}}>
@@ -322,7 +305,6 @@ export default function ApprovalDetailPage() {
                 </span>
               </div>
             )}
-
             {/* 결재선 */}
             <div style={{borderTop:'1.5px solid #555', paddingTop:'8px', marginTop:'8px', display:'flex', gap:'0'}}>
               {allApprovers.map((a, i) => (
@@ -334,7 +316,7 @@ export default function ApprovalDetailPage() {
                   <div style={{fontSize:'10pt', fontWeight:700, marginBottom:'2px', position:'relative'}}>
                     {a.name}
                     {a.sealUrl && (a.status==='approved'||a.status==='submitted') && (
-                      <img src={a.sealUrl} alt="도장"
+                      <img src={a.sealUrl} alt="직인"
                         style={{position:'absolute', top:'-8px', right:'-8px', width:'32px', height:'32px', opacity:0.85, objectFit:'contain'}}/>
                     )}
                   </div>
@@ -347,7 +329,6 @@ export default function ApprovalDetailPage() {
                 </div>
               ))}
             </div>
-
             {/* 시행 정보 */}
             <div style={{borderTop:'1.5px solid #333', borderBottom:'1.5px solid #333', padding:'5px 0', marginTop:'12px', fontSize:'8.5pt'}}>
               <div style={{display:'flex', gap:'8px', padding:'2px 0'}}>
@@ -356,21 +337,21 @@ export default function ApprovalDetailPage() {
               </div>
               <div style={{height:'0.5px', background:'#ddd', margin:'3px 0'}}/>
               <div style={{display:'flex', gap:'8px', padding:'2px 0', flexWrap:'wrap'}}>
-                {doc.zipCode && <span>우 {doc.zipCode}</span>}
+                {doc.zipCode && <span>우{doc.zipCode}</span>}
                 {doc.address && <span>주소 {doc.address}</span>}
                 {doc.homepage && <span style={{marginLeft:'auto'}}>홈페이지 {doc.homepage}</span>}
               </div>
               <div style={{display:'flex', gap:'8px', padding:'2px 0', flexWrap:'wrap'}}>
                 {doc.phone    && <span>전화 {doc.phone}</span>}
                 {doc.fax      && <span>전송 {doc.fax}</span>}
-                {doc.email    && <span>전자우편주소 {doc.email}</span>}
+                {doc.email    && <span>전자우편 {doc.email}</span>}
                 <span style={{marginLeft:'auto', color:'#c00', fontWeight:700}}>{doc.isPublic}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* 결재 액션 */}
+        {/* 결재 처리 */}
         {isMyTurn && (
           <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-3">
             <h3 className="font-semibold text-gray-900 text-sm">결재 처리</h3>
@@ -385,21 +366,21 @@ export default function ApprovalDetailPage() {
               </button>
               <button onClick={handleApprove} disabled={acting}
                 className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
-                <CheckCircle2 size={16}/> 승인
+                <CheckCircle2 size={16}/> 결재
               </button>
             </div>
           </div>
         )}
 
-        {/* 임시저장 → 상신 + 삭제 */}
+        {/* 임시저장 문서 재작성 + 삭제 */}
         {isAuthor && doc.status === 'draft' && (
           <div className="space-y-2">
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
-              <span className="text-amber-600 text-sm">⏸ 임시저장된 문서입니다</span>
+              <span className="text-amber-600 text-sm">임시저장된 문서입니다</span>
               <button
                 onClick={() => router.push(`/approval/new?copyFrom=${id}`)}
                 className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
-                이어 작성 → 상신
+                이어 작성 및 상신
               </button>
             </div>
             <button onClick={async () => {
