@@ -1,4 +1,4 @@
-const CACHE = 'hq-v3'
+const CACHE = 'hq-v4'
 const OFFLINE_URLS = ['/', '/dashboard', '/login']
 
 self.addEventListener('install', e => {
@@ -16,12 +16,12 @@ self.addEventListener('activate', e => {
 })
 
 self.addEventListener('fetch', e => {
-  // POST/PUT/DELETE 등 GET 아닌 요청 (API 호출) — 네트워크 직접 통과
+  // POST/PUT/DELETE 등 GET 아닌 요청 — 네트워크 직접 통과
   if (e.request.method !== 'GET') {
     e.respondWith(fetch(e.request))
     return
   }
-  // /api/ 경로는 캐시 없이 네트워크 직접 통과
+  // /api/ 경로 — 캐시 없이 네트워크 직접 통과
   if (e.request.url.includes('/api/')) {
     e.respondWith(fetch(e.request))
     return
@@ -37,8 +37,7 @@ self.addEventListener('push', e => {
   const { title = '본부관리시스템', body = '', url = '/dashboard', icon = '/icons/icon-192.png' } = payload
   e.waitUntil(
     self.registration.showNotification(title, {
-      body,
-      icon,
+      body, icon,
       badge: '/icons/icon-72.png',
       tag: 'hq-push',
       renotify: true,
