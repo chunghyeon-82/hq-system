@@ -1,31 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Resend } from 'resend'
-
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(req: NextRequest) {
   try {
-    const { to, subject, html, pdfBase64, pdfName } = await req.json()
+    const { to, subject, html } = await req.json()
 
     const auth = req.headers.get('authorization')
     if (auth !== `Bearer ${process.env.CLEANUP_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const attachments = pdfBase64 ? [{
-      filename: pdfName ?? '공문.pdf',
-      content:  pdfBase64,
-    }] : []
+    const toList = (Array.isArray(to) ? to : [to]).map((email: string) => ({ email }))
 
-    const result = await resend.emails.send({
-      from:    process.env.RESEND_FROM_EMAIL ?? 'onboarding@resend.dev',
-      to:      Array.isArray(to) ? to : [to],
-      subject,
-      html,
-      attachments,
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': process.env.BREVO_API_KEY ?? '',
+      },
+      body: JSON.stringify({
+        sender: {
+          name:  process.env.BREVO_FROM_NAME  ?? '기획운영본부',
+          email: process.env.BREVO_FROM_EMAIL ?? 'wonchanghq@gmail.com',
+        },
+        to: toList,
+        subject,
+        htmlContent: html,
+      }),
     })
 
-    return NextResponse.json({ ok: true, id: result.data?.id })
+    const data = await response.json()
+
+    if (!response.ok) {
+      return NextResponse.json({ error: data.message ?? '발송 실패' }, { status: response.status })
+    }
+
+    return NextResponse.json({ ok: true, messageId: data.messageId })
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
