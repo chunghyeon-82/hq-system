@@ -10,7 +10,18 @@ import type {
   ApprovalDoc, ApprovalTemplate, SavedEmailContact, OfficialSeal,
   IncomingDoc, ApprovalLine, FooterInfo, RecipientContact, InternalDoc
 } from '@/types'
-
+function removeUndefined(obj: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(obj)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [
+        k,
+        v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)
+          ? removeUndefined(v as Record<string, unknown>)
+          : v,
+      ])
+  )
+}
 const now = () => new Date().toISOString()
 
 // ── Users ─────────────────────────────────────────────
@@ -376,8 +387,9 @@ export function listenApprovalDocs(uid: string, cb: (docs: ApprovalDoc[]) => voi
 }
 
 export async function createApprovalDoc(data: Omit<ApprovalDoc, 'id' | 'createdAt'>) {
+  const clean = removeUndefined(data as Record<string, unknown>)
   return await addDoc(collection(db, 'approvals'), {
-    ...data,
+    ...clean,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })
@@ -551,8 +563,9 @@ export function listenInternalDocs(uid: string, cb: (docs: InternalDoc[]) => voi
 }
 
 export async function createInternalDoc(data: Omit<InternalDoc, 'id' | 'createdAt'>) {
+  const clean = removeUndefined(data as Record<string, unknown>)
   return await addDoc(collection(db, 'internalDocs'), {
-    ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    ...clean, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
   })
 }
 
