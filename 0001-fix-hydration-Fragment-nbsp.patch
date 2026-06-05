@@ -1,0 +1,32 @@
+From 271cc4773af91636d58a7a24fefec931dd6384dc Mon Sep 17 00:00:00 2001
+From: chunghyeon-82 <jmg3844@gmail.com>
+Date: Fri, 5 Jun 2026 07:08:33 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20hydration=20=EC=98=A4=EB=A5=98=20-=20Fra?=
+ =?UTF-8?q?gment=20nbsp=20=EC=A0=9C=EA=B1=B0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/approval/[id]/page.tsx | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/app/approval/[id]/page.tsx b/src/app/approval/[id]/page.tsx
+index 711a46e..0ac00e6 100644
+--- a/src/app/approval/[id]/page.tsx
++++ b/src/app/approval/[id]/page.tsx
+@@ -279,9 +279,9 @@ export default function ApprovalDetailPage() {
+             )}
+             {doc.attachments?.length > 0 && (
+               <div style={{marginTop:'16px', fontSize:'10.5pt'}}>
+-                <span style={{fontWeight:700}}>붙임&nbsp;&nbsp;</span>
++                <span style={{fontWeight:700, marginRight:"12px"}}>붙임</span>
+                 {doc.attachments.map((a,i) => (
+-                  <span key={i}>{i > 0 ? <>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</> : ''}{i+1}. {a.name}{i < doc.attachments.length-1 ? '\n' : '. 끝'}</span>
++                  <span key={i}>{i > 0 ? {"         "} : ''}{i+1}. {a.name}{i < doc.attachments.length-1 ? '\n' : '. 끝'}</span>
+                 ))}
+               </div>
+             )}
+-- 
+2.43.0
+
