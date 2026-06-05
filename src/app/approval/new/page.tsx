@@ -177,7 +177,7 @@ function ApprovalNewPageInner() {
         const { path, url, size } = await uploadAttachment(uploadFile, user.uid)
         return { name: f.name, url, size, path }
       }))
-      const valid = newAttachments.filter((a): a is {name:string;url:string;size:number} => a !== null)
+      const valid = newAttachments.filter((a): a is {name:string;url:string;size:number;path:string} => a !== null)
       setAttachFiles(prev => [...prev, ...valid])
     } catch(err) { console.error(err); alert('업로드 중 오류가 발생했습니다') }
     finally { setUploading(false); if (attachRef.current) attachRef.current.value = '' }
