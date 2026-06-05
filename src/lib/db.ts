@@ -396,8 +396,9 @@ export async function createApprovalDoc(data: Omit<ApprovalDoc, 'id' | 'createdA
 }
 
 export async function updateApprovalDoc(id: string, data: Partial<ApprovalDoc>) {
+  const clean = removeUndefined(data as Record<string, unknown>)
   await updateDoc(doc(db, 'approvals', id), {
-    ...data,
+    ...clean,
     updatedAt: serverTimestamp(),
   })
 }
@@ -488,7 +489,8 @@ export async function createIncomingDoc(data: Omit<IncomingDoc, 'id' | 'createdA
 }
 
 export async function updateIncomingDoc(id: string, data: Partial<IncomingDoc>) {
-  await updateDoc(doc(db, 'incomingDocs', id), { ...data, updatedAt: serverTimestamp() })
+  const clean = removeUndefined(data as Record<string, unknown>)
+  await updateDoc(doc(db, 'incomingDocs', id), { ...clean, updatedAt: serverTimestamp() })
 }
 
 export async function deleteIncomingDoc(id: string) {
@@ -570,7 +572,8 @@ export async function createInternalDoc(data: Omit<InternalDoc, 'id' | 'createdA
 }
 
 export async function updateInternalDoc(id: string, data: Partial<InternalDoc>) {
-  await updateDoc(doc(db, 'internalDocs', id), { ...data, updatedAt: serverTimestamp() })
+  const clean = removeUndefined(data as Record<string, unknown>)
+  await updateDoc(doc(db, 'internalDocs', id), { ...clean, updatedAt: serverTimestamp() })
 }
 
 export async function deleteInternalDoc(id: string) {
