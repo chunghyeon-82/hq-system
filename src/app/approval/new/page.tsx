@@ -11,8 +11,7 @@ import {
 import type { AppUser, ApprovalDoc, ApprovalTemplate, Approver, OfficialSeal, ApprovalLine, RecipientContact } from '@/types'
 import { Plus, Trash2, X, ChevronRight, Save, FileText, Eye, EyeOff, Users } from 'lucide-react'
 import DocEditor from '@/components/DocEditor'
-import { storage } from '@/lib/firebase'
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { uploadAttachment, compressImage } from '@/lib/supabase-storage'
 import clsx from 'clsx'
 
 const ROLE_LABEL: Record<string,string> = {
@@ -175,11 +174,8 @@ function ApprovalNewPageInner() {
         }
         const maxSize = 10 * 1024 * 1024 // 10MB
         if (uploadFile.size > maxSize) { alert(`${f.name} 파일이 너무 큽니다 (최대 10MB)`); return null }
-        const path = `attachments/${user.uid}/${Date.now()}_${f.name}`
-        const sr = storageRef(storage, path)
-        await uploadBytes(sr, uploadFile)
-        const url = await getDownloadURL(sr)
-        return { name: f.name, url, size: uploadFile.size }
+        const { path, url, size } = await uploadAttachment(uploadFile, user.uid)
+        return { name: f.name, url, size, path }
       }))
       const valid = newAttachments.filter((a): a is {name:string;url:string;size:number} => a !== null)
       setAttachFiles(prev => [...prev, ...valid])
