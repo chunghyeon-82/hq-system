@@ -7,8 +7,7 @@ import {
   listenUsers, listenApprovalLines,
   createInternalDoc, listenInternalDocs, listenOfficialSeals
 } from '@/lib/db'
-import { storage } from '@/lib/firebase'
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { uploadAttachment } from '@/lib/supabase-storage'
 import type { AppUser, ApprovalLine, Approver, InternalDoc, BudgetItem, OfficialSeal } from '@/types'
 import { Plus, X, ChevronRight, Bookmark, Trash2, Upload } from 'lucide-react'
 import clsx from 'clsx'
@@ -133,10 +132,8 @@ function InternalNewInner() {
     setUploading(true)
     try {
       const uploaded = await Promise.all(files.map(async (f: File) => {
-        const sr = storageRef(storage, `internalDocs/${user.uid}/${Date.now()}_${f.name}`)
-        await uploadBytes(sr, f)
-        const url = await getDownloadURL(sr)
-        return { name: f.name, url, size: f.size }
+        const { path, url, size } = await uploadAttachment(f, user.uid)
+        return { name: f.name, url, size, path }
       }))
       setAttachFiles(prev => [...prev, ...uploaded])
     } catch(err) { console.error(err) }
