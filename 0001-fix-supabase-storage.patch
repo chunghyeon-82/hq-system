@@ -1,0 +1,90 @@
+From aeedcaaec5dc4fb52002ec70b0c612c97d1807b8 Mon Sep 17 00:00:00 2001
+From: chunghyeon-82 <jmg3844@gmail.com>
+Date: Fri, 5 Jun 2026 01:39:01 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20supabase-storage=20=ED=95=9C=EA=B8=80=20?=
+ =?UTF-8?q?=ED=8C=8C=EC=9D=BC=EB=AA=85=20=EC=97=85=EB=A1=9C=EB=93=9C=20?=
+ =?UTF-8?q?=EC=98=A4=EB=A5=98=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/lib/supabase-storage.ts | 27 +++++++++++----------------
+ 1 file changed, 11 insertions(+), 16 deletions(-)
+
+diff --git a/src/lib/supabase-storage.ts b/src/lib/supabase-storage.ts
+index d4014f3..06a817f 100644
+--- a/src/lib/supabase-storage.ts
++++ b/src/lib/supabase-storage.ts
+@@ -4,22 +4,25 @@ const BUCKET = 'approvals'
+ 
+ /**
+  * Supabase Storage에 첨부파일 업로드
+- * @param file 업로드할 파일
+- * @param uid 사용자 UID (폴더 구분용)
+- * @returns 파일 경로 (path) — 삭제/다운로드 시 사용
++ * 한글/특수문자 파일명은 타임스탬프_확장자 형태로 변환
+  */
+ export async function uploadAttachment(
+   file: File,
+   uid: string
+ ): Promise<{ path: string; url: string; size: number }> {
+-  const ext = file.name.split('.').pop() ?? 'bin'
+-  const safeName = file.name.replace(/[^a-zA-Z0-9가-힣._-]/g, '_')
+-  const path = `${uid}/${Date.now()}_${safeName}`
++  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'bin'
++  // 파일명에서 영문/숫자만 추출, 한글 등 비ASCII 제거
++  const baseName = file.name
++    .replace(/\.[^.]+$/, '')           // 확장자 제거
++    .replace(/[^a-zA-Z0-9_-]/g, '')    // 영문/숫자/_/-만 허용
++    .slice(0, 30)                       // 최대 30자
++  const safeName = (baseName || 'file') + '_' + Date.now() + '.' + ext
++  const path = `${uid}/${safeName}`
+ 
+   const { error } = await supabase.storage
+     .from(BUCKET)
+     .upload(path, file, {
+-      contentType: file.type,
++      contentType: file.type || 'application/octet-stream',
+       upsert: false,
+     })
+ 
+@@ -37,10 +40,8 @@ export async function uploadAttachment(
+ 
+ /**
+  * Supabase Storage에서 파일 삭제
+- * @param path uploadAttachment에서 반환된 path 값
+  */
+ export async function deleteAttachment(path: string): Promise<void> {
+-  // URL이 전달된 경우 path 추출
+   const filePath = path.includes('/object/sign/') || path.includes('/object/public/')
+     ? extractPathFromUrl(path)
+     : path
+@@ -55,9 +56,7 @@ export async function deleteAttachment(path: string): Promise<void> {
+ }
+ 
+ /**
+- * 만료된 서명 URL 갱신 (필요 시 사용)
+- * @param path 파일 경로
+- * @param expiresIn 유효시간(초), 기본 3년
++ * 만료된 서명 URL 갱신
+  */
+ export async function refreshSignedUrl(
+   path: string,
+@@ -71,13 +70,9 @@ export async function refreshSignedUrl(
+   return data.signedUrl
+ }
+ 
+-/**
+- * Supabase Storage URL에서 파일 경로 추출
+- */
+ function extractPathFromUrl(url: string): string {
+   try {
+     const u = new URL(url)
+-    // /storage/v1/object/sign/approvals/uid/filename 형태
+     const match = u.pathname.match(/\/storage\/v1\/object\/(?:sign|public)\/approvals\/(.+)/)
+     return match ? match[1] : ''
+   } catch {
+-- 
+2.43.0
+
