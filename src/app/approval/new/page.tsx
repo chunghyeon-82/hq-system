@@ -199,7 +199,7 @@ function ApprovalNewPageInner() {
         status: isDraft ? 'draft' : 'pending',
         currentStep: isDraft ? 0 : 1,
         authorUid: user.uid,
-        approvedAt: undefined, rejectedAt: undefined,
+        approvedAt: null, rejectedAt: null,
       })
       if (!isDraft) {
         const first = approversList[0] ?? final
