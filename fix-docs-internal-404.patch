@@ -1,0 +1,25 @@
+From d9203436892e4564d5771cea316278b8f85d80d1 Mon Sep 17 00:00:00 2001
+From: chunghyeon-82 <jmg3844@gmail.com>
+Date: Fri, 5 Jun 2026 01:15:11 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20docs/internal/page.tsx=20=EC=B6=94?=
+ =?UTF-8?q?=EA=B0=80=20-=20=ED=92=88=EC=9D=98=EC=84=9C=20=EB=AA=A9?=
+ =?UTF-8?q?=EB=A1=9D=20404=20=EC=88=98=EC=A0=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/approval/docs/internal/page.tsx | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 100644 src/app/approval/docs/internal/page.tsx
+
+diff --git a/src/app/approval/docs/internal/page.tsx b/src/app/approval/docs/internal/page.tsx
+new file mode 100644
+index 0000000..fe66abc
+--- /dev/null
++++ b/src/app/approval/docs/internal/page.tsx
+@@ -0,0 +1 @@
++export { default } from './internal-docs-page'
+-- 
+2.43.0
+
