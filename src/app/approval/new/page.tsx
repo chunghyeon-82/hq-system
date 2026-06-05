@@ -191,7 +191,7 @@ function ApprovalNewPageInner() {
       await createApprovalDoc({
         docNo, title, orgName,
         sealOrgName: sealOrgName || selectedSeal?.name || '',
-        sealUrl: selectedSeal?.imageUrl,
+        sealUrl: selectedSeal?.imageUrl ?? null,
         recipient, via, body,
         attachments: [
           ...attachNames.filter(Boolean).map(n => ({ name:n, url:'' })),
