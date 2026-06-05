@@ -279,9 +279,9 @@ export default function ApprovalDetailPage() {
             )}
             {doc.attachments?.length > 0 && (
               <div style={{marginTop:'16px', fontSize:'10.5pt'}}>
-                <span style={{fontWeight:700}}>붙임&nbsp;&nbsp;</span>
+                <span style={{fontWeight:700, marginRight:"12px"}}>붙임</span>
                 {doc.attachments.map((a,i) => (
-                  <span key={i}>{i > 0 ? <>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</> : ''}{i+1}. {a.name}{i < doc.attachments.length-1 ? '\n' : '. 끝'}</span>
+                  <span key={i}>{i > 0 ? {"         "} : ''}{i+1}. {a.name}{i < doc.attachments.length-1 ? '\n' : '. 끝'}</span>
                 ))}
               </div>
             )}
