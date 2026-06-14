@@ -70,12 +70,17 @@ export default function ApprovalShell({ children, title }: Props) {
   const router   = useRouter()
   const { user } = useAuth()
 
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+  // 현재 경로가 속한 섹션 계산
+  const activeSection = MENU.find(item =>
+    item.children?.some(child => pathname.startsWith(child.path))
+  )?.label
+
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => ({
     '결재 문서': true,
     '진행 상황': true,
     '공문 목록': true,
-    '전자결재 설정': false,
-  })
+    '전자결재 설정': activeSection === '전자결재 설정',
+  }))
 
   const toggleSection = (label: string) =>
     setOpenSections(prev => ({ ...prev, [label]: !prev[label] }))

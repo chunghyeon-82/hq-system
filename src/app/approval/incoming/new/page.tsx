@@ -7,9 +7,9 @@ import {
   listenUsers, listenApprovalLines,
   createIncomingDoc, listenIncomingDocs
 } from '@/lib/db'
-import { uploadImage } from '@/lib/upload'
-import { storage } from '@/lib/firebase'
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+
+
+import { uploadAttachment } from '@/lib/supabase-storage'
 import type { AppUser, ApprovalLine, Approver, IncomingDoc } from '@/types'
 import { Plus, X, Upload, ChevronRight, Bookmark } from 'lucide-react'
 import clsx from 'clsx'
@@ -79,9 +79,9 @@ function IncomingNewInner() {
     try {
       let pdfUrl = ''
       if (pdfFile) {
-        const storageRef = ref(storage, `incomingDocs/${user.uid}_${Date.now()}_${pdfFile.name}`)
-        await uploadBytes(storageRef, pdfFile, { contentType: 'application/pdf' })
-        pdfUrl = await getDownloadURL(storageRef)
+        const { url: pdfUrlResult } = await uploadAttachment(pdfFile, user.uid)
+        
+        pdfUrl = pdfUrlResult
       }
 
       const receiver: Approver = {

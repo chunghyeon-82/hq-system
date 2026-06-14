@@ -60,17 +60,17 @@ export default function IncomingDetailPage() {
     const sealUrl = (user as typeof user & {sealUrl?:string}).sealUrl
 
     const newApprovers = doc.approvers.map(a =>
-      a.uid === user.uid ? { ...a, status: 'approved' as const, actedAt: now, comment, sealUrl } : a
+      a.uid === user.uid ? { ...a, status: 'approved' as const, actedAt: now, comment, ...(sealUrl ? { sealUrl } : {}) } : a
     )
     const finalApprover = doc.finalApprover.uid === user.uid
-      ? { ...doc.finalApprover, status: 'approved' as const, actedAt: now, comment, sealUrl }
+      ? { ...doc.finalApprover, status: 'approved' as const, actedAt: now, comment, ...(sealUrl ? { sealUrl } : {}) }
       : doc.finalApprover
 
     const isFinalStep = finalApprover.status === 'approved'
     await updateIncomingDoc(id, {
       approvers: newApprovers, finalApprover,
       status: isFinalStep ? 'approved' : 'pending',
-      approvedAt: isFinalStep ? now : undefined,
+      ...(isFinalStep ? { approvedAt: now } : {}),
     })
 
     const nextTarget = isFinalStep ? doc.authorUid :

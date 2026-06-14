@@ -102,6 +102,7 @@ export interface Notice {
   body:        string
   authorUid:   string
   authorName:  string
+  bizName?:    string   // 사업장 대표가 작성한 경우 사업장명
   expiresAt:   string
   createdAt:   unknown
   updatedAt?:  unknown
