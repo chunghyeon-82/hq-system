@@ -1,0 +1,30 @@
+From 34a851151509db0740392efb1f311eeed3fc63c9 Mon Sep 17 00:00:00 2001
+From: chunghyeon-82 <jmg3844@gmail.com>
+Date: Wed, 17 Jun 2026 04:28:50 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20=EC=9A=B4=EC=98=81=EB=B3=B8=EB=B6=80=20?=
+ =?UTF-8?q?=EC=B1=84=ED=8C=85=20=EB=B3=B4=EC=A1=B4=EA=B8=B0=EA=B0=84=204?=
+ =?UTF-8?q?=EC=A3=BC=20=E2=86=92=203=EC=9D=BC?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ src/app/api/cleanup/route.ts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/app/api/cleanup/route.ts b/src/app/api/cleanup/route.ts
+index 248795c..baba3ef 100644
+--- a/src/app/api/cleanup/route.ts
++++ b/src/app/api/cleanup/route.ts
+@@ -21,7 +21,7 @@ const POLICIES = {
+   messages_broadcast: 3 * 365 * 24 * 60 * 60 * 1000,   // 3년
+   messages_direct_hq: 3 * 365 * 24 * 60 * 60 * 1000,   // 3년 (본부 1:1)
+   messages_direct_biz: 7 * 24 * 60 * 60 * 1000,         // 7일 (사업장↔사업장)
+-  hq_chat: 28 * 24 * 60 * 60 * 1000,                    // 4주
++  hq_chat: 3 * 24 * 60 * 60 * 1000,                     // 3일
+   events_done: 30 * 24 * 60 * 60 * 1000,                // 완료 후 1개월
+ }
+ 
+-- 
+2.43.0
+

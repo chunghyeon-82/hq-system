@@ -287,10 +287,12 @@ export function listenEvents(uid: string, bizId: string | undefined, cb: (e: Cal
   )
 }
 export async function addEvent(data: Omit<CalendarEvent, 'id' | 'createdAt'>) {
-  return addDoc(collection(db, 'events'), { ...data, createdAt: serverTimestamp() })
+  const clean = removeUndefined(data as Record<string, unknown>)
+  return addDoc(collection(db, 'events'), { ...clean, createdAt: serverTimestamp() })
 }
 export async function updateEvent(id: string, data: Partial<CalendarEvent>) {
-  await updateDoc(doc(db, 'events', id), { ...data, updatedAt: serverTimestamp() })
+  const clean = removeUndefined(data as Record<string, unknown>)
+  await updateDoc(doc(db, 'events', id), { ...clean, updatedAt: serverTimestamp() })
 }
 export async function deleteEvent(id: string) {
   await deleteDoc(doc(db, 'events', id))
