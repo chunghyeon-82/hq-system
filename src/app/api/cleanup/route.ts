@@ -21,7 +21,7 @@ const POLICIES = {
   messages_broadcast: 3 * 365 * 24 * 60 * 60 * 1000,   // 3년
   messages_direct_hq: 3 * 365 * 24 * 60 * 60 * 1000,   // 3년 (본부 1:1)
   messages_direct_biz: 7 * 24 * 60 * 60 * 1000,         // 7일 (사업장↔사업장)
-  hq_chat: 28 * 24 * 60 * 60 * 1000,                    // 4주
+  hq_chat: 3 * 24 * 60 * 60 * 1000,                     // 3일
   events_done: 30 * 24 * 60 * 60 * 1000,                // 완료 후 1개월
 }
 
