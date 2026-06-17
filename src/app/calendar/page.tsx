@@ -110,7 +110,7 @@ export default function CalendarPage() {
 
   const firstDay = new Date(viewYear, viewMonth, 1).getDay()
   const lastDate = new Date(viewYear, viewMonth + 1, 0).getDate()
-  const todayStr = today.toISOString().slice(0, 10)
+  const todayStr = typeof window !== 'undefined' ? today.toISOString().slice(0, 10) : ''
 
   const getDateStr = (d: number) =>
     `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
@@ -276,10 +276,12 @@ export default function CalendarPage() {
     dragId.current = null
   }
 
-  // 종료일 옵션 (시작일 ~ +30일)
+  // 종료일 옵션 (시작일 ~ +30일) — selectedDate 없을 때 빈 배열
   const endDateOptions = (() => {
+    if (!selectedDate) return []
     const opts: string[] = []
     const start = new Date(selectedDate + 'T00:00:00')
+    if (isNaN(start.getTime())) return []
     for (let i = 1; i <= 30; i++) {
       const d = new Date(start)
       d.setDate(start.getDate() + i)
