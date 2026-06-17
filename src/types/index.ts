@@ -120,6 +120,7 @@ export interface CalendarEvent {
   id:            string
   title:         string
   date:          string
+  endDate?:      string        // 기간 일정 종료일 (없으면 하루 일정)
   time?:         string
   memo?:         string
   location?:     string        // 장소
