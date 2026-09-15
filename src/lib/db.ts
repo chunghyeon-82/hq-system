@@ -581,3 +581,74 @@ export async function updateInternalDoc(id: string, data: Partial<InternalDoc>) 
 export async function deleteInternalDoc(id: string) {
   await deleteDoc(doc(db, 'internalDocs', id))
 }
+
+// ── 1:1 채팅 (directChats) ───────────────────────────────────────────
+
+export interface DirectChatMessage {
+  id:         string
+  senderUid:  string
+  senderName: string
+  body:       string
+  createdAt:  unknown
+  readBy:     string[]
+}
+
+export interface DirectChatRoom {
+  id:           string
+  participants: string[]
+  names:        Record<string, string>
+  lastMessage?: string
+  lastAt?:      unknown
+  unread?:      Record<string, number>
+}
+
+function getRoomId(uid1: string, uid2: string) {
+  return [uid1, uid2].sort().join('_')
+}
+
+export function listenDirectChatRooms(myUid: string, cb: (rooms: DirectChatRoom[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'directChats'), where('participants', 'array-contains', myUid)),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as DirectChatRoom)))
+  )
+}
+
+export function listenDirectChatMessages(roomId: string, cb: (msgs: DirectChatMessage[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'directChats', roomId, 'messages'), orderBy('createdAt', 'asc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as DirectChatMessage)))
+  )
+}
+
+export async function sendDirectChat(
+  myUid: string, myName: string,
+  targetUid: string, targetName: string,
+  body: string
+) {
+  const roomId = getRoomId(myUid, targetUid)
+  const roomRef = doc(db, 'directChats', roomId)
+  const roomSnap = await getDoc(roomRef)
+  const prevUnread = roomSnap.exists() ? (roomSnap.data()?.unread?.[targetUid] ?? 0) : 0
+
+  await setDoc(roomRef, {
+    participants: [myUid, targetUid],
+    names: { [myUid]: myName, [targetUid]: targetName },
+    lastMessage: body.slice(0, 50),
+    lastAt: serverTimestamp(),
+    [`unread.${targetUid}`]: prevUnread + 1,
+  }, { merge: true })
+
+  await addDoc(collection(db, 'directChats', roomId, 'messages'), {
+    senderUid:  myUid,
+    senderName: myName,
+    body,
+    createdAt:  serverTimestamp(),
+    readBy:     [myUid],
+  })
+}
+
+export async function markDirectChatRead(roomId: string, myUid: string) {
+  await updateDoc(doc(db, 'directChats', roomId), {
+    [`unread.${myUid}`]: 0,
+  })
+}

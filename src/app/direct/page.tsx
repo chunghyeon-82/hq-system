@@ -1,181 +1,338 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenUsers, sendDirectMessage } from '@/lib/db'
-import type { AppUser, MessageCategory } from '@/types'
-import { Send, MessageSquare, Lock, ShieldAlert } from 'lucide-react'
+import {
+  listenUsers, listenDirectChatRooms, listenDirectChatMessages,
+  sendDirectChat, markDirectChatRead
+} from '@/lib/db'
+import type { AppUser, DirectChatRoom, DirectChatMessage } from '@/lib/db'
+import { Send, X, MessageSquare, ChevronLeft } from 'lucide-react'
 import clsx from 'clsx'
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표', ETC: '기타'
+}
+
+function getRoomId(uid1: string, uid2: string) {
+  return [uid1, uid2].sort().join('_')
+}
+
+function formatTime(ts: unknown): string {
+  if (!ts) return ''
+  const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string)
+  const now = new Date()
+  const isToday = d.toDateString() === now.toDateString()
+  if (isToday) return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+}
+
+function formatDate(ts: unknown): string {
+  if (!ts) return ''
+  const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string)
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
+}
 
 export default function DirectPage() {
   const { user, loading } = useAuth()
-  const router   = useRouter()
+  const router = useRouter()
 
-  const [allUsers,  setAllUsers]  = useState<AppUser[]>([])
-  const [targetUid, setTargetUid] = useState('')
-  const [title,     setTitle]     = useState('')
-  const [body,      setBody]      = useState('')
-  const [category,  setCategory]  = useState<'instruction' | 'confirm' | 'notice'>('instruction')
-  const [priority,  setPriority]  = useState<'normal' | 'urgent'>('normal')
-  const [sending,   setSending]   = useState(false)
-  const [sent,      setSent]      = useState(false)
+  const [allUsers,   setAllUsers]   = useState<AppUser[]>([])
+  const [rooms,      setRooms]      = useState<DirectChatRoom[]>([])
+  const [messages,   setMessages]   = useState<DirectChatMessage[]>([])
+  const [activeRoom, setActiveRoom] = useState<string | null>(null)  // roomId
+  const [activeUser, setActiveUser] = useState<AppUser | null>(null)
+  const [input,      setInput]      = useState('')
+  const [sending,    setSending]    = useState(false)
+  const [showUsers,  setShowUsers]  = useState(false)  // 새 채팅 상대 선택
 
-  const isBiz   = user?.role === 'BIZ_REP'
-  const isHQ    = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
-  const isAdmin = user?.role === 'ADMIN'
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef  = useRef<HTMLInputElement>(null)
 
-  // 수신자 목록 결정
-  // - 사업장 대표: 모든 사용자 (본인 제외) - 제한 해제
-  // - 본부/관리자: 모든 사용자 (본인 제외)
-  const recipients = allUsers.filter(u => u.uid !== user?.uid)
-
-  // 사업장↔사업장 여부 (7일 자동삭제 안내)
-  const target        = allUsers.find(u => u.uid === targetUid)
-  const isBizToBiz    = isBiz && target?.role === 'BIZ_REP'
+  const isHQ  = user && ['ADMIN', 'HQ_CHIEF', 'HQ_MEMBER'].includes(user.role)
+  const isBiz = user?.role === 'BIZ_REP'
 
   useEffect(() => {
     if (loading) return
     if (!user) { router.replace('/login'); return }
-    if (!isBiz && !isHQ) { router.replace('/dashboard'); return }
-    return listenUsers(setAllUsers)
-  }, [user, isBiz, isHQ, router])
+    if (!isHQ && !isBiz) { router.replace('/dashboard'); return }
+    const u1 = listenUsers(setAllUsers)
+    const u2 = listenDirectChatRooms(user.uid, setRooms)
+    return () => { u1(); u2() }
+  }, [user, loading, router, isHQ, isBiz])
+
+  // 메시지 구독 (채팅방 선택 시)
+  useEffect(() => {
+    if (!activeRoom) { setMessages([]); return }
+    const unsub = listenDirectChatMessages(activeRoom, setMessages)
+    return unsub
+  }, [activeRoom])
+
+  // 읽음 처리
+  useEffect(() => {
+    if (!activeRoom || !user) return
+    markDirectChatRead(activeRoom, user.uid)
+  }, [activeRoom, messages.length, user])
+
+  // 스크롤 하단
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const openChat = (targetUser: AppUser) => {
+    if (!user) return
+    const roomId = getRoomId(user.uid, targetUser.uid)
+    setActiveRoom(roomId)
+    setActiveUser(targetUser)
+    setShowUsers(false)
+    setTimeout(() => inputRef.current?.focus(), 100)
+  }
 
   const handleSend = async () => {
-    if (!user || !targetUid || !title.trim() || !body.trim()) return
+    if (!user || !activeUser || !input.trim() || sending) return
     setSending(true)
-    if (!target) { setSending(false); return }
-    await sendDirectMessage({
-      title:       title.trim(),
-      body:        body.trim(),
-      category,
-      priority,
-      authorUid:   user.uid,
-      authorName:  user.name,
-      authorBizId: user.bizId ?? '',
-      targetUid:   target.uid,
-      targetName:  target.name,
-    })
-    // 수신자에게 푸시 알림 발송
-    setTimeout(() => {
-      fetch('/api/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
-        body: JSON.stringify({
-          title: `💬 ${user.name}님의 1:1 메시지`,
-          body:  title.trim(),
-          url:   '/dashboard',
-          targetUids: [target.uid],
-        }),
-      }).catch(() => {})
-    }, 0)
-    setSent(true)
+    const text = input.trim()
+    setInput('')
+    await sendDirectChat(user.uid, user.name, activeUser.uid, activeUser.name, text)
+    // 푸시 알림
+    fetch('/api/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
+      body: JSON.stringify({
+        title: `💬 ${user.name}`,
+        body:  text,
+        url:   '/direct',
+        targetUids: [activeUser.uid],
+      }),
+    }).catch(() => {})
     setSending(false)
   }
 
-  const roleLabel = (role: string) => ({
-    ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버', BIZ_REP: '사업장대표', ETC: '기타'
-  }[role] ?? role)
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+  }
 
-  if (sent) return (
-    <AppShell title="1:1 메시지" back="/dashboard">
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-          <MessageSquare size={32} className="text-green-600"/>
-        </div>
-        <div className="text-center">
-          <p className="font-semibold text-gray-900">전송 완료!</p>
-          <p className="text-sm text-gray-500 mt-1">{target?.name}님에게 메시지가 전달됐습니다</p>
-          {isBizToBiz && (
-            <p className="text-xs text-gray-400 mt-2">이 메시지는 7일 후 자동 삭제됩니다</p>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <button onClick={() => { setSent(false); setTitle(''); setBody(''); setTargetUid('') }}
-            className="px-4 py-2 border border-gray-300 rounded-xl text-sm font-medium hover:bg-gray-50">
-            새 메시지 작성
-          </button>
-          <button onClick={() => router.push('/dashboard')}
-            className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800">
-            대시보드로
-          </button>
-        </div>
-      </div>
-    </AppShell>
-  )
+  // 채팅방에서 상대방 정보
+  const getRoomPartner = (room: DirectChatRoom) => {
+    if (!user) return null
+    const partnerUid = room.participants.find(uid => uid !== user.uid)
+    return partnerUid ? allUsers.find(u => u.uid === partnerUid) ?? null : null
+  }
+
+  // 날짜 구분선
+  const shouldShowDate = (msgs: DirectChatMessage[], idx: number) => {
+    if (idx === 0) return true
+    const prev = (msgs[idx-1].createdAt as { toDate?: () => Date })?.toDate?.()
+    const cur  = (msgs[idx].createdAt   as { toDate?: () => Date })?.toDate?.()
+    if (!prev || !cur) return false
+    return prev.toDateString() !== cur.toDateString()
+  }
+
+  const totalUnread = rooms.reduce((sum, r) => sum + (r.unread?.[user?.uid ?? ''] ?? 0), 0)
+
+  // 사용자 목록 (채팅 상대 선택용)
+  const chatTargets = allUsers.filter(u => u.uid !== user?.uid)
 
   return (
-    <AppShell title="1:1 메시지" back="/dashboard">
-      <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-4">
+    <AppShell title={`1:1 채팅${totalUnread > 0 ? ` (${totalUnread})` : ''}`} back="/dashboard">
+      <div className="flex h-[calc(100vh-56px)] overflow-hidden">
 
-        {/* 비공개 안내 */}
-        <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <Lock size={16} className="text-blue-500 shrink-0 mt-0.5"/>
-          <p className="text-xs text-blue-700 leading-relaxed">
-            이 메시지는 수신 담당자와 관리자만 볼 수 있습니다.<br/>
-            다른 사업장이나 본부 멤버에게는 노출되지 않습니다.
-          </p>
-        </div>
-
-        {/* 사업장↔사업장 7일 자동삭제 안내 */}
-        {isBizToBiz && (
-          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <ShieldAlert size={16} className="text-amber-500 shrink-0 mt-0.5"/>
-            <p className="text-xs text-amber-700 leading-relaxed">
-              🔒 사업장↔사업장 1:1 채팅은 보안을 위해<br/>
-              <strong>7일 후 자동으로 서버에서 삭제됩니다</strong>
-            </p>
-          </div>
-        )}
-
-        {/* 수신자 선택 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">받는 사람</label>
-          <select value={targetUid} onChange={e => setTargetUid(e.target.value)}
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400">
-            <option value="">받는 사람을 선택하세요</option>
-            {recipients.map(u => (
-              <option key={u.uid} value={u.uid}>
-                {u.name} ({roleLabel(u.role)})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* 우선순위 */}
-        <div className="flex gap-2">
-          {(['normal', 'urgent'] as const).map(p => (
-            <button key={p} onClick={() => setPriority(p)}
-              className={clsx('px-4 py-2 rounded-xl text-sm font-medium border transition-colors',
-                priority === p
-                  ? p === 'urgent' ? 'bg-red-50 border-red-300 text-red-700' : 'bg-primary-50 border-primary-300 text-primary-700'
-                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50')}>
-              {p === 'normal' ? '일반' : '🚨 긴급'}
+        {/* ── 왼쪽: 채팅방 목록 ── */}
+        <div className={clsx(
+          'flex flex-col border-r border-gray-200 bg-white',
+          activeRoom ? 'hidden md:flex md:w-72' : 'flex w-full md:w-72'
+        )}>
+          {/* 헤더 */}
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900 text-sm">메시지</h3>
+            <button onClick={() => setShowUsers(v => !v)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-800">
+              <MessageSquare size={12}/> 새 채팅
             </button>
-          ))}
+          </div>
+
+          {/* 새 채팅 상대 선택 */}
+          {showUsers && (
+            <div className="border-b border-gray-100 bg-gray-50 max-h-48 overflow-y-auto">
+              <p className="px-4 py-2 text-xs text-gray-400 font-medium">대화 상대 선택</p>
+              {chatTargets.map(u => (
+                <button key={u.uid} onClick={() => openChat(u)}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white transition-colors text-left">
+                  <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
+                    {u.name[0]}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">{u.name}</p>
+                    <p className="text-xs text-gray-400">{ROLE_LABEL[u.role] ?? u.role}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* 채팅방 목록 */}
+          <div className="flex-1 overflow-y-auto">
+            {rooms.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 gap-2 text-gray-400">
+                <MessageSquare size={24} className="opacity-30"/>
+                <p className="text-xs">아직 대화가 없습니다</p>
+                <p className="text-xs text-primary-500">새 채팅 버튼을 눌러 시작하세요</p>
+              </div>
+            ) : (
+              rooms
+                .sort((a, b) => {
+                  const ta = (a.lastAt as { toMillis?: () => number })?.toMillis?.() ?? 0
+                  const tb = (b.lastAt as { toMillis?: () => number })?.toMillis?.() ?? 0
+                  return tb - ta
+                })
+                .map(room => {
+                  const partner = getRoomPartner(room)
+                  if (!partner) return null
+                  const unread = room.unread?.[user?.uid ?? ''] ?? 0
+                  const isActive = activeRoom === room.id
+                  return (
+                    <button key={room.id} onClick={() => openChat(partner)}
+                      className={clsx(
+                        'w-full flex items-center gap-3 px-4 py-3.5 border-b border-gray-50 hover:bg-gray-50 transition-colors text-left',
+                        isActive ? 'bg-primary-50 border-l-2 border-l-primary-500' : ''
+                      )}>
+                      <div className="relative shrink-0">
+                        <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-sm font-bold text-primary-700">
+                          {partner.name[0]}
+                        </div>
+                        {unread > 0 && (
+                          <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold">
+                            {unread > 9 ? '9+' : unread}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-0.5">
+                          <p className="text-sm font-medium text-gray-900 truncate">{partner.name}</p>
+                          <span className="text-[10px] text-gray-400 shrink-0 ml-1">
+                            {formatTime(room.lastAt)}
+                          </span>
+                        </div>
+                        <p className={clsx('text-xs truncate', unread > 0 ? 'text-gray-700 font-medium' : 'text-gray-400')}>
+                          {room.lastMessage ?? ''}
+                        </p>
+                      </div>
+                    </button>
+                  )
+                })
+            )}
+          </div>
         </div>
 
-        {/* 제목 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">제목</label>
-          <input value={title} onChange={e => setTitle(e.target.value)}
-            placeholder="문의 제목을 입력하세요"
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
-        </div>
+        {/* ── 오른쪽: 채팅 내용 ── */}
+        <div className={clsx(
+          'flex flex-col flex-1 bg-gray-50',
+          !activeRoom ? 'hidden md:flex' : 'flex'
+        )}>
+          {!activeRoom ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-400">
+              <MessageSquare size={40} className="opacity-20"/>
+              <p className="text-sm">대화를 선택하거나 새 채팅을 시작하세요</p>
+            </div>
+          ) : (
+            <>
+              {/* 채팅 헤더 */}
+              <div className="px-4 py-3 bg-white border-b border-gray-200 flex items-center gap-3">
+                <button onClick={() => { setActiveRoom(null); setActiveUser(null) }}
+                  className="md:hidden p-1 text-gray-400 hover:text-gray-600">
+                  <ChevronLeft size={20}/>
+                </button>
+                <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
+                  {activeUser?.name[0]}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{activeUser?.name}</p>
+                  <p className="text-xs text-gray-400">{ROLE_LABEL[activeUser?.role ?? ''] ?? ''}</p>
+                </div>
+              </div>
 
-        {/* 내용 */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">내용</label>
-          <textarea value={body} onChange={e => setBody(e.target.value)}
-            placeholder="내용을 입력하세요" rows={6}
-            className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
-        </div>
+              {/* 메시지 목록 */}
+              <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
+                {messages.map((msg, idx) => {
+                  const isMine = msg.senderUid === user?.uid
+                  const showDate = shouldShowDate(messages, idx)
+                  const prevMsg = idx > 0 ? messages[idx-1] : null
+                  const showSender = !isMine && msg.senderUid !== prevMsg?.senderUid
 
-        <button onClick={handleSend}
-          disabled={!targetUid || !title.trim() || !body.trim() || sending}
-          className="w-full flex items-center justify-center gap-2 bg-primary-600 text-white rounded-xl py-3.5 font-medium text-sm hover:bg-primary-800 disabled:opacity-50 transition-colors">
-          <Send size={16}/> {sending ? '전송 중...' : '메시지 전송'}
-        </button>
+                  return (
+                    <div key={msg.id}>
+                      {/* 날짜 구분선 */}
+                      {showDate && (
+                        <div className="flex items-center gap-3 my-4">
+                          <div className="flex-1 h-px bg-gray-200"/>
+                          <span className="text-xs text-gray-400 shrink-0">
+                            {formatDate(msg.createdAt)}
+                          </span>
+                          <div className="flex-1 h-px bg-gray-200"/>
+                        </div>
+                      )}
+
+                      {/* 말풍선 */}
+                      <div className={clsx('flex items-end gap-2 mb-1', isMine ? 'flex-row-reverse' : 'flex-row')}>
+                        {/* 상대방 아바타 */}
+                        {!isMine && (
+                          <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0 mb-0.5">
+                            {msg.senderName[0]}
+                          </div>
+                        )}
+
+                        <div className={clsx('flex flex-col max-w-[70%]', isMine ? 'items-end' : 'items-start')}>
+                          {showSender && (
+                            <p className="text-xs text-gray-500 mb-1 ml-1">{msg.senderName}</p>
+                          )}
+                          <div className={clsx(
+                            'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words',
+                            isMine
+                              ? 'bg-primary-600 text-white rounded-br-sm'
+                              : 'bg-white text-gray-800 rounded-bl-sm shadow-sm border border-gray-100'
+                          )}>
+                            {msg.body}
+                          </div>
+                          <span className="text-[10px] text-gray-400 mt-1 mx-1">
+                            {formatTime(msg.createdAt)}
+                          </span>
+                        </div>
+
+                        {/* 내 메시지 오른쪽 공간 */}
+                        {isMine && <div className="w-7 shrink-0"/>}
+                      </div>
+                    </div>
+                  )
+                })}
+                <div ref={bottomRef}/>
+              </div>
+
+              {/* 입력창 */}
+              <div className="px-4 py-3 bg-white border-t border-gray-200">
+                <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
+                  <input
+                    ref={inputRef}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="메시지 입력..."
+                    className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!input.trim() || sending}
+                    className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
+                    <Send size={14}/>
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1.5 text-center">
+                  Enter로 전송 · 본인과 상대방만 볼 수 있습니다
+                </p>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </AppShell>
   )
