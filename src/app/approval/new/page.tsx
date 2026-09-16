@@ -48,6 +48,7 @@ function ApprovalNewPageInner() {
   const [mobileTab,     setMobileTab]     = useState<'write'|'preview'>('write')
   const [tplName,       setTplName]       = useState('')
 
+  const [drafterRole,   setDrafterRole]   = useState('기안')
   const [midApprovers,  setMidApprovers]  = useState<{uid:string;name:string;role:string}[]>([])
   const [finalApprover, setFinalApprover] = useState<{uid:string;name:string;role:string}|null>(null)
   const [viewers,       setViewers]       = useState<{uid:string;name:string;role:string}[]>([])
@@ -178,7 +179,7 @@ function ApprovalNewPageInner() {
     if (!title.trim()) { alert('제목을 입력해주세요'); return }
     setSaving(true)
     try {
-      const drafter: Approver = { uid:user.uid, name:user.name, role:'기안자', status:'submitted', actedAt:new Date().toISOString() }
+      const drafter: Approver = { uid:user.uid, name:user.name, role:drafterRole || '기안', status:'submitted', actedAt:new Date().toISOString() }
       const approversList: Approver[] = midApprovers.map(a => ({ ...a, status:'waiting' as const }))
       const final: Approver = finalApprover
         ? { ...finalApprover, status:'waiting' }
@@ -548,7 +549,15 @@ function ApprovalNewPageInner() {
               <div key={a.uid} className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl mb-2">
                 <span className="text-xs text-gray-400 w-4">{i+1}</span>
                 <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">{a.name[0]}</div>
-                <div className="flex-1"><p className="text-sm font-medium">{a.name}</p><p className="text-xs text-gray-400">{a.role}</p></div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{a.name}</p>
+                  <input
+                    value={a.role}
+                    onChange={e => setMidApprovers(p => p.map((x,j) => j===i ? {...x, role: e.target.value} : x))}
+                    placeholder="직책명 입력"
+                    className="text-xs text-gray-500 bg-transparent border-b border-gray-300 focus:outline-none focus:border-primary-400 w-full mt-0.5"
+                  />
+                </div>
                 <button onClick={() => setMidApprovers(p => p.filter((_,j)=>j!==i))}><X size={14} className="text-gray-300 hover:text-red-400"/></button>
               </div>
             ))}
@@ -570,7 +579,15 @@ function ApprovalNewPageInner() {
             {finalApprover ? (
               <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl">
                 <div className="w-8 h-8 rounded-full bg-green-200 flex items-center justify-center text-xs font-bold text-green-800">{finalApprover.name[0]}</div>
-                <div className="flex-1"><p className="text-sm font-medium text-green-900">{finalApprover.name}</p><p className="text-xs text-green-600">{finalApprover.role}</p></div>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-green-900">{finalApprover.name}</p>
+                  <input
+                    value={finalApprover.role}
+                    onChange={e => setFinalApprover(p => p ? {...p, role: e.target.value} : p)}
+                    placeholder="직책명 입력"
+                    className="text-xs text-green-600 bg-transparent border-b border-green-300 focus:outline-none focus:border-green-500 w-full mt-0.5"
+                  />
+                </div>
                 <button onClick={() => setFinalApprover(null)}><X size={14} className="text-green-300 hover:text-red-400"/></button>
               </div>
             ) : (
