@@ -7,7 +7,8 @@ import {
   listenUsers, listenDirectChatRooms, listenDirectChatMessages,
   sendDirectChat, markDirectChatRead
 } from '@/lib/db'
-import type { AppUser, DirectChatRoom, DirectChatMessage } from '@/lib/db'
+import type { DirectChatRoom, DirectChatMessage } from '@/lib/db'
+import type { AppUser } from '@/types'
 import { Send, X, MessageSquare, ChevronLeft } from 'lucide-react'
 import clsx from 'clsx'
 
