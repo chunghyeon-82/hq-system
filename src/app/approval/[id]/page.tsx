@@ -142,16 +142,6 @@ export default function ApprovalDetailPage() {
     setNewEmail(''); setNewName('')
   }
 
-  // 결재 직책명 변환
-  const getRoleLabel = (role: string) => {
-    if (role === '기안자') return '기안'
-    if (role === '본부장' || role === 'HQ_CHIEF') return '본부장'
-    if (role === '본부멤버' || role === 'HQ_MEMBER') return '담당'
-    if (role === '관리자' || role === 'ADMIN') return '관리자'
-    if (role === '최종결재' || role === '최종결재자') return '본부장'
-    return role
-  }
-
   const formatDt = (s?: string) => {
     if (!s) return ''
     const d = new Date(s)
@@ -251,111 +241,162 @@ export default function ApprovalDetailPage() {
           </div>
         )}
 
-        {/* 공문 본문 (인쇄용) */}
+                {/* 공문 본문 (A4 페이지 형태) */}
         <div id="print-area" className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <div style={{fontFamily:'Nanum Myeongjo, serif', padding:'48px 56px', color:'#111'}}>
-            <h1 style={{textAlign:'center', fontSize:'22pt', fontWeight:800, marginBottom:'32px', letterSpacing:'2px'}}>
-              {doc.orgName}
-            </h1>
-            <div style={{marginBottom:'6px', display:'flex', gap:'12px', fontSize:'11pt'}}>
-              <span style={{fontWeight:700, minWidth:'48px'}}>수신</span>
-              <span>{doc.recipient}</span>
-            </div>
-            {doc.via && (
-              <div style={{marginBottom:'6px', display:'flex', gap:'12px', fontSize:'11pt'}}>
-                <span style={{fontWeight:700, minWidth:'48px'}}>(경유)</span>
-                <span>{doc.via}</span>
+          <div style={{fontFamily:'Nanum Myeongjo, serif', color:'#111', width:'100%', boxSizing:'border-box', display:'flex', flexDirection:'column', minHeight:'1100px'}}>
+
+            {/* 상단 본문 영역 */}
+            <div style={{padding:'40px 56px 24px 56px', flex:1}}>
+              {/* 기관명 */}
+              <h1 style={{textAlign:'center', fontSize:'20pt', fontWeight:800, marginBottom:'28px', letterSpacing:'3px'}}>
+                {doc.orgName}
+              </h1>
+              {/* 수신/경유/제목 */}
+              <div style={{marginBottom:'4px', display:'flex', fontSize:'10.5pt'}}>
+                <span style={{fontWeight:700, minWidth:'52px'}}>수신</span>
+                <span>{doc.recipient}</span>
               </div>
-            )}
-            <div style={{marginBottom:'6px', display:'flex', gap:'12px', fontSize:'11pt'}}>
-              <span style={{fontWeight:700, minWidth:'48px'}}>제목</span>
-              <span style={{fontWeight:700, fontSize:'12pt'}}>{doc.title}</span>
-            </div>
-            <div style={{height:'1px', background:'#ccc', margin:'16px 0'}}/>
-            <div style={{fontSize:'11pt', lineHeight:'1.9', margin:'20px 0', minHeight:'300px'}}
-              dangerouslySetInnerHTML={{__html: doc.body}}
-            />
-            {doc.attachments?.filter(a => a.url).length > 0 && (
-              <div style={{marginTop:'12px', padding:'12px', background:'#f8f9fa', borderRadius:'8px'}}>
-                <p style={{fontSize:'10pt', fontWeight:700, marginBottom:'8px'}}>📎 첨부파일</p>
-                {doc.attachments.filter(a => a.url).map((a, i) => (
-                  <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
-                    style={{display:'flex', alignItems:'center', gap:'8px', padding:'4px 0', fontSize:'10pt', color:'#1a56db', textDecoration:'none'}}>
-                    📄 {a.name}
-                    {a.size && <span style={{fontSize:'9pt', color:'#888'}}>({(a.size/1024).toFixed(0)}KB)</span>}
-                  </a>
-                ))}
+              {doc.via && (
+                <div style={{marginBottom:'4px', display:'flex', fontSize:'10.5pt'}}>
+                  <span style={{fontWeight:700, minWidth:'52px'}}>(경유)</span>
+                  <span>{doc.via}</span>
+                </div>
+              )}
+              <div style={{marginBottom:'4px', display:'flex', fontSize:'10.5pt'}}>
+                <span style={{fontWeight:700, minWidth:'52px'}}>제목</span>
+                <span style={{fontWeight:700}}>{doc.title}</span>
               </div>
-            )}
-            {doc.attachments?.length > 0 && (
-              <div style={{marginTop:'16px', fontSize:'10.5pt'}}>
-                <span style={{fontWeight:700, marginRight:"12px"}}>붙임</span>
-                {doc.attachments.map((a,i) => (
-                  <span key={i}>{i > 0 ? '\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0' : ''}{i+1}. {a.name}{i < doc.attachments.length-1 ? '' : '. 끝'}</span>
-                ))}
-              </div>
-            )}
-            {doc.sealOrgName && (
-              <div style={{textAlign:'center', margin:'36px 0 24px', position:'relative'}}>
-                <span style={{fontSize:'16pt', fontWeight:700, letterSpacing:'1px', position:'relative', display:'inline-block'}}>
-                  {doc.sealOrgName}
-                  {doc.sealUrl ? (
-                    <img src={doc.sealUrl} alt="직인"
-                      style={{position:'absolute', top:'-20px', right:'-36px', width:'72px', height:'72px', opacity:0.85}}/>
+              {/* 제목 아래 선 */}
+              <div style={{height:'1.5px', background:'#333', margin:'8px 0 20px 0'}}/>
+              {/* 본문 */}
+              <div
+                style={{fontSize:'10.5pt', lineHeight:'2.0'}}
+                dangerouslySetInnerHTML={{__html: doc.body}}
+              />
+              {/* 붙임 */}
+              {doc.attachments?.length > 0 && (
+                <div style={{marginTop:'24px', fontSize:'10.5pt'}}>
+                  {doc.attachments.length === 1 ? (
+                    <div style={{display:'flex'}}>
+                      <span style={{fontWeight:700, minWidth:'52px'}}>붙임</span>
+                      <span>{doc.attachments[0].name} 1부.&nbsp;&nbsp;끝.</span>
+                    </div>
                   ) : (
-                    <span style={{
-                      position:'absolute', top:'-20px', right:'-36px',
-                      width:'68px', height:'68px', borderRadius:'4px',
-                      border:'3px solid rgba(180,0,0,0.6)',
-                      display:'inline-flex', alignItems:'center', justifyContent:'center',
-                      color:'rgba(180,0,0,0.6)', fontSize:'9pt', fontWeight:700,
-                      background:'rgba(255,255,255,0.1)',
-                    }}>직인</span>
-                  )}
-                </span>
-              </div>
-            )}
-            {/* 결재선 */}
-            <div style={{borderTop:'1.5px solid #555', paddingTop:'8px', marginTop:'8px', display:'flex', gap:'0'}}>
-              {allApprovers.map((a, i) => (
-                <div key={i} style={{
-                  flex:1, padding:'4px 8px',
-                  borderRight: i < allApprovers.length-1 ? '0.5px solid #bbb' : 'none',
-                }}>
-                  <div style={{fontSize:'8.5pt', fontWeight:700, color:'#333', marginBottom:'2px'}}>{getRoleLabel(a.role)}</div>
-                  <div style={{fontSize:'10pt', fontWeight:700, marginBottom:'2px', position:'relative'}}>
-                    {a.name}
-                    {a.sealUrl && (a.status==='approved'||a.status==='submitted') && (
-                      <img src={a.sealUrl} alt="직인"
-                        style={{position:'absolute', top:'-8px', right:'-8px', width:'32px', height:'32px', opacity:0.85, objectFit:'contain'}}/>
-                    )}
-                  </div>
-                  <div style={{fontSize:'7.5pt', color:'#666', lineHeight:'1.4'}}>
-                    {a.actedAt ? formatDt(a.actedAt) + (a.status==='submitted'?'상신':a.status==='approved'?'결재':a.status==='rejected'?'반려':'') : '대기'}
-                  </div>
-                  {a.status === 'rejected' && a.comment && (
-                    <div style={{fontSize:'7pt', color:'#c00', marginTop:'2px'}}>사유: {a.comment}</div>
+                    <div style={{display:'flex'}}>
+                      <span style={{fontWeight:700, minWidth:'52px'}}>붙임</span>
+                      <div>
+                        {doc.attachments.map((a, i) => (
+                          <div key={i}>
+                            {i+1}. {a.name} 1부.{i === doc.attachments.length-1 ? '  끝.' : ''}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
-              ))}
+              )}
+              {/* 첨부파일 다운로드 */}
+              {doc.attachments?.filter(a => a.url).length > 0 && (
+                <div style={{marginTop:'12px', padding:'10px 14px', background:'#f8f9fa', borderRadius:'6px', fontSize:'9.5pt'}}>
+                  <p style={{fontWeight:700, marginBottom:'6px', color:'#555'}}>📎 첨부파일 다운로드</p>
+                  {doc.attachments.filter(a => a.url).map((a, i) => (
+                    <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
+                      style={{display:'flex', alignItems:'center', gap:'8px', padding:'3px 0', color:'#1a56db', textDecoration:'none'}}>
+                      📄 {a.name}
+                      {a.size && <span style={{fontSize:'8.5pt', color:'#888'}}>({(a.size/1024).toFixed(0)}KB)</span>}
+                    </a>
+                  ))}
+                </div>
+              )}
+              {/* 발신 기관명 + 직인 */}
+              {doc.sealOrgName && (
+                <div style={{textAlign:'center', margin:'48px 0 24px', position:'relative'}}>
+                  <span style={{fontSize:'14pt', fontWeight:700, letterSpacing:'1px', position:'relative', display:'inline-block'}}>
+                    {doc.sealOrgName}
+                    {doc.sealUrl ? (
+                      <img src={doc.sealUrl} alt="직인"
+                        style={{position:'absolute', top:'-18px', right:'-36px', width:'68px', height:'68px', opacity:0.85}}/>
+                    ) : (
+                      <span style={{
+                        position:'absolute', top:'-18px', right:'-36px',
+                        width:'64px', height:'64px', borderRadius:'4px',
+                        border:'2.5px solid rgba(180,0,0,0.6)',
+                        display:'inline-flex', alignItems:'center', justifyContent:'center',
+                        color:'rgba(180,0,0,0.6)', fontSize:'8pt', fontWeight:700,
+                      }}>직인</span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
-            {/* 시행 정보 */}
-            <div style={{borderTop:'1.5px solid #333', borderBottom:'1.5px solid #333', padding:'5px 0', marginTop:'12px', fontSize:'8.5pt'}}>
-              <div style={{display:'flex', gap:'8px', padding:'2px 0', alignItems:'center'}}>
-                <span style={{flex:1}}><b>시행</b> {doc.docNo} ({doc.createdAt ? new Date((doc.createdAt as {toDate?:()=>Date}).toDate?.()??doc.createdAt as Date).toLocaleDateString('ko-KR') : ''})</span>
-                <span style={{flex:1, textAlign:'center'}}><b>접수</b></span>
+
+            {/* 결재란 + 시행 정보 — 하단 고정 */}
+            <div style={{padding:'0 56px 40px 56px'}}>
+              {/* 결재선 표 */}
+              <table style={{width:'100%', borderCollapse:'collapse', border:'1px solid #555', marginBottom:'0', tableLayout:'fixed'}}>
+                <tbody>
+                  <tr>
+                    {allApprovers.map((a, i) => (
+                      <td key={i} style={{
+                        border:'1px solid #999', textAlign:'center',
+                        width:`${100/allApprovers.length}%`,
+                        padding:0,
+                      }}>
+                        {/* 직책 */}
+                        <div style={{fontSize:'8pt', fontWeight:700, padding:'3px 4px', background:'#f5f5f5', borderBottom:'1px solid #ccc'}}>
+                          {getRoleLabel(a.role)}
+                        </div>
+                        {/* 서명/도장 */}
+                        <div style={{height:'48px', display:'flex', alignItems:'center', justifyContent:'center', borderBottom:'1px solid #ccc', position:'relative'}}>
+                          {a.sealUrl && (a.status==='approved'||a.status==='submitted') ? (
+                            <img src={a.sealUrl} alt="직인" style={{width:'40px', height:'40px', opacity:0.85, objectFit:'contain'}}/>
+                          ) : (a.status==='submitted'||a.status==='approved') ? (
+                            <span style={{fontSize:'8pt', color:'#555'}}>{a.name}</span>
+                          ) : (
+                            <span style={{fontSize:'7pt', color:'#bbb'}}>대기</span>
+                          )}
+                        </div>
+                        {/* 이름 */}
+                        <div style={{fontSize:'8pt', fontWeight:700, padding:'2px 4px', borderBottom:'1px solid #ccc'}}>
+                          {a.name}
+                        </div>
+                        {/* 날짜 */}
+                        <div style={{fontSize:'7pt', color:'#666', padding:'2px 4px'}}>
+                          {a.actedAt ? formatDt(a.actedAt) : ' '}
+                        </div>
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+
+              {/* 시행/접수 */}
+              <div style={{borderTop:'1.5px solid #333', borderBottom:'1.5px solid #333', padding:'4px 0', marginTop:'8px', fontSize:'8.5pt'}}>
+                <div style={{display:'flex', padding:'2px 0'}}>
+                  <span style={{flex:1}}>
+                    <b>시행</b>&nbsp;{doc.docNo}&nbsp;
+                    ({doc.createdAt ? new Date((doc.createdAt as {toDate?:()=>Date}).toDate?.()??doc.createdAt as Date).toLocaleDateString('ko-KR') : ''})
+                  </span>
+                  <span style={{flex:1}}><b>접수</b></span>
+                </div>
+                <div style={{height:'0.5px', background:'#ddd', margin:'3px 0'}}/>
+                <div style={{display:'flex', gap:'6px', padding:'2px 0', flexWrap:'wrap'}}>
+                  {doc.zipCode && <span>우{doc.zipCode}</span>}
+                  {doc.address && <span>/ 주소 {doc.address}</span>}
+                </div>
+                <div style={{display:'flex', justifyContent:'space-between', padding:'2px 0', flexWrap:'wrap'}}>
+                  <div style={{display:'flex', gap:'6px'}}>
+                    {doc.phone && <span>전화 {doc.phone}</span>}
+                    {doc.fax   && <span>/ 전송 {doc.fax}</span>}
+                    {doc.email && <span>/ 전자우편 {doc.email}</span>}
+                    {doc.homepage && <span>/ 홈페이지 {doc.homepage}</span>}
+                  </div>
+                  <span style={{color:'#c00', fontWeight:700}}>{doc.isPublic}</span>
+                </div>
               </div>
-              <div style={{height:'0.5px', background:'#ddd', margin:'3px 0'}}/>
-              <div style={{display:'flex', gap:'8px', padding:'2px 0', flexWrap:'wrap'}}>
-                {doc.zipCode && <span>우{doc.zipCode}</span>}
-                {doc.address && <span>주소 {doc.address}</span>}
-                {doc.homepage && <span style={{marginLeft:'auto'}}>홈페이지 {doc.homepage}</span>}
-              </div>
-              <div style={{display:'flex', gap:'8px', padding:'2px 0', flexWrap:'wrap'}}>
-                {doc.phone    && <span>전화 {doc.phone}</span>}
-                {doc.fax      && <span>전송 {doc.fax}</span>}
-                {doc.email    && <span>전자우편 {doc.email}</span>}
-                <span style={{marginLeft:'auto', color:'#c00', fontWeight:700}}>{doc.isPublic}</span>
+              {/* 하단 기관명 */}
+              <div style={{textAlign:'center', fontSize:'9pt', marginTop:'4px', color:'#555'}}>
+                {doc.orgName}
               </div>
             </div>
           </div>

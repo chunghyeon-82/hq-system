@@ -19,11 +19,108 @@ const ROLE_LABEL: Record<string,string> = {
 }
 const PUBLIC_OPTIONS = ['공개','대외비','부분공개(1)','부분공개(2)','부분공개(3)','부분공개(4)','부분공개(5)','부분공개(6)','부분공개(7)']
 const DEFAULT_TEMPLATES = [
-  { id:'t1', name:'일반 기안문',  body:'1. \n\n2. ' },
-  { id:'t2', name:'지출결의서',   body:'1. 지출 목적:\n\n2. 지출 내역:\n   - 금액: \n   - 지급방법: \n\n3. 지출 효과: ' },
-  { id:'t3', name:'사업보고서',   body:'1. 사업 개요:\n\n2. 추진 경과:\n\n3. 향후 계획:\n\n4. 기타 사항: ' },
-  { id:'t4', name:'구매품의서',   body:'1. 구매 품목:\n\n2. 규격 및 수량:\n\n3. 구매 이유:\n\n4. 예산 금액: ' },
-  { id:'t5', name:'출장신청서',   body:'1. 출장 목적:\n\n2. 출장 기간:\n\n3. 출장지:\n\n4. 소요 예산: ' },
+  {
+    id: 't1', name: '일반 기안문',
+    body: `<p>1. 추진 배경</p>
+<p>&nbsp;&nbsp;가. </p>
+<p>&nbsp;&nbsp;나. </p>
+<p><br></p>
+<p>2. 사업 개요</p>
+<p>&nbsp;&nbsp;가. 사 업 명: </p>
+<p>&nbsp;&nbsp;나. 사업 기간: 2026. &nbsp;. &nbsp;. ~ 2026. &nbsp;. &nbsp;.</p>
+<p>&nbsp;&nbsp;다. 사업 대상: </p>
+<p>&nbsp;&nbsp;라. 소요 예산: 금&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;원</p>
+<p><br></p>
+<p>3. 추진 계획</p>
+<p>&nbsp;&nbsp;가. </p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;1) </p>
+<p>&nbsp;&nbsp;&nbsp;&nbsp;2) </p>
+<p>&nbsp;&nbsp;나. </p>
+<p><br></p>
+<p>4. 행정사항</p>
+<p>&nbsp;&nbsp;가. </p>
+<p>&nbsp;&nbsp;나. </p>
+<p><br></p>
+<p>위와 같이 추진하고자 하오니 검토하여 주시기 바랍니다.&nbsp;&nbsp;끝.</p>`
+  },
+  {
+    id: 't2', name: '지출결의서',
+    body: `<p>1. 지출 목적</p>
+<p>&nbsp;&nbsp;가. </p>
+<p><br></p>
+<p>2. 지출 내역</p>
+<p>&nbsp;&nbsp;가. 품&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;목: </p>
+<p>&nbsp;&nbsp;나. 금&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;액: 금&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;원</p>
+<p>&nbsp;&nbsp;다. 지급 방법: </p>
+<p>&nbsp;&nbsp;라. 지급 대상: </p>
+<p><br></p>
+<p>3. 지출 효과</p>
+<p>&nbsp;&nbsp;가. </p>
+<p><br></p>
+<p>위와 같이 지출하고자 하오니 결재하여 주시기 바랍니다.&nbsp;&nbsp;끝.</p>`
+  },
+  {
+    id: 't3', name: '사업보고서',
+    body: `<p>1. 사업 개요</p>
+<p>&nbsp;&nbsp;가. 사 업 명: </p>
+<p>&nbsp;&nbsp;나. 사업 기간: 2026. &nbsp;. &nbsp;. ~ 2026. &nbsp;. &nbsp;.</p>
+<p>&nbsp;&nbsp;다. 사업 대상: </p>
+<p><br></p>
+<p>2. 추진 경과</p>
+<p>&nbsp;&nbsp;가. </p>
+<p>&nbsp;&nbsp;나. </p>
+<p><br></p>
+<p>3. 주요 성과</p>
+<p>&nbsp;&nbsp;가. </p>
+<p>&nbsp;&nbsp;나. </p>
+<p><br></p>
+<p>4. 향후 계획</p>
+<p>&nbsp;&nbsp;가. </p>
+<p>&nbsp;&nbsp;나. </p>
+<p><br></p>
+<p>5. 기타 사항</p>
+<p>&nbsp;&nbsp;가. </p>
+<p><br></p>
+<p>이상 보고합니다.&nbsp;&nbsp;끝.</p>`
+  },
+  {
+    id: 't4', name: '구매품의서',
+    body: `<p>1. 구매 목적</p>
+<p>&nbsp;&nbsp;가. </p>
+<p><br></p>
+<p>2. 구매 내역</p>
+<p>&nbsp;&nbsp;가. 품&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;목: </p>
+<p>&nbsp;&nbsp;나. 규&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;격: </p>
+<p>&nbsp;&nbsp;다. 수&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;량: </p>
+<p>&nbsp;&nbsp;라. 단&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;가: 금&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;원</p>
+<p>&nbsp;&nbsp;마. 합&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;계: 금&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;원</p>
+<p>&nbsp;&nbsp;바. 구매 방법: </p>
+<p><br></p>
+<p>3. 구매 사유</p>
+<p>&nbsp;&nbsp;가. </p>
+<p><br></p>
+<p>위와 같이 구매하고자 하오니 결재하여 주시기 바랍니다.&nbsp;&nbsp;끝.</p>`
+  },
+  {
+    id: 't5', name: '출장신청서',
+    body: `<p>1. 출장 목적</p>
+<p>&nbsp;&nbsp;가. </p>
+<p><br></p>
+<p>2. 출장 개요</p>
+<p>&nbsp;&nbsp;가. 출장 기간: 2026. &nbsp;. &nbsp;. ~ 2026. &nbsp;. &nbsp;. (&nbsp;박 &nbsp;일)</p>
+<p>&nbsp;&nbsp;나. 출 장 지: </p>
+<p>&nbsp;&nbsp;다. 출장 인원: </p>
+<p>&nbsp;&nbsp;라. 소요 예산: 금&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;원</p>
+<p><br></p>
+<p>3. 출장 내용</p>
+<p>&nbsp;&nbsp;가. </p>
+<p>&nbsp;&nbsp;나. </p>
+<p><br></p>
+<p>4. 기대 효과</p>
+<p>&nbsp;&nbsp;가. </p>
+<p><br></p>
+<p>위와 같이 출장하고자 하오니 결재하여 주시기 바랍니다.&nbsp;&nbsp;끝.</p>`
+  },
 ]
 
 type Step = 'line' | 'write'
@@ -48,7 +145,6 @@ function ApprovalNewPageInner() {
   const [mobileTab,     setMobileTab]     = useState<'write'|'preview'>('write')
   const [tplName,       setTplName]       = useState('')
 
-  const [drafterRole,   setDrafterRole]   = useState('기안')
   const [midApprovers,  setMidApprovers]  = useState<{uid:string;name:string;role:string}[]>([])
   const [finalApprover, setFinalApprover] = useState<{uid:string;name:string;role:string}|null>(null)
   const [viewers,       setViewers]       = useState<{uid:string;name:string;role:string}[]>([])
@@ -179,7 +275,7 @@ function ApprovalNewPageInner() {
     if (!title.trim()) { alert('제목을 입력해주세요'); return }
     setSaving(true)
     try {
-      const drafter: Approver = { uid:user.uid, name:user.name, role:drafterRole || '기안', status:'submitted', actedAt:new Date().toISOString() }
+      const drafter: Approver = { uid:user.uid, name:user.name, role:'기안자', status:'submitted', actedAt:new Date().toISOString() }
       const approversList: Approver[] = midApprovers.map(a => ({ ...a, status:'waiting' as const }))
       const final: Approver = finalApprover
         ? { ...finalApprover, status:'waiting' }
@@ -549,15 +645,7 @@ function ApprovalNewPageInner() {
               <div key={a.uid} className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl mb-2">
                 <span className="text-xs text-gray-400 w-4">{i+1}</span>
                 <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold">{a.name[0]}</div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{a.name}</p>
-                  <input
-                    value={a.role}
-                    onChange={e => setMidApprovers(p => p.map((x,j) => j===i ? {...x, role: e.target.value} : x))}
-                    placeholder="직책명 입력"
-                    className="text-xs text-gray-500 bg-transparent border-b border-gray-300 focus:outline-none focus:border-primary-400 w-full mt-0.5"
-                  />
-                </div>
+                <div className="flex-1"><p className="text-sm font-medium">{a.name}</p><p className="text-xs text-gray-400">{a.role}</p></div>
                 <button onClick={() => setMidApprovers(p => p.filter((_,j)=>j!==i))}><X size={14} className="text-gray-300 hover:text-red-400"/></button>
               </div>
             ))}
@@ -579,15 +667,7 @@ function ApprovalNewPageInner() {
             {finalApprover ? (
               <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl">
                 <div className="w-8 h-8 rounded-full bg-green-200 flex items-center justify-center text-xs font-bold text-green-800">{finalApprover.name[0]}</div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-green-900">{finalApprover.name}</p>
-                  <input
-                    value={finalApprover.role}
-                    onChange={e => setFinalApprover(p => p ? {...p, role: e.target.value} : p)}
-                    placeholder="직책명 입력"
-                    className="text-xs text-green-600 bg-transparent border-b border-green-300 focus:outline-none focus:border-green-500 w-full mt-0.5"
-                  />
-                </div>
+                <div className="flex-1"><p className="text-sm font-medium text-green-900">{finalApprover.name}</p><p className="text-xs text-green-600">{finalApprover.role}</p></div>
                 <button onClick={() => setFinalApprover(null)}><X size={14} className="text-green-300 hover:text-red-400"/></button>
               </div>
             ) : (
