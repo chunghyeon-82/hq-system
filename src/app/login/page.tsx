@@ -1,12 +1,10 @@
 'use client'
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth'
+import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { Building2 } from 'lucide-react'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email,   setEmail]   = useState('')
   const [pw,      setPw]      = useState('')
   const [err,     setErr]     = useState('')
@@ -17,13 +15,7 @@ export default function LoginPage() {
     setErr(''); setLoading(true)
     try {
       await signInWithEmailAndPassword(auth, email, pw)
-      // Auth 상태가 완전히 반영된 후 이동
-      await new Promise<void>(resolve => {
-        const unsub = onAuthStateChanged(auth, user => {
-          if (user) { unsub(); resolve() }
-        })
-      })
-      router.replace('/dashboard')
+      // router.replace 없음 — auth-context 상태 변화로 page.tsx가 자동 redirect
     } catch {
       setErr('이메일 또는 비밀번호가 올바르지 않습니다.')
       setLoading(false)
