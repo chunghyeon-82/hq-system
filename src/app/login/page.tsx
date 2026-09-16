@@ -1,24 +1,35 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
+import { useAuth } from '@/lib/auth-context'
 import { Building2 } from 'lucide-react'
 
 export default function LoginPage() {
-  const [email,   setEmail]   = useState('')
-  const [pw,      setPw]      = useState('')
-  const [err,     setErr]     = useState('')
-  const [loading, setLoading] = useState(false)
+  const { user, loading } = useAuth()
+  const router = useRouter()
+  const [email,      setEmail]      = useState('')
+  const [pw,         setPw]         = useState('')
+  const [err,        setErr]        = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  // auth-context가 user를 감지하면 자동 이동
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/dashboard')
+    }
+  }, [user, loading, router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    setErr(''); setLoading(true)
+    setErr(''); setSubmitting(true)
     try {
       await signInWithEmailAndPassword(auth, email, pw)
-      // router.replace 없음 — auth-context 상태 변화로 page.tsx가 자동 redirect
+      // 성공 시 useEffect가 dashboard로 이동
     } catch {
       setErr('이메일 또는 비밀번호가 올바르지 않습니다.')
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
@@ -46,9 +57,9 @@ export default function LoginPage() {
               placeholder="••••••••" required />
           </div>
           {err && <p className="text-red-500 text-sm">{err}</p>}
-          <button type="submit" disabled={loading}
+          <button type="submit" disabled={submitting}
             className="w-full bg-primary-600 text-white rounded-lg py-2.5 font-medium text-sm hover:bg-primary-800 disabled:opacity-60 transition-colors">
-            {loading ? '로그인 중...' : '로그인'}
+            {submitting ? '로그인 중...' : '로그인'}
           </button>
         </form>
       </div>
