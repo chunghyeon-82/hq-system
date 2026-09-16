@@ -318,9 +318,13 @@ export default function ApprovalDetailPage() {
                   ))}
                 </div>
               )}
-              {/* 발신 기관명 + 직인 */}
+            </div>
+
+            {/* 결재선 + 시행정보 — 하단 */}
+            <div style={{padding:'0 56px 40px 56px'}}>
+              {/* 발신 기관명 + 직인 — 결재선 바로 위 */}
               {doc.sealOrgName && (
-                <div style={{textAlign:'center', margin:'48px 0 24px', position:'relative'}}>
+                <div style={{textAlign:'center', margin:'0 0 16px', position:'relative'}}>
                   <span style={{fontSize:'14pt', fontWeight:700, letterSpacing:'1px', position:'relative', display:'inline-block'}}>
                     {doc.sealOrgName}
                     {doc.sealUrl ? (
@@ -338,10 +342,6 @@ export default function ApprovalDetailPage() {
                   </span>
                 </div>
               )}
-            </div>
-
-            {/* 결재선 + 시행정보 — 하단 */}
-            <div style={{padding:'0 56px 40px 56px'}}>
               {/* 결재선: 직책 이름 가로 나열, 칸/선 없음 */}
               <div style={{fontSize:'10pt', marginBottom:'8px', display:'flex', flexWrap:'wrap', gap:'0 40px', lineHeight:'2.0'}}>
                 {allApprovers.map((a, i) => (
