@@ -142,6 +142,15 @@ export default function ApprovalDetailPage() {
     setNewEmail(''); setNewName('')
   }
 
+   const getRoleLabel = (role: string) => {
+    if (role === '기안자') return '기안'
+    if (role === '본부장' || role === 'HQ_CHIEF') return '본부장'
+    if (role === '본부멤버' || role === 'HQ_MEMBER') return '담당'
+    if (role === '관리자' || role === 'ADMIN') return '관리자'
+    if (role === '최종결재' || role === '최종결재자') return '본부장'
+    return role
+  }
+
   const formatDt = (s?: string) => {
     if (!s) return ''
     const d = new Date(s)
