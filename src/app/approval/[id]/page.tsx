@@ -104,7 +104,7 @@ export default function ApprovalDetailPage() {
     await updateApprovalDoc(id, { approvers: newApprovers, finalApprover, status: 'rejected', rejectedAt: now })
     fetch('/api/push', {
       method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
-      body: JSON.stringify({ title:'寃곗옱 諛섎젮', body:`"${doc.title}" 寃곗옱媛 諛섎젮?먯뒿?덈떎. ?ъ쑀: ${comment}`, url:'/approval', targetUids:[doc.authorUid] }),
+      body: JSON.stringify({ title:'결재 반려', body:`"${doc.title}" 결재가 반려됐습니다. 사유: ${comment}`, url:'/approval', targetUids:[doc.authorUid] }),
     }).catch(()=>{})
     setComment(''); setActing(false)
   }
