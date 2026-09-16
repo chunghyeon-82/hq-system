@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
@@ -31,14 +31,14 @@ export default function ApprovalDetailPage() {
     const u1 = listenApprovalDocs(user.uid, setDocs)
     const u2 = listenSavedContacts(user.uid, setContacts)
     const u3 = listenRecipientContacts(user.uid, setRecipientContacts)
-    return () => { u1(); u2(); u3() }  // dead code ?쒓굅
+    return () => { u1(); u2(); u3() }  // dead code 제거
   }, [user, loading, router])
 
   const doc = docs.find(d => d.id === id)
 
   if (loading || !doc) return (
-    <AppShell title="諛쒖떊怨듬Ц ?곸꽭" back="/approval">
-      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">遺덈윭?ㅻ뒗 以?.</div>
+    <AppShell title="발신공문 상세" back="/approval">
+      <div className="flex items-center justify-center h-64 text-gray-400 text-sm">불러오는 중..</div>
     </AppShell>
   )
 
@@ -79,19 +79,19 @@ export default function ApprovalDetailPage() {
     if (isFinalStep) {
       fetch('/api/push', {
         method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
-        body: JSON.stringify({ title:'??寃곗옱 ?꾨즺', body:`"${doc.title}" 理쒖쥌 寃곗옱媛 ?꾨즺?먯뒿?덈떎`, url:'/approval', targetUids:[doc.authorUid] }),
+        body: JSON.stringify({ title:'새 결재 완료', body:`"${doc.title}" 최종 결재가 완료됐습니다`, url:'/approval', targetUids:[doc.authorUid] }),
       }).catch(()=>{})
     } else if (allDone) {
       fetch('/api/push', {
         method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
-        body: JSON.stringify({ title:'??寃곗옱 ?붿껌', body:`"${doc.title}" 寃곗옱瑜??붿껌?⑸땲??, url:'/approval', targetUids:[doc.finalApprover.uid] }),
+        body: JSON.stringify({ title:'새 결재 요청', body:`"${doc.title}" 결재를 요청합니다`, url:'/approval', targetUids:[doc.finalApprover.uid] }),
       }).catch(()=>{})
     }
     setComment(''); setActing(false)
   }
 
   const handleReject = async () => {
-    if (!user || acting || !comment.trim()) { alert('諛섎젮 ?ъ쑀瑜??낅젰?댁＜?몄슂'); return }
+    if (!user || acting || !comment.trim()) { alert('반려 사유를 입력해주세요'); return }
     setActing(true)
     const now = new Date().toISOString()
     const newApprovers = doc.approvers.map(a =>
@@ -104,13 +104,13 @@ export default function ApprovalDetailPage() {
     await updateApprovalDoc(id, { approvers: newApprovers, finalApprover, status: 'rejected', rejectedAt: now })
     fetch('/api/push', {
       method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
-      body: JSON.stringify({ title:'寃곗옱 諛섎젮', body:`"${doc.title}" 寃곗옱媛 諛섎젮?먯뒿?덈떎. ?ъ쑀: ${comment}`, url:'/approval', targetUids:[doc.authorUid] }),
+      body: JSON.stringify({ title:'결재 반려', body:`"${doc.title}" 결재가 반려됐습니다. 사유: ${comment}`, url:'/approval', targetUids:[doc.authorUid] }),
     }).catch(()=>{})
     setComment(''); setActing(false)
   }
 
   const handleSendEmail = async () => {
-    if (!emailTo.length) { alert('?섏떊?먮? ?좏깮?댁＜?몄슂'); return }
+    if (!emailTo.length) { alert('수신자를 선택해주세요'); return }
     setSending(true)
     try {
       const res = await fetch('/api/email', {
@@ -118,8 +118,8 @@ export default function ApprovalDetailPage() {
         headers:{'Content-Type':'application/json','Authorization':'Bearer hq-cleanup-2026'},
         body: JSON.stringify({
           to: emailTo.map(e => e.email),
-          subject: `[怨듬Ц] ${doc.title}`,
-          html: `<p><b>${doc.orgName}</b></p><hr/><p><b>?섏떊:</b> ${doc.recipient}</p><p><b>?쒕ぉ:</b> ${doc.title}</p><br/><div>${doc.body.replace(/\n/g,'<br/>')}</div>`,
+          subject: `[공문] ${doc.title}`,
+          html: `<p><b>${doc.orgName}</b></p><hr/><p><b>수신:</b> ${doc.recipient}</p><p><b>제목:</b> ${doc.title}</p><br/><div>${doc.body.replace(/\n/g,'<br/>')}</div>`,
         }),
       })
       if (!res.ok) {
@@ -127,11 +127,11 @@ export default function ApprovalDetailPage() {
         throw new Error(err.error || `HTTP ${res.status}`)
       }
       await updateApprovalDoc(id, { isSent: true, sentAt: new Date().toISOString() })
-      alert('?대찓?쇱씠 諛쒖넚?먯뒿?덈떎')
+      alert('이메일이 발송됐습니다')
       setShowEmail(false)
     } catch(e: unknown) {
-      const msg = e instanceof Error ? e.message : '?????녿뒗 ?ㅻ쪟'
-      alert(`諛쒖넚 ?ㅽ뙣: ${msg}`)
+      const msg = e instanceof Error ? e.message : '알 수 없는 오류'
+      alert(`발송 실패: ${msg}`)
     } finally { setSending(false) }
   }
 
@@ -161,13 +161,13 @@ export default function ApprovalDetailPage() {
     draft:'bg-gray-100 text-gray-600', pending:'bg-blue-100 text-blue-700',
     approved:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700'
   }
-  const STATUS_LABEL: Record<string,string> = { draft:'?꾩떆???, pending:'寃곗옱以?, approved:'寃곗옱?꾨즺', rejected:'諛섎젮' }
+  const STATUS_LABEL: Record<string,string> = { draft:'임시저장', pending:'결재중', approved:'결재완료', rejected:'반려' }
 
   return (
-    <AppShell title="諛쒖떊怨듬Ц" back="/approval">
+    <AppShell title="발신공문" back="/approval">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
 
-        {/* ?곹깭 + ?≪뀡 踰꾪듉 */}
+        {/* 상태 + 액션 버튼 */}
         <div className="flex items-center justify-between">
           <span className={clsx('text-sm font-medium px-3 py-1.5 rounded-full', STATUS_COLOR[doc.status])}>
             {STATUS_LABEL[doc.status]}
@@ -176,26 +176,26 @@ export default function ApprovalDetailPage() {
             {isApproved && isAuthor && (
               <button onClick={() => setShowEmail(v=>!v)}
                 className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800">
-                <Mail size={15}/> ?대찓??諛쒖넚
+                <Mail size={15}/> 이메일 발송
               </button>
             )}
             {isHQ && (
               <button onClick={() => router.push(`/approval/new?copyFrom=${id}`)}
                 className="flex items-center gap-2 px-4 py-2 border border-primary-200 text-primary-700 rounded-xl text-sm font-medium hover:bg-primary-50 transition-colors">
-                ??臾몄꽌濡???湲곗븞
+                이 문서로 새 기안
               </button>
             )}
             <button onClick={() => window.print()}
               className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-600 rounded-xl text-sm hover:bg-gray-50">
-              <Printer size={15}/> ?몄뇙
+              <Printer size={15}/> 인쇄
             </button>
           </div>
         </div>
 
-        {/* ?대찓??諛쒖넚 ?⑤꼸 */}
+        {/* 이메일 발송 패널 */}
         {showEmail && (
           <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-4">
-            <h3 className="font-semibold text-gray-900 text-sm">?대찓??諛쒖넚</h3>
+            <h3 className="font-semibold text-gray-900 text-sm">이메일 발송</h3>
             <div className="flex flex-wrap gap-2">
               {emailTo.map(e => (
                 <div key={e.email} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 border border-primary-200 rounded-full text-xs text-primary-800">
@@ -206,7 +206,7 @@ export default function ApprovalDetailPage() {
             </div>
             {recipientContacts.length > 0 && (
               <div>
-                <p className="text-xs text-gray-500 mb-2">?섏떊??紐⑸줉</p>
+                <p className="text-xs text-gray-500 mb-2">수신자 목록</p>
                 <div className="flex flex-wrap gap-2">
                   {recipientContacts.map(c => (
                     <button key={c.id} onClick={() => addEmailTo(c.name, c.email)}
@@ -220,7 +220,7 @@ export default function ApprovalDetailPage() {
             )}
             {contacts.length > 0 && (
               <div>
-                <p className="text-xs text-gray-500 mb-2">?댁쟾 諛쒖넚 ?곕씫泥?/p>
+                <p className="text-xs text-gray-500 mb-2">이전 발송 연락처</p>
                 <div className="flex flex-wrap gap-2">
                   {contacts.map(c => (
                     <button key={c.id} onClick={() => addEmailTo(c.name, c.email)}
@@ -233,71 +233,71 @@ export default function ApprovalDetailPage() {
               </div>
             )}
             <div className="flex gap-2">
-              <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="?대쫫"
+              <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="이름"
                 className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
-              <input value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="?대찓??二쇱냼"
+              <input value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="이메일 주소"
                 className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
               <button onClick={() => addEmailTo(newName||newEmail, newEmail, true)}
                 disabled={!newEmail.includes('@')}
                 className="px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm hover:bg-gray-200 disabled:opacity-40">
-                異붽?+???              </button>
+                추가+저장
+              </button>
             </div>
             <button onClick={handleSendEmail} disabled={sending || !emailTo.length}
               className="w-full py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50">
-              {sending ? '諛쒖넚 以?.' : `${emailTo.length}紐낆뿉寃??대찓??諛쒖넚`}
+              {sending ? '발송 중..' : `${emailTo.length}명에게 이메일 발송`}
             </button>
           </div>
         )}
 
-                {/* 怨듬Ц 蹂몃Ц (A4 ?섏씠吏 ?뺥깭) */}
+                {/* 공문 본문 */}
         <div id="print-area" className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-          <div style={{fontFamily:'Nanum Myeongjo, serif', color:'#111', width:'100%', boxSizing:'border-box', display:'flex', flexDirection:'column', minHeight:'1100px'}}>
+          <div style={{fontFamily:'Nanum Myeongjo, serif', color:'#111', display:'flex', flexDirection:'column', minHeight:'1100px'}}>
 
-            {/* ?곷떒 蹂몃Ц ?곸뿭 */}
+            {/* 본문 영역 */}
             <div style={{padding:'40px 56px 24px 56px', flex:1}}>
-              {/* 湲곌?紐?*/}
+              {/* 기관명 */}
               <h1 style={{textAlign:'center', fontSize:'20pt', fontWeight:800, marginBottom:'28px', letterSpacing:'3px'}}>
                 {doc.orgName}
               </h1>
-              {/* ?섏떊/寃쎌쑀/?쒕ぉ */}
+              {/* 수신자 */}
               <div style={{marginBottom:'4px', display:'flex', fontSize:'10.5pt'}}>
-                <span style={{fontWeight:700, minWidth:'52px'}}>?섏떊??/span>
+                <span style={{fontWeight:700, minWidth:'52px'}}>수신자</span>
                 <span>{doc.recipient}</span>
               </div>
               {doc.via && (
                 <div style={{marginBottom:'4px', display:'flex', fontSize:'10.5pt'}}>
-                  <span style={{fontWeight:700, minWidth:'52px'}}>(寃쎌쑀)</span>
+                  <span style={{fontWeight:700, minWidth:'52px'}}>(경유)</span>
                   <span>{doc.via}</span>
                 </div>
               )}
-              {/* ?섏떊???꾨옒 ??*/}
+              {/* 수신자 아래 굵은 선 */}
               <div style={{height:'2px', background:'#333', margin:'8px 0'}}/>
               <div style={{marginBottom:'4px', display:'flex', fontSize:'10.5pt'}}>
-                <span style={{fontWeight:700, minWidth:'52px'}}>?쒕ぉ</span>
+                <span style={{fontWeight:700, minWidth:'52px'}}>제목</span>
                 <span style={{fontWeight:700}}>{doc.title}</span>
               </div>
-              {/* ?쒕ぉ ?꾨옒 ??*/}
+              {/* 제목 아래 선 */}
               <div style={{height:'1px', background:'#999', margin:'8px 0 20px 0'}}/>
-              {/* 蹂몃Ц */}
-              <div
-                style={{fontSize:'10.5pt', lineHeight:'2.0'}}
+              {/* 본문 */}
+              <div style={{fontSize:'10.5pt', lineHeight:'2.0'}}
                 dangerouslySetInnerHTML={{__html: doc.body}}
               />
-              {/* 遺숈엫 */}
+              {/* 붙임 */}
               {doc.attachments?.length > 0 && (
                 <div style={{marginTop:'24px', fontSize:'10.5pt'}}>
                   {doc.attachments.length === 1 ? (
                     <div style={{display:'flex'}}>
-                      <span style={{fontWeight:700, minWidth:'52px'}}>遺숈엫</span>
-                      <span>{doc.attachments[0].name} 1遺.&nbsp;&nbsp;??</span>
+                      <span style={{fontWeight:700, minWidth:'52px'}}>붙임</span>
+                      <span>{doc.attachments[0].name} 1부.&nbsp;&nbsp;끝.</span>
                     </div>
                   ) : (
                     <div style={{display:'flex'}}>
-                      <span style={{fontWeight:700, minWidth:'52px'}}>遺숈엫</span>
+                      <span style={{fontWeight:700, minWidth:'52px'}}>붙임</span>
                       <div>
                         {doc.attachments.map((a, i) => (
                           <div key={i}>
-                            {i+1}. {a.name} 1遺.{i === doc.attachments.length-1 ? '혻혻??' : ''}
+                            {i+1}. {a.name} 1부.{i === doc.attachments.length-1 ? '  끝.' : ''}
                           </div>
                         ))}
                       </div>
@@ -305,26 +305,26 @@ export default function ApprovalDetailPage() {
                   )}
                 </div>
               )}
-              {/* 泥⑤??뚯씪 ?ㅼ슫濡쒕뱶 */}
+              {/* 첨부파일 다운로드 */}
               {doc.attachments?.filter(a => a.url).length > 0 && (
                 <div style={{marginTop:'12px', padding:'10px 14px', background:'#f8f9fa', borderRadius:'6px', fontSize:'9.5pt'}}>
-                  <p style={{fontWeight:700, marginBottom:'6px', color:'#555'}}>?뱨 泥⑤??뚯씪 ?ㅼ슫濡쒕뱶</p>
+                  <p style={{fontWeight:700, marginBottom:'6px', color:'#555'}}>📎 첨부파일 다운로드</p>
                   {doc.attachments.filter(a => a.url).map((a, i) => (
                     <a key={i} href={a.url} target="_blank" rel="noopener noreferrer"
                       style={{display:'flex', alignItems:'center', gap:'8px', padding:'3px 0', color:'#1a56db', textDecoration:'none'}}>
-                      ?뱞 {a.name}
+                      📄 {a.name}
                       {a.size && <span style={{fontSize:'8.5pt', color:'#888'}}>({(a.size/1024).toFixed(0)}KB)</span>}
                     </a>
                   ))}
                 </div>
               )}
-              {/* 諛쒖떊 湲곌?紐?+ 吏곸씤 */}
+              {/* 발신 기관명 + 직인 */}
               {doc.sealOrgName && (
                 <div style={{textAlign:'center', margin:'48px 0 24px', position:'relative'}}>
                   <span style={{fontSize:'14pt', fontWeight:700, letterSpacing:'1px', position:'relative', display:'inline-block'}}>
                     {doc.sealOrgName}
                     {doc.sealUrl ? (
-                      <img src={doc.sealUrl} alt="吏곸씤"
+                      <img src={doc.sealUrl} alt="직인"
                         style={{position:'absolute', top:'-18px', right:'-36px', width:'68px', height:'68px', opacity:0.85}}/>
                     ) : (
                       <span style={{
@@ -333,56 +333,55 @@ export default function ApprovalDetailPage() {
                         border:'2.5px solid rgba(180,0,0,0.6)',
                         display:'inline-flex', alignItems:'center', justifyContent:'center',
                         color:'rgba(180,0,0,0.6)', fontSize:'8pt', fontWeight:700,
-                      }}>吏곸씤</span>
+                      }}>직인</span>
                     )}
                   </span>
                 </div>
               )}
             </div>
 
-            {/* 寃곗옱??+ ?쒗뻾 ?뺣낫 ???섎떒 */}
+            {/* 결재선 + 시행정보 — 하단 */}
             <div style={{padding:'0 56px 40px 56px'}}>
-              {/* 寃곗옱????移??놁씠 吏곸콉 ?대쫫 ?섏뿴 */}
-              <div style={{fontSize:'10pt', marginBottom:'6px', display:'flex', flexWrap:'wrap', gap:'0 32px', lineHeight:'1.8'}}>
+              {/* 결재선: 직책 이름 가로 나열, 칸/선 없음 */}
+              <div style={{fontSize:'10pt', marginBottom:'8px', display:'flex', flexWrap:'wrap', gap:'0 40px', lineHeight:'2.0'}}>
                 {allApprovers.map((a, i) => (
-                  <span key={i} style={{display:'inline-flex', gap:'8px', alignItems:'baseline'}}>
-                    <span style={{fontSize:'9pt', color:'#555'}}>{getRoleLabel(a.role)}</span>
+                  <span key={i} style={{display:'inline-flex', gap:'10px', alignItems:'baseline'}}>
+                    <span style={{fontSize:'9.5pt', color:'#333'}}>{getRoleLabel(a.role)}</span>
                     <span style={{fontWeight:700, position:'relative', display:'inline-block'}}>
                       {a.name}
                       {a.sealUrl && (a.status==='approved'||a.status==='submitted') && (
-                        <img src={a.sealUrl} alt="吏곸씤"
-                          style={{position:'absolute', top:'-10px', left:'50%', transform:'translateX(-50%)', width:'32px', height:'32px', opacity:0.85, objectFit:'contain'}}/>
+                        <img src={a.sealUrl} alt="직인"
+                          style={{position:'absolute', top:'-12px', left:'50%', transform:'translateX(-50%)', width:'32px', height:'32px', opacity:0.85, objectFit:'contain'}}/>
                       )}
                     </span>
                   </span>
                 ))}
               </div>
-
-              {/* ?쒗뻾/?묒닔 */}
+              {/* 시행/접수 */}
               <div style={{borderTop:'1px solid #555', padding:'4px 0', marginTop:'4px', fontSize:'9pt'}}>
                 <div style={{display:'flex', gap:'24px', padding:'2px 0'}}>
                   <span>
-                    <b>?쒗뻾</b>&nbsp;{doc.docNo}&nbsp;
+                    <b>시행</b>&nbsp;{doc.docNo}&nbsp;
                     ({doc.createdAt ? new Date((doc.createdAt as {toDate?:()=>Date}).toDate?.()??doc.createdAt as Date).toLocaleDateString('ko-KR') : ''})
                   </span>
-                  <span><b>?묒닔</b></span>
+                  <span><b>접수</b></span>
                 </div>
                 <div style={{height:'0.5px', background:'#ccc', margin:'3px 0'}}/>
                 <div style={{display:'flex', gap:'6px', padding:'2px 0', flexWrap:'wrap'}}>
-                  {doc.zipCode && <span>??doc.zipCode}</span>}
+                  {doc.zipCode && <span>우{doc.zipCode}</span>}
                   {doc.address && <span>&nbsp;{doc.address}</span>}
-                  {doc.homepage && <span>&nbsp;/{doc.homepage}</span>}
                 </div>
-                <div style={{display:'flex', justifyContent:'space-between', padding:'2px 0', flexWrap:'wrap'}}>
-                  <div style={{display:'flex', gap:'4px'}}>
-                    {doc.phone && <span>?꾪솕 {doc.phone}</span>}
-                    {doc.fax   && <span>&nbsp;?꾩넚 {doc.fax}</span>}
+                <div style={{display:'flex', justifyContent:'space-between', padding:'2px 0'}}>
+                  <div style={{display:'flex', gap:'4px', flexWrap:'wrap'}}>
+                    {doc.phone && <span>전화 {doc.phone}</span>}
+                    {doc.fax   && <span>&nbsp;전송 {doc.fax}</span>}
                     {doc.email && <span>&nbsp;{doc.email}</span>}
+                    {doc.homepage && <span>&nbsp;{doc.homepage}</span>}
                   </div>
                   <span style={{color:'#c00', fontWeight:700}}>/{doc.isPublic}</span>
                 </div>
               </div>
-              {/* ?섎떒 湲곌?紐?*/}
+              {/* 하단 기관명 */}
               <div style={{textAlign:'center', fontSize:'9pt', marginTop:'4px', color:'#444'}}>
                 {doc.orgName}
               </div>
@@ -390,46 +389,46 @@ export default function ApprovalDetailPage() {
           </div>
         </div>
 
-        {/* 寃곗옱 泥섎━ */}
+        {/* 결재 처리 */}
         {isMyTurn && (
           <div className="bg-white border border-primary-200 rounded-2xl p-5 space-y-3">
-            <h3 className="font-semibold text-gray-900 text-sm">寃곗옱 泥섎━</h3>
+            <h3 className="font-semibold text-gray-900 text-sm">결재 처리</h3>
             <textarea value={comment} onChange={e=>setComment(e.target.value)}
-              placeholder="寃곗옱 ?섍껄 ?낅젰 (諛섎젮 ???꾩닔)"
+              placeholder="결재 의견 입력 (반려 시 필수)"
               rows={3}
               className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none"/>
             <div className="flex gap-2">
               <button onClick={handleReject} disabled={acting}
                 className="flex-1 flex items-center justify-center gap-2 py-3 border border-red-200 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 disabled:opacity-50">
-                <XCircle size={16}/> 諛섎젮
+                <XCircle size={16}/> 반려
               </button>
               <button onClick={handleApprove} disabled={acting}
                 className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl text-sm font-semibold hover:bg-green-700 disabled:opacity-50">
-                <CheckCircle2 size={16}/> 寃곗옱
+                <CheckCircle2 size={16}/> 결재
               </button>
             </div>
           </div>
         )}
 
-        {/* ?꾩떆???臾몄꽌 ?ъ옉??+ ??젣 */}
+        {/* 임시저장 문서 재작성 + 삭제 */}
         {isAuthor && doc.status === 'draft' && (
           <div className="space-y-2">
             <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
-              <span className="text-amber-600 text-sm">?꾩떆??λ맂 臾몄꽌?낅땲??/span>
+              <span className="text-amber-600 text-sm">임시저장된 문서입니다</span>
               <button
                 onClick={() => router.push(`/approval/new?copyFrom=${id}`)}
                 className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-800 transition-colors">
-                ?댁뼱 ?묒꽦 諛??곸떊
+                이어 작성 및 상신
               </button>
             </div>
             <button onClick={async () => {
-              if (!confirm('??젣?섏떆寃좎뒿?덇퉴?')) return
+              if (!confirm('삭제하시겠습니까?')) return
               const { deleteApprovalDoc } = await import('@/lib/db')
               await deleteApprovalDoc(id)
               router.push('/approval')
             }}
               className="w-full flex items-center justify-center gap-2 py-3 border border-red-200 text-red-500 rounded-xl text-sm hover:bg-red-50">
-              <Trash2 size={15}/> 臾몄꽌 ??젣
+              <Trash2 size={15}/> 문서 삭제
             </button>
           </div>
         )}
@@ -446,4 +445,3 @@ export default function ApprovalDetailPage() {
     </AppShell>
   )
 }
-
