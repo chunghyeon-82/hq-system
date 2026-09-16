@@ -5,11 +5,11 @@ import AppShell from '@/components/AppShell'
 import { useAuth } from '@/lib/auth-context'
 import {
   listenUsers, listenDirectChatRooms, listenDirectChatMessages,
-  sendDirectChat, markDirectChatRead
+  sendDirectChat, markDirectChatRead, deleteDirectChatRoom
 } from '@/lib/db'
 import type { DirectChatRoom, DirectChatMessage } from '@/lib/db'
 import type { AppUser } from '@/types'
-import { Send, X, MessageSquare, ChevronLeft } from 'lucide-react'
+import { Send, X, MessageSquare, ChevronLeft, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
 
 const ROLE_LABEL: Record<string, string> = {
@@ -88,6 +88,14 @@ export default function DirectPage() {
     setActiveUser(targetUser)
     setShowUsers(false)
     setTimeout(() => inputRef.current?.focus(), 100)
+  }
+
+  const handleDeleteRoom = async (roomId: string) => {
+    if (!confirm('채팅방을 삭제하시겠습니까? 대화 내용이 모두 삭제됩니다.')) return
+    await deleteDirectChatRoom(roomId)
+    setActiveRoom(null)
+    setActiveUser(null)
+    setMessages([])
   }
 
   const handleSend = async () => {
@@ -247,10 +255,15 @@ export default function DirectPage() {
                 <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
                   {activeUser?.name[0]}
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-semibold text-gray-900">{activeUser?.name}</p>
                   <p className="text-xs text-gray-400">{ROLE_LABEL[activeUser?.role ?? ''] ?? ''}</p>
                 </div>
+                <button onClick={() => activeRoom && handleDeleteRoom(activeRoom)}
+                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  title="채팅방 삭제">
+                  <Trash2 size={16}/>
+                </button>
               </div>
 
               {/* 메시지 목록 */}
