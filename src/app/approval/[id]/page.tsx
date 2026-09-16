@@ -142,6 +142,16 @@ export default function ApprovalDetailPage() {
     setNewEmail(''); setNewName('')
   }
 
+  // 결재 직책명 변환
+  const getRoleLabel = (role: string) => {
+    if (role === '기안자') return '기안'
+    if (role === '본부장' || role === 'HQ_CHIEF') return '본부장'
+    if (role === '본부멤버' || role === 'HQ_MEMBER') return '담당'
+    if (role === '관리자' || role === 'ADMIN') return '관리자'
+    if (role === '최종결재' || role === '최종결재자') return '본부장'
+    return role
+  }
+
   const formatDt = (s?: string) => {
     if (!s) return ''
     const d = new Date(s)
@@ -262,7 +272,7 @@ export default function ApprovalDetailPage() {
               <span style={{fontWeight:700, fontSize:'12pt'}}>{doc.title}</span>
             </div>
             <div style={{height:'1px', background:'#ccc', margin:'16px 0'}}/>
-            <div style={{fontSize:'11pt', lineHeight:'1.9', margin:'20px 0'}}
+            <div style={{fontSize:'11pt', lineHeight:'1.9', margin:'20px 0', minHeight:'300px'}}
               dangerouslySetInnerHTML={{__html: doc.body}}
             />
             {doc.attachments?.filter(a => a.url).length > 0 && (
@@ -312,7 +322,7 @@ export default function ApprovalDetailPage() {
                   flex:1, padding:'4px 8px',
                   borderRight: i < allApprovers.length-1 ? '0.5px solid #bbb' : 'none',
                 }}>
-                  <div style={{fontSize:'8.5pt', fontWeight:700, color:'#333', marginBottom:'2px'}}>{a.role}</div>
+                  <div style={{fontSize:'8.5pt', fontWeight:700, color:'#333', marginBottom:'2px'}}>{getRoleLabel(a.role)}</div>
                   <div style={{fontSize:'10pt', fontWeight:700, marginBottom:'2px', position:'relative'}}>
                     {a.name}
                     {a.sealUrl && (a.status==='approved'||a.status==='submitted') && (
@@ -331,9 +341,9 @@ export default function ApprovalDetailPage() {
             </div>
             {/* 시행 정보 */}
             <div style={{borderTop:'1.5px solid #333', borderBottom:'1.5px solid #333', padding:'5px 0', marginTop:'12px', fontSize:'8.5pt'}}>
-              <div style={{display:'flex', gap:'8px', padding:'2px 0'}}>
-                <span><b>시행</b> {doc.docNo} ({doc.createdAt ? new Date((doc.createdAt as {toDate?:()=>Date}).toDate?.()??doc.createdAt as Date).toLocaleDateString('ko-KR') : ''})</span>
-                <span style={{marginLeft:'auto'}}><b>접수</b></span>
+              <div style={{display:'flex', gap:'8px', padding:'2px 0', alignItems:'center'}}>
+                <span style={{flex:1}}><b>시행</b> {doc.docNo} ({doc.createdAt ? new Date((doc.createdAt as {toDate?:()=>Date}).toDate?.()??doc.createdAt as Date).toLocaleDateString('ko-KR') : ''})</span>
+                <span style={{flex:1, textAlign:'center'}}><b>접수</b></span>
               </div>
               <div style={{height:'0.5px', background:'#ddd', margin:'3px 0'}}/>
               <div style={{display:'flex', gap:'8px', padding:'2px 0', flexWrap:'wrap'}}>
