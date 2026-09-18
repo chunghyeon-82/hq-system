@@ -3,7 +3,7 @@ import { ReactNode, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { signOut } from 'firebase/auth'
-import { listenMessagesForHQ, listenMessagesForBiz, listenNotices, listenChatMessages, listenEvents, listenApprovalDocs, listenDirectChatRooms } from '@/lib/db'
+import { listenMessagesForHQ, listenMessagesForBiz, listenNotices, listenChatMessages, listenEvents, listenApprovalDocs } from '@/lib/db'
 import type { Message, Notice, CalendarEvent, ApprovalDoc } from '@/types'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/auth-context'
@@ -63,7 +63,11 @@ export default function AppShell({ children, title, back }: Props) {
           m.receipts?.some(r => r.status === 'pending')
         ).length
         setUnreadCount(pending)
-
+        const direct = msgs.filter(m =>
+          m.type === 'direct' && m.status === 'open' &&
+          (m.targetUid === user.uid || m.authorUid === user.uid)
+        ).length
+        setUnreadDirect(direct)
       })
     }
     if (isBiz && user.bizId) {
@@ -73,19 +77,14 @@ export default function AppShell({ children, title, back }: Props) {
           m.receipts?.some(r => r.bizId === user.bizId && r.status === 'pending')
         ).length
         setUnreadCount(pending)
-
+        const direct = msgs.filter(m =>
+          m.type === 'direct' && m.status === 'open' &&
+          (m.targetUid === user.uid || m.authorUid === user.uid)
+        ).length
+        setUnreadDirect(direct)
       })
     }
   }, [user, isHQ, isAdmin, isBiz])
-
-  // 1:1 채팅 안읽은 메시지 수 (directChats 기반)
-  useEffect(() => {
-    if (!user) return
-    return listenDirectChatRooms(user.uid, (rooms) => {
-      const total = rooms.reduce((sum, r) => sum + (r.unread?.[user.uid] ?? 0), 0)
-      setUnreadDirect(total)
-    })
-  }, [user])
 
   // Firestore Timestamp → ms 변환
   const toMs = (t: unknown): number => {
@@ -154,7 +153,7 @@ export default function AppShell({ children, title, back }: Props) {
     { href: '/businesses', label: '사업장 현황',  icon: Building2,       show: isHQ,          badge: unreadCount,  group: '업무' },
     { href: '/compose',    label: '전달 작성',    icon: Send,            show: canBroadcast,  badge: 0,            group: '업무' },
     { href: '/notices',    label: '공지사항',     icon: Megaphone,       show: true,          badge: unreadNotice, group: '업무' },
-    { href: '/approval',   label: '전자결재',      icon: ClipboardList,   show: isHQ,          badge: unreadApproval, group: '업무' },
+    { href: '/approval',   label: '전자결재🔒',    icon: ClipboardList,   show: isAdmin,       badge: unreadApproval, group: '관리' },
     { href: '/chat',       label: '운영본부 채팅', icon: MessageCircle,   show: isHQ,          badge: unreadChat,   group: '메시지' },
     { href: '/direct',     label: '1:1 메시지',   icon: MessageSquare,   show: true,          badge: unreadDirect, group: '메시지' },
     { href: '/search',     label: '메시지 검색',  icon: Search,          show: true,          badge: 0,            group: '메시지' },
