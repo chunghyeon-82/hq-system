@@ -11,7 +11,6 @@ import {
   listenDirectChatMessages, sendDirectChat, markDirectChatRead,
   deleteDirectChatRoom
 } from '@/lib/db'
-import type { DirectChatRoom, DirectChatMessage } from '@/lib/db'
 import type { AppUser, Business } from '@/types'
 import type { Message, Notice, CalendarEvent, ApprovalDoc } from '@/types'
 import {
