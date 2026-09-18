@@ -134,10 +134,25 @@ export default function AdminPage() {
 
   const handleDelete = async (u: AppUser) => {
     if (!confirm(`'${u.name}' 계정을 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) return
+    // 사업장 대표이면 사업장 담당자 정보 초기화
     if (u.role === 'BIZ_REP' && u.bizId) {
       await updateBusiness(u.bizId, { repName: '', repUid: '' })
     }
+    // Firestore 문서 삭제
     await deleteDoc(doc(db, 'users', u.uid))
+    // Firebase Auth 계정 삭제 (Admin SDK)
+    try {
+      await fetch('/api/delete-user', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.NEXT_PUBLIC_CLEANUP_SECRET ?? 'hq-cleanup-2026'}`,
+        },
+        body: JSON.stringify({ uid: u.uid }),
+      })
+    } catch (e) {
+      console.warn('Firebase Auth 삭제 실패 (Firestore는 삭제됨):', e)
+    }
   }
 
   const handleAddUser = async () => {
