@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { ReactNode, useState, useEffect, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { signOut } from 'firebase/auth'
@@ -11,7 +11,8 @@ import {
   listenDirectChatMessages, sendDirectChat, markDirectChatRead,
   deleteDirectChatRoom
 } from '@/lib/db'
-import type { AppUser, Business, DirectChatRoom, DirectChatMessage } from '@/lib/db'
+import type { DirectChatRoom, DirectChatMessage } from '@/lib/db'
+import type { AppUser, Business } from '@/types'
 import type { Message, Notice, CalendarEvent, ApprovalDoc } from '@/types'
 import {
   ChevronDown, ChevronRight, LogOut, Settings, Users,
@@ -22,8 +23,8 @@ import {
 import clsx from 'clsx'
 
 const ROLE_LABEL: Record<string, string> = {
-  ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버',
-  BIZ_REP: '사업장대표', ETC: '기타'
+  ADMIN: '愿由ъ옄', HQ_CHIEF: '蹂몃???, HQ_MEMBER: '蹂몃?硫ㅻ쾭',
+  BIZ_REP: '?ъ뾽?λ???, ETC: '湲고?'
 }
 
 function getRoomId(uid1: string, uid2: string) {
@@ -53,29 +54,28 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
   const router = useRouter()
   const pathname = usePathname()
 
-  // 데이터
-  const [businesses,  setBusinesses]  = useState<Business[]>([])
+  // ?곗씠??  const [businesses,  setBusinesses]  = useState<Business[]>([])
   const [allUsers,    setAllUsers]    = useState<AppUser[]>([])
   const [chatRooms,   setChatRooms]   = useState<DirectChatRoom[]>([])
   const [messages,    setMessages]    = useState<DirectChatMessage[]>([])
 
-  // 배지
+  // 諛곗?
   const [unreadMsg,    setUnreadMsg]    = useState(0)
   const [unreadDirect, setUnreadDirect] = useState(0)
   const [unreadNotice, setUnreadNotice] = useState(0)
   const [unreadCal,    setUnreadCal]    = useState(0)
   const [unreadApproval, setUnreadApproval] = useState(0)
 
-  // UI 상태
-  const [openHQ,       setOpenHQ]       = useState(true)   // 운영본부 열림
-  const [openBiz,      setOpenBiz]      = useState(true)   // 사업장 열림
-  const [openBizIds,   setOpenBizIds]   = useState<Set<string>>(new Set())  // 개별 사업장 열림
-  const [mobileOpen,   setMobileOpen]   = useState(false)  // 모바일 사이드바
+  // UI ?곹깭
+  const [openHQ,       setOpenHQ]       = useState(true)   // ?댁쁺蹂몃? ?대┝
+  const [openBiz,      setOpenBiz]      = useState(true)   // ?ъ뾽???대┝
+  const [openBizIds,   setOpenBizIds]   = useState<Set<string>>(new Set())  // 媛쒕퀎 ?ъ뾽???대┝
+  const [mobileOpen,   setMobileOpen]   = useState(false)  // 紐⑤컮???ъ씠?쒕컮
   const [activeUser,   setActiveUser]   = useState<AppUser | null>(null)
   const [activeRoom,   setActiveRoom]   = useState<string | null>(null)
   const [chatInput,    setChatInput]    = useState('')
   const [sending,      setSending]      = useState(false)
-  const [rightTab,     setRightTab]     = useState<'chat'|'feed'>('chat') // 채팅 | 전달사항
+  const [rightTab,     setRightTab]     = useState<'chat'|'feed'>('chat') // 梨꾪똿 | ?꾨떖?ы빆
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLInputElement>(null)
@@ -85,7 +85,7 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
   const isBiz   = user?.role === 'BIZ_REP'
   const canBroadcast = isAdmin || user?.role === 'HQ_CHIEF' || !!user?.permissions?.canBroadcast
 
-  // 데이터 구독
+  // ?곗씠??援щ룆
   useEffect(() => {
     if (loading || !user) return
     const u1 = listenBusinesses(setBusinesses)
@@ -98,7 +98,7 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
     return () => { u1(); u2(); u3() }
   }, [user, loading])
 
-  // 메시지 배지
+  // 硫붿떆吏 諛곗?
   useEffect(() => {
     if (!user) return
     if (isHQ) {
@@ -120,20 +120,20 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
     }
   }, [user, isHQ, isAdmin, isBiz])
 
-  // 채팅 메시지 구독
+  // 梨꾪똿 硫붿떆吏 援щ룆
   useEffect(() => {
     if (!activeRoom) { setMessages([]); return }
     const { listenDirectChatMessages: listen } = require('@/lib/db')
     return listen(activeRoom, setMessages)
   }, [activeRoom])
 
-  // 읽음 처리
+  // ?쎌쓬 泥섎━
   useEffect(() => {
     if (!activeRoom || !user) return
     markDirectChatRead(activeRoom, user.uid)
   }, [activeRoom, messages.length, user])
 
-  // 스크롤 하단
+  // ?ㅽ겕濡??섎떒
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -156,25 +156,24 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
     fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
-      body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids: [activeUser.uid] }),
+      body: JSON.stringify({ title: `?뮠 ${user.name}`, body: text, url: '/', targetUids: [activeUser.uid] }),
     }).catch(() => {})
     setSending(false)
   }
 
   const handleDeleteRoom = async () => {
-    if (!activeRoom || !confirm('대화를 삭제하시겠습니까?')) return
+    if (!activeRoom || !confirm('??붾? ??젣?섏떆寃좎뒿?덇퉴?')) return
     await deleteDirectChatRoom(activeRoom)
     setActiveRoom(null)
     setActiveUser(null)
     setMessages([])
   }
 
-  // 사이드바 트리 데이터
-  const hqMembers    = allUsers.filter(u => ['HQ_CHIEF','HQ_MEMBER'].includes(u.role))
+  // ?ъ씠?쒕컮 ?몃━ ?곗씠??  const hqMembers    = allUsers.filter(u => ['HQ_CHIEF','HQ_MEMBER'].includes(u.role))
   const normalBizs   = businesses.filter(b => !b.isHQ)
   const bizMembersOf = (bizId: string) => allUsers.filter(u => u.bizId === bizId && u.role === 'BIZ_REP')
 
-  // 사용자 채팅방 마지막 메시지
+  // ?ъ슜??梨꾪똿諛?留덉?留?硫붿떆吏
   const getLastMsg = (targetUid: string) => {
     if (!user) return null
     const roomId = getRoomId(user.uid, targetUid)
@@ -190,10 +189,10 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
 
   const totalBadge = unreadMsg + unreadDirect + unreadNotice
 
-  // ── 사이드바 ──────────────────────────────────────────
+  // ?? ?ъ씠?쒕컮 ??????????????????????????????????????????
   const Sidebar = () => (
     <div className="flex flex-col h-full bg-[#1a1f2e] text-white select-none">
-      {/* 상단 프로필 */}
+      {/* ?곷떒 ?꾨줈??*/}
       <div className="px-4 py-4 border-b border-white/10">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-primary-500 flex items-center justify-center text-sm font-bold shrink-0">
@@ -210,17 +209,17 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
         </div>
       </div>
 
-      {/* 트리 목록 */}
+      {/* ?몃━ 紐⑸줉 */}
       <div className="flex-1 overflow-y-auto py-2">
 
-        {/* 운영본부 */}
+        {/* ?댁쁺蹂몃? */}
         <div>
           <button onClick={() => setOpenHQ(v => !v)}
             className="w-full flex items-center gap-2 px-4 py-2 hover:bg-white/5 transition-colors text-white/70 hover:text-white">
             {openHQ ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
             <Building2 size={14} className="text-primary-400"/>
-            <span className="text-xs font-semibold tracking-wide flex-1 text-left">운영본부</span>
-            <span className="text-xs text-white/30">{hqMembers.length}명</span>
+            <span className="text-xs font-semibold tracking-wide flex-1 text-left">?댁쁺蹂몃?</span>
+            <span className="text-xs text-white/30">{hqMembers.length}紐?/span>
           </button>
           {openHQ && (
             <div className="pl-6">
@@ -256,14 +255,14 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
           )}
         </div>
 
-        {/* 사업장 */}
+        {/* ?ъ뾽??*/}
         <div className="mt-1">
           <button onClick={() => setOpenBiz(v => !v)}
             className="w-full flex items-center gap-2 px-4 py-2 hover:bg-white/5 transition-colors text-white/70 hover:text-white">
             {openBiz ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
             <Users size={14} className="text-amber-400"/>
-            <span className="text-xs font-semibold tracking-wide flex-1 text-left">사업장</span>
-            <span className="text-xs text-white/30">{normalBizs.length}개</span>
+            <span className="text-xs font-semibold tracking-wide flex-1 text-left">?ъ뾽??/span>
+            <span className="text-xs text-white/30">{normalBizs.length}媛?/span>
           </button>
           {openBiz && (
             <div className="pl-4">
@@ -291,7 +290,7 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
                     {isOpen && (
                       <div className="pl-5">
                         {members.length === 0 ? (
-                          <p className="text-[10px] text-white/30 px-3 py-1">멤버 없음</p>
+                          <p className="text-[10px] text-white/30 px-3 py-1">硫ㅻ쾭 ?놁쓬</p>
                         ) : members.map(u => {
                           const unread = getUnread(u.uid)
                           const isActive = activeUser?.uid === u.uid
@@ -314,7 +313,7 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
                               <div className="flex-1 min-w-0">
                                 <p className="text-[11px] font-medium truncate">{u.name}</p>
                                 <p className="text-[9px] text-white/40 truncate">
-                                  {getLastMsg(u.uid)?.lastMessage ?? '사업장대표'}
+                                  {getLastMsg(u.uid)?.lastMessage ?? '?ъ뾽?λ???}
                                 </p>
                               </div>
                             </button>
@@ -330,15 +329,15 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
         </div>
       </div>
 
-      {/* 하단 메뉴 */}
+      {/* ?섎떒 硫붾돱 */}
       <div className="border-t border-white/10 px-2 py-2">
         <div className="grid grid-cols-5 gap-1">
           {[
-            { icon: Send,        label: '전달', href: '/businesses', badge: unreadMsg,    show: true },
-            { icon: Megaphone,   label: '공지', href: '/notices',   badge: unreadNotice, show: true },
-            { icon: Calendar,    label: '일정', href: '/calendar',  badge: unreadCal,    show: true },
-            { icon: Search,      label: '검색', href: '/search',    badge: 0,            show: true },
-            { icon: Settings,    label: '설정', href: '/settings',  badge: 0,            show: true },
+            { icon: Send,        label: '?꾨떖', href: '/businesses', badge: unreadMsg,    show: true },
+            { icon: Megaphone,   label: '怨듭?', href: '/notices',   badge: unreadNotice, show: true },
+            { icon: Calendar,    label: '?쇱젙', href: '/calendar',  badge: unreadCal,    show: true },
+            { icon: Search,      label: '寃??, href: '/search',    badge: 0,            show: true },
+            { icon: Settings,    label: '?ㅼ젙', href: '/settings',  badge: 0,            show: true },
           ].filter(m => m.show).map(m => (
             <button key={m.href} onClick={() => router.push(m.href)}
               className={clsx(
@@ -355,18 +354,18 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
             </button>
           ))}
         </div>
-        {/* 관리자 전용 메뉴 */}
+        {/* 愿由ъ옄 ?꾩슜 硫붾돱 */}
         {isAdmin && (
           <div className="grid grid-cols-2 gap-1 mt-1">
             <button onClick={() => router.push('/admin')}
               className="flex items-center justify-center gap-1 py-1.5 text-white/40 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
               <Users size={13}/>
-              <span className="text-[9px]">멤버관리</span>
+              <span className="text-[9px]">硫ㅻ쾭愿由?/span>
             </button>
             <button onClick={() => router.push('/approval')}
               className="flex items-center justify-center gap-1 py-1.5 text-white/30 hover:text-white/60 hover:bg-white/5 rounded-lg transition-colors">
               <Lock size={13}/>
-              <span className="text-[9px]">전자결재</span>
+              <span className="text-[9px]">?꾩옄寃곗옱</span>
             </button>
           </div>
         )}
@@ -374,7 +373,7 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
     </div>
   )
 
-  // ── 오른쪽 채팅 패널 ──────────────────────────────────
+  // ?? ?ㅻⅨ履?梨꾪똿 ?⑤꼸 ??????????????????????????????????
   const ChatPanel = () => {
     if (!activeUser) return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 gap-4">
@@ -382,15 +381,15 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
           <MessageSquare size={28} className="text-gray-400"/>
         </div>
         <div className="text-center">
-          <p className="text-gray-600 font-medium">대화 상대를 선택하세요</p>
-          <p className="text-sm text-gray-400 mt-1">왼쪽 목록에서 멤버를 클릭하세요</p>
+          <p className="text-gray-600 font-medium">????곷?瑜??좏깮?섏꽭??/p>
+          <p className="text-sm text-gray-400 mt-1">?쇱そ 紐⑸줉?먯꽌 硫ㅻ쾭瑜??대┃?섏꽭??/p>
         </div>
       </div>
     )
 
     return (
       <div className="flex-1 flex flex-col">
-        {/* 채팅 헤더 */}
+        {/* 梨꾪똿 ?ㅻ뜑 */}
         <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
           <button onClick={() => setMobileOpen(true)} className="md:hidden p-1 text-gray-400">
             <Menu size={20}/>
@@ -402,17 +401,17 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
             <p className="text-sm font-semibold text-gray-900">{activeUser.name}</p>
             <p className="text-xs text-gray-400">{ROLE_LABEL[activeUser.role]}</p>
           </div>
-          {/* 탭 */}
+          {/* ??*/}
           <div className="flex border border-gray-200 rounded-lg overflow-hidden">
             <button onClick={() => setRightTab('chat')}
               className={clsx('px-3 py-1.5 text-xs font-medium transition-colors',
                 rightTab === 'chat' ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50')}>
-              💬 채팅
+              ?뮠 梨꾪똿
             </button>
             <button onClick={() => setRightTab('feed')}
               className={clsx('px-3 py-1.5 text-xs font-medium transition-colors',
                 rightTab === 'feed' ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50')}>
-              📋 전달사항
+              ?뱥 ?꾨떖?ы빆
             </button>
           </div>
           <button onClick={handleDeleteRoom} className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
@@ -422,12 +421,12 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
 
         {rightTab === 'chat' ? (
           <>
-            {/* 메시지 목록 */}
+            {/* 硫붿떆吏 紐⑸줉 */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-gray-50">
               {messages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
                   <MessageSquare size={32} className="opacity-20"/>
-                  <p className="text-sm">첫 메시지를 보내보세요</p>
+                  <p className="text-sm">泥?硫붿떆吏瑜?蹂대궡蹂댁꽭??/p>
                 </div>
               )}
               {messages.map((msg, idx) => {
@@ -470,31 +469,31 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
               })}
               <div ref={bottomRef}/>
             </div>
-            {/* 입력창 */}
+            {/* ?낅젰李?*/}
             <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
               <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
                 <input ref={inputRef} value={chatInput} onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-                  placeholder="메시지 입력..."
+                  placeholder="硫붿떆吏 ?낅젰..."
                   className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
                 <button onClick={handleSend} disabled={!chatInput.trim() || sending}
                   className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
                   <Send size={14}/>
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 mt-1 text-center">Enter로 전송</p>
+              <p className="text-[10px] text-gray-400 mt-1 text-center">Enter濡??꾩넚</p>
             </div>
           </>
         ) : (
-          // 전달사항 탭 — 해당 사업장의 전달사항 표시
+          // ?꾨떖?ы빆 ?????대떦 ?ъ뾽?μ쓽 ?꾨떖?ы빆 ?쒖떆
           <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
             <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
               <Send size={32} className="opacity-20"/>
-              <p className="text-sm">이 사용자와의 전달사항이 여기 표시됩니다</p>
+              <p className="text-sm">???ъ슜?먯????꾨떖?ы빆???ш린 ?쒖떆?⑸땲??/p>
               {canBroadcast && (
                 <button onClick={() => router.push('/compose')}
                   className="mt-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm hover:bg-primary-800">
-                  전달사항 작성
+                  ?꾨떖?ы빆 ?묒꽦
                 </button>
               )}
             </div>
@@ -510,19 +509,19 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
     </div>
   )
 
-  // hideSidebar: 전자결재 같은 페이지에서 기존 AppShell 사용
+  // hideSidebar: ?꾩옄寃곗옱 媛숈? ?섏씠吏?먯꽌 湲곗〈 AppShell ?ъ슜
   if (hideSidebar) {
     return <>{children}</>
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-100">
-      {/* 모바일 오버레이 */}
+      {/* 紐⑤컮???ㅻ쾭?덉씠 */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileOpen(false)}/>
       )}
 
-      {/* 왼쪽 사이드바 */}
+      {/* ?쇱そ ?ъ씠?쒕컮 */}
       <div className={clsx(
         'fixed inset-y-0 left-0 z-50 w-64 transition-transform duration-200 md:relative md:translate-x-0 md:z-auto',
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
@@ -530,12 +529,12 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
         <Sidebar/>
       </div>
 
-      {/* 오른쪽 콘텐츠 */}
+      {/* ?ㅻⅨ履?肄섑뀗痢?*/}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* children이 있으면 일반 페이지 (공지, 캘린더 등) */}
+        {/* children???덉쑝硫??쇰컲 ?섏씠吏 (怨듭?, 罹섎┛???? */}
         {children ? (
           <div className="flex-1 overflow-y-auto">
-            {/* 모바일 상단바 */}
+            {/* 紐⑤컮???곷떒諛?*/}
             <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-10">
               <button onClick={() => setMobileOpen(true)} className="p-1 text-gray-500">
                 <Menu size={20}/>
@@ -550,10 +549,11 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
             {children}
           </div>
         ) : (
-          // 채팅 패널
+          // 梨꾪똿 ?⑤꼸
           <ChatPanel/>
         )}
       </div>
     </div>
   )
 }
+
