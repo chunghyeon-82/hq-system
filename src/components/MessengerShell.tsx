@@ -22,8 +22,8 @@ import {
 import clsx from 'clsx'
 
 const ROLE_LABEL: Record<string, string> = {
-  ADMIN: '愿由ъ옄', HQ_CHIEF: '蹂몃???, HQ_MEMBER: '蹂몃?硫ㅻ쾭',
-  BIZ_REP: '?ъ뾽?λ???, ETC: '湲고?'
+  ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버',
+  BIZ_REP: '사업장대표', ETC: '기타'
 }
 
 function getRoomId(uid1: string, uid2: string) {
