@@ -5,20 +5,19 @@ import { signOut } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { useAuth } from '@/lib/auth-context'
 import {
-  listenBusinesses, listenUsers, listenDirectChatRooms,
-  listenMessagesForHQ, listenMessagesForBiz,
-  listenNotices, listenEvents, listenApprovalDocs,
-  listenDirectChatMessages, sendDirectChat, markDirectChatRead,
-  deleteDirectChatRoom
+  listenBusinesses, listenUsers,
+  listenChatRooms, listenChatRoomMessages,
+  getOrCreateDirectRoom, createGroupRoom,
+  sendChatRoomMessage, markChatRoomRead,
+  deleteChatRoom, leaveChatRoom,
 } from '@/lib/db'
-import type { DirectChatRoom, DirectChatMessage } from '@/lib/db'
+import type { ChatRoom, ChatMessage } from '@/lib/db'
 import type { AppUser, Business } from '@/types'
-import type { Message, Notice, CalendarEvent, ApprovalDoc } from '@/types'
 import {
-  ChevronDown, ChevronRight, LogOut, Settings, Users,
-  MessageSquare, Send, Bell, Calendar, Search,
-  Megaphone, Building2, Lock, Menu, X, Trash2,
-  ClipboardList
+  ChevronDown, ChevronRight, LogOut, Users, Plus,
+  MessageSquare, Send, Calendar, Search, X,
+  Megaphone, Building2, Lock, Menu, Trash2,
+  Settings, UserPlus, Hash, Check
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -27,437 +26,512 @@ const ROLE_LABEL: Record<string, string> = {
   BIZ_REP: '사업장대표', ETC: '기타'
 }
 
-function getRoomId(uid1: string, uid2: string) {
-  return [uid1, uid2].sort().join('_')
-}
-
 function formatTime(ts: unknown): string {
   if (!ts) return ''
   const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string)
-  if (isNaN(d.getTime())) return ''
+  if (!d || isNaN(d.getTime())) return ''
   const now = new Date()
-  const isToday = d.toDateString() === now.toDateString()
-  if (isToday) return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === now.toDateString())
+    return d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
   return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
 }
 
-function formatDateDivider(ts: unknown): string {
+function formatDateDiv(ts: unknown): string {
   if (!ts) return ''
   const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string)
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' })
 }
 
-interface Props { children?: ReactNode; title?: string; hideSidebar?: boolean }
+interface Props { children?: ReactNode; title?: string }
 
-export default function MessengerShell({ children, title, hideSidebar }: Props) {
+export default function MessengerShell({ children, title }: Props) {
   const { user, loading } = useAuth()
-  const router = useRouter()
+  const router   = useRouter()
   const pathname = usePathname()
 
-  // 데이터
-  const [businesses,  setBusinesses]  = useState<Business[]>([])
-  const [allUsers,    setAllUsers]    = useState<AppUser[]>([])
-  const [chatRooms,   setChatRooms]   = useState<DirectChatRoom[]>([])
-  const [messages,    setMessages]    = useState<DirectChatMessage[]>([])
+  const [businesses, setBusinesses] = useState<Business[]>([])
+  const [allUsers,   setAllUsers]   = useState<AppUser[]>([])
+  const [rooms,      setRooms]      = useState<ChatRoom[]>([])
+  const [messages,   setMessages]   = useState<ChatMessage[]>([])
 
-  // 배지
-  const [unreadMsg,    setUnreadMsg]    = useState(0)
-  const [unreadDirect, setUnreadDirect] = useState(0)
-  const [unreadNotice, setUnreadNotice] = useState(0)
-  const [unreadCal,    setUnreadCal]    = useState(0)
-  const [unreadApproval, setUnreadApproval] = useState(0)
+  const [activeRoom,  setActiveRoom]  = useState<ChatRoom | null>(null)
+  const [chatInput,   setChatInput]   = useState('')
+  const [sending,     setSending]     = useState(false)
+  const [mobileOpen,  setMobileOpen]  = useState(false)
 
-  // UI 상태
-  const [openHQ,       setOpenHQ]       = useState(true)   // 운영본부 열림
-  const [openBiz,      setOpenBiz]      = useState(true)   // 사업장 열림
-  const [openBizIds,   setOpenBizIds]   = useState<Set<string>>(new Set())  // 개별 사업장 열림
-  const [mobileOpen,   setMobileOpen]   = useState(false)  // 모바일 사이드바
-  const [activeUser,   setActiveUser]   = useState<AppUser | null>(null)
-  const [activeRoom,   setActiveRoom]   = useState<string | null>(null)
-  const [chatInput,    setChatInput]    = useState('')
-  const [sending,      setSending]      = useState(false)
-  const [rightTab,     setRightTab]     = useState<'chat'|'feed'>('chat') // 채팅 | 전달사항
+  // 왼쪽 패널 탭: 채팅목록 | 멤버트리
+  const [leftTab,  setLeftTab]  = useState<'rooms' | 'members'>('rooms')
+  // 멤버트리 열림/닫힘
+  const [openHQ,      setOpenHQ]      = useState(true)
+  const [openBiz,     setOpenBiz]     = useState(true)
+  const [openBizIds,  setOpenBizIds]  = useState<Set<string>>(new Set())
+
+  // 채팅방 만들기 모달
+  const [showCreate,    setShowCreate]    = useState(false)
+  const [createName,    setCreateName]    = useState('')
+  const [selectedUids,  setSelectedUids]  = useState<string[]>([])
+  const [creating,      setCreating]      = useState(false)
 
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLInputElement>(null)
 
   const isAdmin = user?.role === 'ADMIN'
-  const isHQ    = user && ['ADMIN','HQ_CHIEF','HQ_MEMBER'].includes(user.role)
-  const isBiz   = user?.role === 'BIZ_REP'
+  const isHQ    = user && ['ADMIN', 'HQ_CHIEF', 'HQ_MEMBER'].includes(user.role)
   const canBroadcast = isAdmin || user?.role === 'HQ_CHIEF' || !!user?.permissions?.canBroadcast
 
-  // 데이터 구독
+  // 총 안읽음
+  const totalUnread = rooms.reduce((s, r) => s + (r.unread?.[user?.uid ?? ''] ?? 0), 0)
+
   useEffect(() => {
     if (loading || !user) return
     const u1 = listenBusinesses(setBusinesses)
     const u2 = listenUsers(setAllUsers)
-    const u3 = listenDirectChatRooms(user.uid, rooms => {
-      setChatRooms(rooms)
-      const total = rooms.reduce((s, r) => s + (r.unread?.[user.uid] ?? 0), 0)
-      setUnreadDirect(total)
-    })
+    const u3 = listenChatRooms(user.uid, setRooms)
     return () => { u1(); u2(); u3() }
   }, [user, loading])
 
-  // 메시지 배지
-  useEffect(() => {
-    if (!user) return
-    if (isHQ) {
-      return listenMessagesForHQ(user.uid, isAdmin, msgs => {
-        const pending = msgs.filter(m =>
-          m.type === 'broadcast' && m.status === 'open'
-        ).length
-        setUnreadMsg(pending)
-      })
-    }
-    if (isBiz && user.bizId) {
-      return listenMessagesForBiz(user.bizId, user.uid, msgs => {
-        const pending = msgs.filter(m =>
-          m.type === 'broadcast' &&
-          m.receipts?.some(r => r.bizId === user.bizId && r.status === 'pending')
-        ).length
-        setUnreadMsg(pending)
-      })
-    }
-  }, [user, isHQ, isAdmin, isBiz])
-
-  // 채팅 메시지 구독
+  // 메시지 구독
   useEffect(() => {
     if (!activeRoom) { setMessages([]); return }
-    return listenDirectChatMessages(activeRoom, setMessages)
-  }, [activeRoom])
+    return listenChatRoomMessages(activeRoom.id, setMessages)
+  }, [activeRoom?.id])
 
   // 읽음 처리
   useEffect(() => {
     if (!activeRoom || !user) return
-    markDirectChatRead(activeRoom, user.uid)
-  }, [activeRoom, messages.length, user])
+    markChatRoomRead(activeRoom.id, user.uid)
+  }, [activeRoom?.id, messages.length, user])
 
   // 스크롤 하단
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const openChat = (target: AppUser) => {
+  // 멤버 클릭 → 1:1 채팅방 열기
+  const openDirectChat = async (target: AppUser) => {
     if (!user) return
-    setActiveUser(target)
-    setActiveRoom(getRoomId(user.uid, target.uid))
-    setRightTab('chat')
+    const roomId = await getOrCreateDirectRoom(
+      user.uid, user.name, user.role,
+      target.uid, target.name, target.role
+    )
+    // 방 목록에서 찾아서 활성화
+    const found = rooms.find(r => r.id === roomId)
+    if (found) {
+      setActiveRoom(found)
+    } else {
+      // 방금 생성된 방 — rooms 업데이트 기다리기
+      setActiveRoom({
+        id: roomId,
+        name: target.name,
+        type: 'direct',
+        members: [
+          { uid: user.uid, name: user.name, role: user.role },
+          { uid: target.uid, name: target.name, role: target.role },
+        ],
+        createdBy: user.uid,
+      })
+    }
+    setLeftTab('rooms')
     setMobileOpen(false)
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
+  // 그룹 채팅방 만들기
+  const handleCreateRoom = async () => {
+    if (!user || selectedUids.length === 0) return
+    setCreating(true)
+    const members = [
+      { uid: user.uid, name: user.name, role: user.role },
+      ...allUsers.filter(u => selectedUids.includes(u.uid))
+        .map(u => ({ uid: u.uid, name: u.name, role: u.role }))
+    ]
+    const name = createName.trim() || members.map(m => m.name).join(', ')
+    const roomId = selectedUids.length === 1
+      ? await getOrCreateDirectRoom(
+          user.uid, user.name, user.role,
+          allUsers.find(u => u.uid === selectedUids[0])!.uid,
+          allUsers.find(u => u.uid === selectedUids[0])!.name,
+          allUsers.find(u => u.uid === selectedUids[0])!.role,
+        )
+      : await createGroupRoom(user.uid, name, members)
+    const found = rooms.find(r => r.id === roomId)
+    if (found) setActiveRoom(found)
+    setShowCreate(false)
+    setCreateName('')
+    setSelectedUids([])
+    setCreating(false)
+    setTimeout(() => inputRef.current?.focus(), 100)
+  }
+
+  // 메시지 전송
   const handleSend = async () => {
-    if (!user || !activeUser || !chatInput.trim() || sending) return
+    if (!user || !activeRoom || !chatInput.trim() || sending) return
     setSending(true)
     const text = chatInput.trim()
     setChatInput('')
-    await sendDirectChat(user.uid, user.name, activeUser.uid, activeUser.name, text)
+    const memberUids = activeRoom.members.map(m => m.uid)
+    await sendChatRoomMessage(activeRoom.id, user.uid, user.name, text, memberUids)
+    // 푸시 알림
+    const targetUids = memberUids.filter(uid => uid !== user.uid)
     fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
-      body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids: [activeUser.uid] }),
+      body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids }),
     }).catch(() => {})
     setSending(false)
   }
 
-  const handleDeleteRoom = async () => {
-    if (!activeRoom || !confirm('대화를 삭제하시겠습니까?')) return
-    await deleteDirectChatRoom(activeRoom)
+  // 채팅방 나가기/삭제
+  const handleLeaveRoom = async () => {
+    if (!user || !activeRoom) return
+    if (!confirm(activeRoom.type === 'direct' ? '대화를 삭제하시겠습니까?' : '채팅방에서 나가시겠습니까?')) return
+    if (activeRoom.type === 'direct') {
+      await deleteChatRoom(activeRoom.id)
+    } else {
+      await leaveChatRoom(activeRoom.id, user.uid, activeRoom.members)
+    }
     setActiveRoom(null)
-    setActiveUser(null)
     setMessages([])
   }
 
-  // 사이드바 트리 데이터
-  const hqMembers    = allUsers.filter(u => ['HQ_CHIEF','HQ_MEMBER'].includes(u.role))
-  const normalBizs   = businesses.filter(b => !b.isHQ)
-  const bizMembersOf = (bizId: string) => allUsers.filter(u => u.bizId === bizId && u.role === 'BIZ_REP')
+  // 사이드바 데이터
+  const hqMembers   = allUsers.filter(u => ['HQ_CHIEF', 'HQ_MEMBER'].includes(u.role) && u.uid !== user?.uid)
+  const normalBizs  = businesses.filter(b => !b.isHQ)
+  const bizMembers  = (bizId: string) => allUsers.filter(u => u.bizId === bizId && u.role === 'BIZ_REP')
 
-  // 사용자 채팅방 마지막 메시지
-  const getLastMsg = (targetUid: string) => {
-    if (!user) return null
-    const roomId = getRoomId(user.uid, targetUid)
-    return chatRooms.find(r => r.id === roomId) ?? null
+  // 채팅방 정렬 (최신순)
+  const sortedRooms = [...rooms].sort((a, b) => {
+    const ta = (a.lastAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
+    const tb = (b.lastAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
+    return tb - ta
+  })
+
+  // 채팅방 표시 이름
+  const getRoomDisplayName = (room: ChatRoom) => {
+    if (room.type === 'direct' && user) {
+      const other = room.members.find(m => m.uid !== user.uid)
+      return other?.name ?? room.name
+    }
+    return room.name
   }
 
-  const getUnread = (targetUid: string) => {
-    if (!user) return 0
-    const roomId = getRoomId(user.uid, targetUid)
-    const room = chatRooms.find(r => r.id === roomId)
-    return room?.unread?.[user.uid] ?? 0
+  // 채팅방 아바타 이니셜
+  const getRoomInitial = (room: ChatRoom) => {
+    if (room.type === 'direct' && user) {
+      const other = room.members.find(m => m.uid !== user.uid)
+      return other?.name?.[0] ?? '?'
+    }
+    return room.name?.[0] ?? '#'
   }
 
-  const totalBadge = unreadMsg + unreadDirect + unreadNotice
+  if (loading) return (
+    <div className="flex items-center justify-center h-screen bg-gray-50">
+      <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-600 border-t-transparent"/>
+    </div>
+  )
 
-  // ── 사이드바 ──────────────────────────────────────────
-  const Sidebar = () => (
-    <div className="flex flex-col h-full bg-[#1a1f2e] text-white select-none">
-      {/* 상단 프로필 */}
-      <div className="px-4 py-4 border-b border-white/10">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-primary-500 flex items-center justify-center text-sm font-bold shrink-0">
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* 모바일 오버레이 */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileOpen(false)}/>
+      )}
+
+      {/* ── 왼쪽 사이드바 ── */}
+      <div className={clsx(
+        'fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-[#1e2130] text-white transition-transform duration-200 md:relative md:translate-x-0 md:z-auto',
+        mobileOpen ? 'translate-x-0' : '-translate-x-full'
+      )}>
+        {/* 프로필 */}
+        <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-sm font-bold shrink-0">
             {user?.name?.[0]}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold truncate">{user?.name}</p>
-            <p className="text-xs text-white/50">{ROLE_LABEL[user?.role ?? '']}</p>
+            <p className="text-xs text-white/40">{ROLE_LABEL[user?.role ?? '']}</p>
           </div>
           <button onClick={() => signOut(auth).then(() => router.replace('/login'))}
-            className="p-1.5 text-white/40 hover:text-white rounded-lg hover:bg-white/10">
-            <LogOut size={15}/>
+            className="p-1.5 text-white/30 hover:text-white rounded-lg hover:bg-white/10 shrink-0">
+            <LogOut size={14}/>
           </button>
         </div>
-      </div>
 
-      {/* 트리 목록 */}
-      <div className="flex-1 overflow-y-auto py-2">
-
-        {/* 운영본부 */}
-        <div>
-          <button onClick={() => setOpenHQ(v => !v)}
-            className="w-full flex items-center gap-2 px-4 py-2 hover:bg-white/5 transition-colors text-white/70 hover:text-white">
-            {openHQ ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
-            <Building2 size={14} className="text-primary-400"/>
-            <span className="text-xs font-semibold tracking-wide flex-1 text-left">운영본부</span>
-            <span className="text-xs text-white/30">{hqMembers.length}명</span>
+        {/* 탭: 채팅목록 | 멤버 */}
+        <div className="flex border-b border-white/10">
+          <button onClick={() => setLeftTab('rooms')}
+            className={clsx('flex-1 py-2 text-xs font-medium transition-colors relative',
+              leftTab === 'rooms' ? 'text-white' : 'text-white/40 hover:text-white/70')}>
+            채팅
+            {leftTab === 'rooms' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-400"/>}
+            {totalUnread > 0 && leftTab !== 'rooms' && (
+              <span className="ml-1 w-4 h-4 inline-flex items-center justify-center bg-red-500 rounded-full text-[9px] font-bold">
+                {totalUnread > 9 ? '9+' : totalUnread}
+              </span>
+            )}
           </button>
-          {openHQ && (
-            <div className="pl-6">
-              {hqMembers.map(u => {
-                const unread = getUnread(u.uid)
-                const isActive = activeUser?.uid === u.uid
+          <button onClick={() => setLeftTab('members')}
+            className={clsx('flex-1 py-2 text-xs font-medium transition-colors relative',
+              leftTab === 'members' ? 'text-white' : 'text-white/40 hover:text-white/70')}>
+            멤버
+            {leftTab === 'members' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-400"/>}
+          </button>
+        </div>
+
+        {/* 탭 내용 */}
+        <div className="flex-1 overflow-y-auto">
+          {leftTab === 'rooms' ? (
+            <>
+              {/* 채팅방 만들기 */}
+              <div className="px-3 pt-3 pb-1">
+                <button onClick={() => setShowCreate(true)}
+                  className="w-full flex items-center gap-2 px-3 py-2 bg-primary-600 hover:bg-primary-700 rounded-xl text-xs font-medium transition-colors">
+                  <Plus size={13}/> 채팅방 만들기
+                </button>
+              </div>
+              {/* 채팅방 목록 */}
+              {sortedRooms.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 gap-2 text-white/30">
+                  <MessageSquare size={20} className="opacity-50"/>
+                  <p className="text-xs">채팅방이 없습니다</p>
+                </div>
+              ) : sortedRooms.map(room => {
+                const unread   = room.unread?.[user?.uid ?? ''] ?? 0
+                const isActive = activeRoom?.id === room.id
+                const dispName = getRoomDisplayName(room)
+                const initial  = getRoomInitial(room)
                 return (
-                  <button key={u.uid} onClick={() => openChat(u)}
+                  <button key={room.id} onClick={() => { setActiveRoom(room); setMobileOpen(false) }}
                     className={clsx(
-                      'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg mx-1 transition-colors text-left',
-                      isActive ? 'bg-primary-600 text-white' : 'hover:bg-white/5 text-white/70 hover:text-white'
+                      'w-full flex items-center gap-2.5 px-3 py-2.5 transition-colors text-left',
+                      isActive ? 'bg-primary-600/30 border-l-2 border-primary-400' : 'hover:bg-white/5'
                     )}>
                     <div className="relative shrink-0">
-                      <div className="w-7 h-7 rounded-full bg-primary-800 flex items-center justify-center text-xs font-bold">
-                        {u.name[0]}
+                      <div className={clsx(
+                        'w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold',
+                        room.type === 'group' ? 'bg-amber-600' : 'bg-primary-700'
+                      )}>
+                        {room.type === 'group' ? <Hash size={14}/> : initial}
                       </div>
                       {unread > 0 && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold text-white">
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold">
                           {unread > 9 ? '9+' : unread}
                         </div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{u.name}</p>
-                      <p className="text-[10px] text-white/40 truncate">
-                        {getLastMsg(u.uid)?.lastMessage ?? ROLE_LABEL[u.role]}
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-xs font-medium truncate">{dispName}</p>
+                        <span className="text-[9px] text-white/30 shrink-0">{formatTime(room.lastAt)}</span>
+                      </div>
+                      <p className={clsx('text-[10px] truncate mt-0.5',
+                        unread > 0 ? 'text-white/70 font-medium' : 'text-white/30')}>
+                        {room.lastMessage || (room.type === 'group' ? `${room.members.length}명` : '새 대화')}
                       </p>
                     </div>
                   </button>
                 )
               })}
-            </div>
-          )}
-        </div>
-
-        {/* 사업장 */}
-        <div className="mt-1">
-          <button onClick={() => setOpenBiz(v => !v)}
-            className="w-full flex items-center gap-2 px-4 py-2 hover:bg-white/5 transition-colors text-white/70 hover:text-white">
-            {openBiz ? <ChevronDown size={14}/> : <ChevronRight size={14}/>}
-            <Users size={14} className="text-amber-400"/>
-            <span className="text-xs font-semibold tracking-wide flex-1 text-left">사업장</span>
-            <span className="text-xs text-white/30">{normalBizs.length}개</span>
-          </button>
-          {openBiz && (
-            <div className="pl-4">
-              {normalBizs.map(biz => {
+            </>
+          ) : (
+            // 멤버 트리
+            <div className="py-2">
+              {/* 운영본부 */}
+              <button onClick={() => setOpenHQ(v => !v)}
+                className="w-full flex items-center gap-2 px-4 py-2 hover:bg-white/5 text-white/60 hover:text-white transition-colors">
+                {openHQ ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
+                <Building2 size={13} className="text-primary-400"/>
+                <span className="text-xs font-medium flex-1 text-left">운영본부</span>
+                <span className="text-[10px] text-white/30">{hqMembers.length}명</span>
+              </button>
+              {openHQ && hqMembers.map(u => (
+                <button key={u.uid} onClick={() => openDirectChat(u)}
+                  className="w-full flex items-center gap-2 pl-8 pr-4 py-2 hover:bg-white/5 text-white/60 hover:text-white transition-colors text-left">
+                  <div className="w-6 h-6 rounded-full bg-primary-800 flex items-center justify-center text-[10px] font-bold shrink-0">
+                    {u.name[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs truncate">{u.name}</p>
+                    <p className="text-[9px] text-white/30">{ROLE_LABEL[u.role]}</p>
+                  </div>
+                  <MessageSquare size={11} className="text-white/20 shrink-0"/>
+                </button>
+              ))}
+              {/* 사업장 */}
+              <button onClick={() => setOpenBiz(v => !v)}
+                className="w-full flex items-center gap-2 px-4 py-2 hover:bg-white/5 text-white/60 hover:text-white transition-colors mt-1">
+                {openBiz ? <ChevronDown size={13}/> : <ChevronRight size={13}/>}
+                <Users size={13} className="text-amber-400"/>
+                <span className="text-xs font-medium flex-1 text-left">사업장</span>
+                <span className="text-[10px] text-white/30">{normalBizs.length}개</span>
+              </button>
+              {openBiz && normalBizs.map(biz => {
                 const isOpen = openBizIds.has(biz.id)
-                const members = bizMembersOf(biz.id)
-                const bizUnread = members.reduce((s, u) => s + getUnread(u.uid), 0)
+                const mems   = bizMembers(biz.id)
                 return (
                   <div key={biz.id}>
-                    <button
-                      onClick={() => setOpenBizIds(prev => {
+                    <button onClick={() => setOpenBizIds(prev => {
                         const next = new Set(prev)
                         next.has(biz.id) ? next.delete(biz.id) : next.add(biz.id)
                         return next
                       })}
-                      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/5 rounded-lg mx-1 transition-colors text-white/60 hover:text-white">
-                      {isOpen ? <ChevronDown size={12}/> : <ChevronRight size={12}/>}
+                      className="w-full flex items-center gap-2 pl-8 pr-4 py-1.5 hover:bg-white/5 text-white/50 hover:text-white transition-colors">
+                      {isOpen ? <ChevronDown size={11}/> : <ChevronRight size={11}/>}
                       <span className="text-xs flex-1 text-left truncate">{biz.name}</span>
-                      {bizUnread > 0 && (
-                        <span className="w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0">
-                          {bizUnread > 9 ? '9+' : bizUnread}
-                        </span>
-                      )}
+                      <span className="text-[9px] text-white/20">{mems.length}</span>
                     </button>
-                    {isOpen && (
-                      <div className="pl-5">
-                        {members.length === 0 ? (
-                          <p className="text-[10px] text-white/30 px-3 py-1">멤버 없음</p>
-                        ) : members.map(u => {
-                          const unread = getUnread(u.uid)
-                          const isActive = activeUser?.uid === u.uid
-                          return (
-                            <button key={u.uid} onClick={() => openChat(u)}
-                              className={clsx(
-                                'w-full flex items-center gap-2 px-3 py-1.5 rounded-lg mx-1 transition-colors text-left',
-                                isActive ? 'bg-primary-600 text-white' : 'hover:bg-white/5 text-white/60 hover:text-white'
-                              )}>
-                              <div className="relative shrink-0">
-                                <div className="w-6 h-6 rounded-full bg-amber-800 flex items-center justify-center text-[10px] font-bold">
-                                  {u.name[0]}
-                                </div>
-                                {unread > 0 && (
-                                  <div className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 rounded-full flex items-center justify-center text-[8px] font-bold text-white">
-                                    {unread}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[11px] font-medium truncate">{u.name}</p>
-                                <p className="text-[9px] text-white/40 truncate">
-                                  {getLastMsg(u.uid)?.lastMessage ?? '사업장대표'}
-                                </p>
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    )}
+                    {isOpen && mems.map(u => (
+                      <button key={u.uid} onClick={() => openDirectChat(u)}
+                        className="w-full flex items-center gap-2 pl-12 pr-4 py-1.5 hover:bg-white/5 text-white/50 hover:text-white transition-colors text-left">
+                        <div className="w-5 h-5 rounded-full bg-amber-800 flex items-center justify-center text-[9px] font-bold shrink-0">
+                          {u.name[0]}
+                        </div>
+                        <p className="text-[11px] flex-1 truncate">{u.name}</p>
+                        <MessageSquare size={10} className="text-white/20 shrink-0"/>
+                      </button>
+                    ))}
                   </div>
                 )
               })}
             </div>
           )}
         </div>
-      </div>
 
-      {/* 하단 메뉴 */}
-      <div className="border-t border-white/10 px-2 py-2">
-        <div className="grid grid-cols-5 gap-1">
-          {[
-            { icon: Send,        label: '전달', href: '/businesses', badge: unreadMsg,    show: true },
-            { icon: Megaphone,   label: '공지', href: '/notices',   badge: unreadNotice, show: true },
-            { icon: Calendar,    label: '일정', href: '/calendar',  badge: unreadCal,    show: true },
-            { icon: Search,      label: '검색', href: '/search',    badge: 0,            show: true },
-            { icon: Settings,    label: '설정', href: '/settings',  badge: 0,            show: true },
-          ].filter(m => m.show).map(m => (
-            <button key={m.href} onClick={() => router.push(m.href)}
-              className={clsx(
-                'flex flex-col items-center gap-0.5 py-1.5 px-1 rounded-lg transition-colors relative',
-                pathname === m.href ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5'
-              )}>
-              <m.icon size={16}/>
-              <span className="text-[9px]">{m.label}</span>
-              {m.badge > 0 && (
-                <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-red-500 rounded-full flex items-center justify-center text-[8px] font-bold text-white">
-                  {m.badge > 9 ? '9+' : m.badge}
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
-        {/* 관리자 전용 메뉴 */}
-        {isAdmin && (
-          <div className="grid grid-cols-2 gap-1 mt-1">
-            <button onClick={() => router.push('/admin')}
-              className="flex items-center justify-center gap-1 py-1.5 text-white/40 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
-              <Users size={13}/>
-              <span className="text-[9px]">멤버관리</span>
-            </button>
-            <button onClick={() => router.push('/approval')}
-              className="flex items-center justify-center gap-1 py-1.5 text-white/30 hover:text-white/60 hover:bg-white/5 rounded-lg transition-colors">
-              <Lock size={13}/>
-              <span className="text-[9px]">전자결재</span>
-            </button>
+        {/* 하단 메뉴 아이콘 */}
+        <div className="border-t border-white/10 px-2 py-2">
+          <div className="grid grid-cols-5 gap-1">
+            {[
+              { icon: Send,      label: '전달', path: '/businesses' },
+              { icon: Megaphone, label: '공지', path: '/notices' },
+              { icon: Calendar,  label: '일정', path: '/calendar' },
+              { icon: Search,    label: '검색', path: '/search' },
+              { icon: Settings,  label: '설정', path: '/settings' },
+            ].map(m => (
+              <button key={m.path} onClick={() => { router.push(m.path); setMobileOpen(false) }}
+                className={clsx('flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-colors',
+                  pathname === m.path ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5')}>
+                <m.icon size={15}/>
+                <span className="text-[9px]">{m.label}</span>
+              </button>
+            ))}
           </div>
-        )}
-      </div>
-    </div>
-  )
-
-  // ── 오른쪽 채팅 패널 ──────────────────────────────────
-  const ChatPanel = () => {
-    if (!activeUser) return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 gap-4">
-        <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
-          <MessageSquare size={28} className="text-gray-400"/>
-        </div>
-        <div className="text-center">
-          <p className="text-gray-600 font-medium">대화 상대를 선택하세요</p>
-          <p className="text-sm text-gray-400 mt-1">왼쪽 목록에서 멤버를 클릭하세요</p>
+          {isAdmin && (
+            <div className="grid grid-cols-2 gap-1 mt-1">
+              <button onClick={() => router.push('/admin')}
+                className="flex items-center justify-center gap-1 py-1.5 text-white/30 hover:text-white hover:bg-white/5 rounded-lg text-[9px] transition-colors">
+                <Users size={12}/> 멤버관리
+              </button>
+              <button onClick={() => router.push('/approval')}
+                className="flex items-center justify-center gap-1 py-1.5 text-white/20 hover:text-white/50 hover:bg-white/5 rounded-lg text-[9px] transition-colors">
+                <Lock size={12}/> 전자결재
+              </button>
+            </div>
+          )}
         </div>
       </div>
-    )
 
-    return (
-      <div className="flex-1 flex flex-col">
-        {/* 채팅 헤더 */}
-        <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
-          <button onClick={() => setMobileOpen(true)} className="md:hidden p-1 text-gray-400">
-            <Menu size={20}/>
-          </button>
-          <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-sm font-bold text-primary-700 shrink-0">
-            {activeUser.name[0]}
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-gray-900">{activeUser.name}</p>
-            <p className="text-xs text-gray-400">{ROLE_LABEL[activeUser.role]}</p>
-          </div>
-          {/* 탭 */}
-          <div className="flex border border-gray-200 rounded-lg overflow-hidden">
-            <button onClick={() => setRightTab('chat')}
-              className={clsx('px-3 py-1.5 text-xs font-medium transition-colors',
-                rightTab === 'chat' ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50')}>
-              💬 채팅
-            </button>
-            <button onClick={() => setRightTab('feed')}
-              className={clsx('px-3 py-1.5 text-xs font-medium transition-colors',
-                rightTab === 'feed' ? 'bg-primary-600 text-white' : 'text-gray-500 hover:bg-gray-50')}>
-              📋 전달사항
-            </button>
-          </div>
-          <button onClick={handleDeleteRoom} className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
-            <Trash2 size={15}/>
-          </button>
-        </div>
-
-        {rightTab === 'chat' ? (
+      {/* ── 오른쪽 영역 ── */}
+      <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
+        {children ? (
+          // 일반 페이지 (공지, 캘린더 등)
           <>
+            <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-10 shrink-0">
+              <button onClick={() => setMobileOpen(true)} className="p-1 text-gray-500">
+                <Menu size={20}/>
+              </button>
+              <h1 className="font-semibold text-gray-900 text-sm flex-1">{title}</h1>
+            </div>
+            <div className="flex-1 overflow-y-auto">{children}</div>
+          </>
+        ) : !activeRoom ? (
+          // 채팅방 미선택
+          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+            <button onClick={() => setMobileOpen(true)} className="md:hidden absolute top-4 left-4 p-2 text-gray-400">
+              <Menu size={20}/>
+            </button>
+            <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
+              <MessageSquare size={28} className="text-gray-400"/>
+            </div>
+            <div className="text-center">
+              <p className="text-gray-600 font-medium">채팅방을 선택하세요</p>
+              <p className="text-sm text-gray-400 mt-1">왼쪽에서 채팅방을 선택하거나 새로 만드세요</p>
+            </div>
+            <button onClick={() => setShowCreate(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800">
+              <Plus size={15}/> 채팅방 만들기
+            </button>
+          </div>
+        ) : (
+          // 채팅창
+          <>
+            {/* 헤더 */}
+            <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
+              <button onClick={() => setMobileOpen(true)} className="md:hidden p-1 text-gray-400">
+                <Menu size={20}/>
+              </button>
+              <div className={clsx('w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0',
+                activeRoom.type === 'group' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700')}>
+                {activeRoom.type === 'group' ? <Hash size={16}/> : getRoomInitial(activeRoom)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900">{getRoomDisplayName(activeRoom)}</p>
+                <p className="text-xs text-gray-400">
+                  {activeRoom.type === 'group'
+                    ? `${activeRoom.members.length}명`
+                    : ROLE_LABEL[activeRoom.members.find(m => m.uid !== user?.uid)?.role ?? '']}
+                </p>
+              </div>
+              {/* 멤버 초대 (그룹만) */}
+              {activeRoom.type === 'group' && (
+                <button className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
+                  <UserPlus size={16}/>
+                </button>
+              )}
+              <button onClick={handleLeaveRoom}
+                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                <Trash2 size={15}/>
+              </button>
+            </div>
+
             {/* 메시지 목록 */}
-            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-gray-50">
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
               {messages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
-                  <MessageSquare size={32} className="opacity-20"/>
+                  <MessageSquare size={28} className="opacity-20"/>
                   <p className="text-sm">첫 메시지를 보내보세요</p>
                 </div>
               )}
               {messages.map((msg, idx) => {
-                const isMine = msg.senderUid === user?.uid
-                const prevMsg = idx > 0 ? messages[idx-1] : null
+                const isMine   = msg.senderUid === user?.uid
+                const prev     = idx > 0 ? messages[idx-1] : null
                 const showDate = idx === 0 || (() => {
-                  const prev = (prevMsg?.createdAt as {toDate?:()=>Date})?.toDate?.()
-                  const cur  = (msg.createdAt  as {toDate?:()=>Date})?.toDate?.()
-                  return prev && cur && prev.toDateString() !== cur.toDateString()
+                  const pd = (prev?.createdAt as {toDate?:()=>Date})?.toDate?.()
+                  const cd = (msg.createdAt  as {toDate?:()=>Date})?.toDate?.()
+                  return pd && cd && pd.toDateString() !== cd.toDateString()
                 })()
-
+                const showName = !isMine && activeRoom.type === 'group' && msg.senderUid !== prev?.senderUid
                 return (
                   <div key={msg.id}>
                     {showDate && (
                       <div className="flex items-center gap-3 my-4">
                         <div className="flex-1 h-px bg-gray-200"/>
-                        <span className="text-xs text-gray-400">{formatDateDivider(msg.createdAt)}</span>
+                        <span className="text-xs text-gray-400 shrink-0">{formatDateDiv(msg.createdAt)}</span>
                         <div className="flex-1 h-px bg-gray-200"/>
                       </div>
                     )}
                     <div className={clsx('flex items-end gap-2 mb-1', isMine ? 'flex-row-reverse' : 'flex-row')}>
                       {!isMine && (
-                        <div className="w-7 h-7 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0 mb-0.5">
+                        <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 shrink-0 mb-0.5">
                           {msg.senderName[0]}
                         </div>
                       )}
                       <div className={clsx('flex flex-col max-w-[70%]', isMine ? 'items-end' : 'items-start')}>
+                        {showName && <p className="text-xs text-gray-500 mb-1 ml-1">{msg.senderName}</p>}
                         <div className={clsx(
                           'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words',
-                          isMine ? 'bg-primary-600 text-white rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm shadow-sm border border-gray-100'
+                          isMine
+                            ? 'bg-primary-600 text-white rounded-br-sm'
+                            : 'bg-white text-gray-800 rounded-bl-sm shadow-sm border border-gray-100'
                         )}>
                           {msg.body}
                         </div>
@@ -470,6 +544,7 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
               })}
               <div ref={bottomRef}/>
             </div>
+
             {/* 입력창 */}
             <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
               <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
@@ -482,78 +557,65 @@ export default function MessengerShell({ children, title, hideSidebar }: Props) 
                   <Send size={14}/>
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 mt-1 text-center">Enter로 전송</p>
             </div>
           </>
-        ) : (
-          // 전달사항 탭 — 해당 사업장의 전달사항 표시
-          <div className="flex-1 overflow-y-auto bg-gray-50 p-4">
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
-              <Send size={32} className="opacity-20"/>
-              <p className="text-sm">이 사용자와의 전달사항이 여기 표시됩니다</p>
-              {canBroadcast && (
-                <button onClick={() => router.push('/compose')}
-                  className="mt-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm hover:bg-primary-800">
-                  전달사항 작성
-                </button>
-              )}
-            </div>
-          </div>
         )}
       </div>
-    )
-  }
 
-  if (loading) return (
-    <div className="flex items-center justify-center h-screen bg-gray-50">
-      <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary-600 border-t-transparent"/>
-    </div>
-  )
-
-  // hideSidebar: 전자결재 같은 페이지에서 기존 AppShell 사용
-  if (hideSidebar) {
-    return <>{children}</>
-  }
-
-  return (
-    <div className="flex h-screen overflow-hidden bg-gray-100">
-      {/* 모바일 오버레이 */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileOpen(false)}/>
-      )}
-
-      {/* 왼쪽 사이드바 */}
-      <div className={clsx(
-        'fixed inset-y-0 left-0 z-50 w-64 transition-transform duration-200 md:relative md:translate-x-0 md:z-auto',
-        mobileOpen ? 'translate-x-0' : '-translate-x-full'
-      )}>
-        <Sidebar/>
-      </div>
-
-      {/* 오른쪽 콘텐츠 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* children이 있으면 일반 페이지 (공지, 캘린더 등) */}
-        {children ? (
-          <div className="flex-1 overflow-y-auto">
-            {/* 모바일 상단바 */}
-            <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-10">
-              <button onClick={() => setMobileOpen(true)} className="p-1 text-gray-500">
-                <Menu size={20}/>
-              </button>
-              <h1 className="font-semibold text-gray-900 text-sm flex-1">{title}</h1>
-              {totalBadge > 0 && (
-                <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-xs font-bold text-white">
-                  {totalBadge > 9 ? '9+' : totalBadge}
+      {/* ── 채팅방 만들기 모달 ── */}
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowCreate(false) }}>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900">채팅방 만들기</h3>
+              <button onClick={() => setShowCreate(false)} className="text-gray-400"><X size={18}/></button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1.5">
+                  채팅방 이름 <span className="text-gray-400 font-normal">(선택, 1:1은 자동)</span>
+                </label>
+                <input value={createName} onChange={e => setCreateName(e.target.value)}
+                  placeholder="채팅방 이름 입력"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">
+                  대화 상대 선택 <span className="text-xs text-gray-400">({selectedUids.length}명 선택)</span>
+                </label>
+                <div className="border border-gray-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                  {allUsers.filter(u => u.uid !== user?.uid).map(u => (
+                    <button key={u.uid}
+                      onClick={() => setSelectedUids(prev =>
+                        prev.includes(u.uid) ? prev.filter(id => id !== u.uid) : [...prev, u.uid]
+                      )}
+                      className={clsx('w-full flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 transition-colors text-left',
+                        selectedUids.includes(u.uid) ? 'bg-primary-50' : 'hover:bg-gray-50')}>
+                      <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
+                        {u.name[0]}
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-800">{u.name}</p>
+                        <p className="text-xs text-gray-400">{ROLE_LABEL[u.role]}</p>
+                      </div>
+                      <div className={clsx('w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors',
+                        selectedUids.includes(u.uid) ? 'border-primary-600 bg-primary-600' : 'border-gray-300')}>
+                        {selectedUids.includes(u.uid) && <Check size={11} className="text-white"/>}
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              )}
+              </div>
+              <button onClick={handleCreateRoom}
+                disabled={selectedUids.length === 0 || creating}
+                className="w-full py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50 transition-colors">
+                {creating ? '생성 중...' : selectedUids.length === 1 ? '1:1 채팅 시작' : '그룹 채팅방 만들기'}
+              </button>
             </div>
-            {children}
           </div>
-        ) : (
-          // 채팅 패널
-          <ChatPanel/>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
