@@ -78,7 +78,7 @@ export default function DirectPage() {
   }[role] ?? role)
 
   if (sent) return (
-    <MessengerShell title="1:1 메시지" back="/dashboard">
+    <MessengerShell title="1:1 메시지">
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
           <MessageSquare size={32} className="text-green-600"/>
@@ -105,7 +105,7 @@ export default function DirectPage() {
   )
 
   return (
-    <MessengerShell title="1:1 메시지" back="/dashboard">
+    <MessengerShell title="1:1 메시지">
       <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-4">
 
         {/* 비공개 안내 */}
