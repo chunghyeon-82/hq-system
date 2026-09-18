@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import AppShell from '@/components/AppShell'
+import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenNotices, addNotice, deleteNotice, listenBusinesses } from '@/lib/db'
 import type { Notice, NoticePrefix, Business } from '@/types'
@@ -88,7 +88,7 @@ export default function NoticesPage() {
     p === '본부' ? 'bg-primary-100 text-primary-700' : 'bg-amber-100 text-amber-700'
 
   return (
-    <AppShell title="공지사항">
+    <MessengerShell title="공지사항">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
         <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-400">
           <span>🗑</span>
@@ -279,6 +279,6 @@ export default function NoticesPage() {
           </div>
         )}
       </div>
-    </AppShell>
+    </MessengerShell>
   )
 }

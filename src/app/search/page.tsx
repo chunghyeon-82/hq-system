@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import AppShell from '@/components/AppShell'
+import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenMessagesForHQ, listenMessagesForBiz } from '@/lib/db'
 import type { Message } from '@/types'
@@ -36,7 +36,7 @@ export default function SearchPage() {
   }, [query, all])
 
   return (
-    <AppShell title="메시지 검색">
+    <MessengerShell title="메시지 검색">
       <div className="max-w-4xl mx-auto p-4 space-y-4">
         {/* 검색창 */}
         <div className="relative">
@@ -113,6 +113,6 @@ export default function SearchPage() {
           </div>
         )}
       </div>
-    </AppShell>
+    </MessengerShell>
   )
 }

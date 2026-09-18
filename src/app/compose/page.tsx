@@ -1,7 +1,7 @@
 'use client'
 import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import AppShell from '@/components/AppShell'
+import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenBusinesses, sendMessage, listenTemplates, addTemplate, deleteTemplate } from '@/lib/db'
 import type { Business, Receipt, MessageTemplate, MessageCategory } from '@/types'
@@ -117,7 +117,7 @@ function ComposeContent() {
   }
 
   if (sent) return (
-    <AppShell title="전달 작성">
+    <MessengerShell title="전달 작성">
       <div className="flex flex-col items-center justify-center h-64 gap-4">
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
           <CheckSquare size={32} className="text-green-600"/>
@@ -137,11 +137,11 @@ function ComposeContent() {
           </button>
         </div>
       </div>
-    </AppShell>
+    </MessengerShell>
   )
 
   return (
-    <AppShell title="전달 작성">
+    <MessengerShell title="전달 작성">
       <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
 
         {/* 전달 종류 */}
@@ -318,7 +318,7 @@ function ComposeContent() {
           <Send size={16}/> {sending ? '발송 중...' : `${selected.size}개 사업장에 발송`}
         </button>
       </div>
-    </AppShell>
+    </MessengerShell>
   )
 }
 

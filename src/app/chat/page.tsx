@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import AppShell from '@/components/AppShell'
+import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenChatMessages, sendChatMessage, listenUsers } from '@/lib/db'
 import type { ChatMessage } from '@/lib/db'
@@ -128,7 +128,7 @@ export default function ChatPage() {
   }
 
   return (
-    <AppShell title="운영본부 채팅">
+    <MessengerShell title="운영본부 채팅">
       <div className="max-w-4xl mx-auto px-4 pt-3">
         <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-400">
           <span>🗑</span>
@@ -324,6 +324,6 @@ export default function ChatPage() {
           <p className="text-xs text-gray-400 text-center mt-1.5">운영본부 멤버만 볼 수 있습니다</p>
         </div>
       </div>
-    </AppShell>
+    </MessengerShell>
   )
 }

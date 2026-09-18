@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import AppShell from '@/components/AppShell'
+import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenBusinesses, listenMessages, listenUsers, addBusiness, updateBusiness, deleteBusiness } from '@/lib/db'
 import type { Business, Message, AppUser } from '@/types'
@@ -47,7 +47,7 @@ export default function BusinessesPage() {
   )
 
   return (
-    <AppShell title="사업장 현황">
+    <MessengerShell title="사업장 현황">
       <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-5">
 
         {/* ── 운영본부 카드 ── */}
@@ -174,7 +174,7 @@ export default function BusinessesPage() {
       {showForm && (
         <BusinessFormModal initial={editBiz} onClose={() => setShowForm(false)} onSaved={() => setShowForm(false)}/>
       )}
-    </AppShell>
+    </MessengerShell>
   )
 }
 

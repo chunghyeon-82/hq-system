@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import AppShell from '@/components/AppShell'
+import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenMessagesForHQ, listenMessagesForBiz, listenBusinesses, listenEvents } from '@/lib/db'
 import type { Message, Business, CalendarEvent } from '@/types'
@@ -186,7 +186,7 @@ export default function DashboardPage() {
     )
 
     return (
-      <AppShell title="대시보드">
+      <MessengerShell title="대시보드">
         <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-6">
           <div>
             <h2 className="text-lg font-bold text-gray-900">안녕하세요, {user?.name}님 👋</h2>
@@ -298,7 +298,7 @@ export default function DashboardPage() {
           {/* ── 이번 주 일정 ── */}
           <WeekCalendar/>
         </div>
-      </AppShell>
+      </MessengerShell>
     )
   }
 
@@ -324,7 +324,7 @@ export default function DashboardPage() {
       : doneItems
 
     return (
-      <AppShell title="대시보드">
+      <MessengerShell title="대시보드">
         <div className="p-4 md:p-6 max-w-3xl mx-auto space-y-6">
           <div>
             <h2 className="text-lg font-bold text-gray-900">안녕하세요, {user?.name}님 👋</h2>
@@ -441,7 +441,7 @@ export default function DashboardPage() {
           {/* ── 이번 주 일정 ── */}
           <WeekCalendar/>
         </div>
-      </AppShell>
+      </MessengerShell>
     )
   }
 

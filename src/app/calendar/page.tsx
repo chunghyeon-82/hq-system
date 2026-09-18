@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { getLunarDate, fetchHolidays, getHolidayName, type Holiday } from '@/lib/calendar-utils'
 import { useRouter } from 'next/navigation'
-import AppShell from '@/components/AppShell'
+import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
 import {
   listenEvents, addEvent, updateEvent, deleteEvent,
@@ -291,7 +291,7 @@ export default function CalendarPage() {
   })()
 
   return (
-    <AppShell title="캘린더">
+    <MessengerShell title="캘린더">
       <div className="max-w-5xl mx-auto p-4 space-y-4">
 
         <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs text-gray-400">
@@ -764,6 +764,6 @@ export default function CalendarPage() {
           </div>
         </div>
       )}
-    </AppShell>
+    </MessengerShell>
   )
 }
