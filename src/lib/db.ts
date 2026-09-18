@@ -582,14 +582,155 @@ export async function deleteInternalDoc(id: string) {
   await deleteDoc(doc(db, 'internalDocs', id))
 }
 
-// 1:1 채팅방 삭제 (메시지 포함)
-export async function deleteDirectChatRoom(roomId: string) {
-  // 1. 메시지 서브컬렉션 전체 삭제
-  const msgsSnap = await getDocs(collection(db, 'directChats', roomId, 'messages'))
-  const deletions = msgsSnap.docs.map(d => deleteDoc(d.ref))
-  await Promise.all(deletions)
-  // 2. 채팅방 문서 삭제
-  await deleteDoc(doc(db, 'directChats', roomId))
+// ── 그룹/1:1 통합 채팅방 (chatRooms) ────────────────────────────────
+
+export interface ChatRoom {
+  id:          string
+  name:        string
+  type:        'group' | 'direct'
+  members:     { uid: string; name: string; role: string }[]
+  createdBy:   string
+  lastMessage?: string
+  lastAt?:     unknown
+  unread?:     Record<string, number>
+}
+
+export interface ChatMessage {
+  id:         string
+  senderUid:  string
+  senderName: string
+  body:       string
+  createdAt:  unknown
+  readBy:     string[]
+}
+
+// 내가 참여한 채팅방 목록 구독
+export function listenChatRooms(myUid: string, cb: (rooms: ChatRoom[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'chatRooms'), where('members', 'array-contains', myUid)),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as ChatRoom)))
+  )
+}
+
+// 채팅방 메시지 구독
+export function listenChatRoomMessages(roomId: string, cb: (msgs: ChatMessage[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'chatRooms', roomId, 'messages'), orderBy('createdAt', 'asc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as ChatMessage)))
+  )
+}
+
+// 1:1 채팅방 생성 또는 기존 방 반환
+export async function getOrCreateDirectRoom(
+  myUid: string, myName: string, myRole: string,
+  targetUid: string, targetName: string, targetRole: string
+): Promise<string> {
+  // 기존 1:1 방 찾기
+  const snap = await getDocs(
+    query(collection(db, 'chatRooms'),
+      where('type', '==', 'direct'),
+      where('members', 'array-contains', myUid)
+    )
+  )
+  const existing = snap.docs.find(d => {
+    const members = d.data().members as {uid:string}[]
+    return members.some(m => m.uid === targetUid)
+  })
+  if (existing) return existing.id
+
+  // 새 1:1 방 생성
+  const ref = await addDoc(collection(db, 'chatRooms'), {
+    name: `${myName}, ${targetName}`,
+    type: 'direct',
+    members: [
+      { uid: myUid,    name: myName,    role: myRole },
+      { uid: targetUid, name: targetName, role: targetRole },
+    ],
+    createdBy: myUid,
+    lastMessage: '',
+    lastAt: serverTimestamp(),
+    unread: { [myUid]: 0, [targetUid]: 0 },
+  })
+  return ref.id
+}
+
+// 그룹 채팅방 생성
+export async function createGroupRoom(
+  creatorUid: string,
+  name: string,
+  members: { uid: string; name: string; role: string }[]
+): Promise<string> {
+  const ref = await addDoc(collection(db, 'chatRooms'), {
+    name,
+    type: 'group',
+    members,
+    createdBy: creatorUid,
+    lastMessage: '',
+    lastAt: serverTimestamp(),
+    unread: Object.fromEntries(members.map(m => [m.uid, 0])),
+  })
+  return ref.id
+}
+
+// 메시지 전송
+export async function sendChatRoomMessage(
+  roomId: string,
+  senderUid: string,
+  senderName: string,
+  body: string,
+  allMemberUids: string[]
+) {
+  // 메시지 추가
+  await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
+    senderUid,
+    senderName,
+    body,
+    createdAt: serverTimestamp(),
+    readBy: [senderUid],
+  })
+  // 채팅방 마지막 메시지 + 안읽음 업데이트
+  const unreadUpdate: Record<string, number> = {}
+  // 상대방들 unread +1 (increment 방식)
+  const roomSnap = await getDoc(doc(db, 'chatRooms', roomId))
+  const roomData = roomSnap.data()
+  for (const uid of allMemberUids) {
+    if (uid !== senderUid) {
+      unreadUpdate[`unread.${uid}`] = (roomData?.unread?.[uid] ?? 0) + 1
+    }
+  }
+  await updateDoc(doc(db, 'chatRooms', roomId), {
+    lastMessage: body.slice(0, 50),
+    lastAt: serverTimestamp(),
+    ...unreadUpdate,
+  })
+}
+
+// 채팅방 읽음 처리
+export async function markChatRoomRead(roomId: string, myUid: string) {
+  await updateDoc(doc(db, 'chatRooms', roomId), {
+    [`unread.${myUid}`]: 0,
+  })
+}
+
+// 채팅방 삭제
+export async function deleteChatRoom(roomId: string) {
+  const msgsSnap = await getDocs(collection(db, 'chatRooms', roomId, 'messages'))
+  await Promise.all(msgsSnap.docs.map(d => deleteDoc(d.ref)))
+  await deleteDoc(doc(db, 'chatRooms', roomId))
+}
+
+// 채팅방에서 나가기 (그룹만)
+export async function leaveChatRoom(
+  roomId: string,
+  myUid: string,
+  currentMembers: { uid: string; name: string; role: string }[]
+) {
+  const remaining = currentMembers.filter(m => m.uid !== myUid)
+  if (remaining.length === 0) {
+    await deleteChatRoom(roomId)
+  } else {
+    await updateDoc(doc(db, 'chatRooms', roomId), { members: remaining })
+  }
 }
 
 // ── 1:1 채팅 (directChats) ───────────────────────────────────────────
@@ -661,4 +802,10 @@ export async function markDirectChatRead(roomId: string, myUid: string) {
   await updateDoc(doc(db, 'directChats', roomId), {
     [`unread.${myUid}`]: 0,
   })
+}
+
+export async function deleteDirectChatRoom(roomId: string) {
+  const msgsSnap = await getDocs(collection(db, 'directChats', roomId, 'messages'))
+  await Promise.all(msgsSnap.docs.map(d => deleteDoc(d.ref)))
+  await deleteDoc(doc(db, 'directChats', roomId))
 }
