@@ -107,25 +107,17 @@ export default function MessengerShell({ children, title }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // 멤버 클릭 → 1:1 채팅방 열기 (기존 방 있으면 재사용)
-  const openDirectChat = async (target: AppUser) => {
+  // 멤버 클릭 → 1:1 채팅창 바로 열기 (동기 방식)
+  const openDirectChat = (target: AppUser) => {
     if (!user) return
-    // 먼저 기존 채팅방 있는지 확인
+    // 기존 채팅방 찾기
     const existing = rooms.find(r =>
       r.type === 'direct' &&
       r.members.some(m => m.uid === target.uid) &&
       r.members.some(m => m.uid === user.uid)
     )
-    if (existing) {
-      setActiveRoom(existing)
-      setLeftTab('rooms')
-      setMobileOpen(false)
-      setTimeout(() => inputRef.current?.focus(), 100)
-      return
-    }
-    // 없으면 임시 방 객체로 바로 채팅창 열기
-    const tempRoom: ChatRoom = {
-      id: '',  // 전송 시 생성
+    const room: ChatRoom = existing ?? {
+      id: '',
       name: target.name,
       type: 'direct',
       members: [
@@ -134,7 +126,7 @@ export default function MessengerShell({ children, title }: Props) {
       ],
       createdBy: user.uid,
     }
-    setActiveRoom(tempRoom)
+    setActiveRoom(room)
     setLeftTab('rooms')
     setMobileOpen(false)
     setTimeout(() => inputRef.current?.focus(), 100)
