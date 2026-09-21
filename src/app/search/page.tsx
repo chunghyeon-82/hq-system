@@ -1,6 +1,5 @@
 'use client'
-import { useEffect, useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenChatRooms, listenChatRoomMessages } from '@/lib/db'
@@ -14,40 +13,46 @@ interface SearchResult {
 
 export default function SearchPage() {
   const { user, loading } = useAuth()
-  const router = useRouter()
-  const [rooms,   setRooms]   = useState<ChatRoom[]>([])
-  const [query,   setQuery]   = useState('')
-  const [results, setResults] = useState<SearchResult[]>([])
-  const [searching, setSearching] = useState(false)
-  const allMessages = useRef<Map<string, ChatMessage[]>>(new Map())
+  const [rooms,    setRooms]    = useState<ChatRoom[]>([])
+  const [allMsgs,  setAllMsgs]  = useState<Map<string, ChatMessage[]>>(new Map())
+  const [query,    setQuery]    = useState('')
+  const [results,  setResults]  = useState<SearchResult[]>([])
 
+  // 채팅방 목록 구독
   useEffect(() => {
     if (loading || !user) return
     return listenChatRooms(user.uid, setRooms)
   }, [user, loading])
 
-  const handleSearch = async () => {
-    if (!query.trim()) { setResults([]); return }
-    setSearching(true)
-    const q = query.toLowerCase()
-    const found: SearchResult[] = []
+  // 각 채팅방 메시지 구독
+  useEffect(() => {
+    if (rooms.length === 0) return
+    const unsubs = rooms.map(room =>
+      listenChatRoomMessages(room.id, msgs => {
+        setAllMsgs(prev => new Map(prev).set(room.id, msgs))
+      })
+    )
+    return () => unsubs.forEach(u => u())
+  }, [rooms])
 
-    for (const room of rooms) {
-      const cached = allMessages.current.get(room.id)
-      if (cached) {
-        cached.filter(m => m.body.toLowerCase().includes(q))
-          .forEach(m => found.push({ room, message: m }))
-      }
-    }
-    setResults(found)
-    setSearching(false)
-  }
-
+  // 검색
   useEffect(() => {
     if (!query.trim()) { setResults([]); return }
-    const timer = setTimeout(handleSearch, 400)
-    return () => clearTimeout(timer)
-  }, [query, rooms])
+    const q = query.toLowerCase()
+    const found: SearchResult[] = []
+    rooms.forEach(room => {
+      const msgs = allMsgs.get(room.id) ?? []
+      msgs.filter(m => m.body.toLowerCase().includes(q))
+        .forEach(m => found.push({ room, message: m }))
+    })
+    // 최신순 정렬
+    found.sort((a, b) => {
+      const ta = (a.message.createdAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
+      const tb = (b.message.createdAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
+      return tb - ta
+    })
+    setResults(found)
+  }, [query, allMsgs, rooms])
 
   const getRoomName = (room: ChatRoom) => {
     if (room.type === 'direct' && user) {
@@ -87,31 +92,32 @@ export default function SearchPage() {
         {results.length > 0 && (
           <div className="space-y-2">
             {results.map((r, i) => {
-              const q = query.toLowerCase()
-              const idx = r.message.body.toLowerCase().indexOf(q)
+              const idx = r.message.body.toLowerCase().indexOf(query.toLowerCase())
               const snippet = r.message.body.slice(Math.max(0, idx - 20), idx + 80)
               return (
                 <div key={i} className="bg-white border border-gray-200 rounded-xl p-4 hover:border-primary-200 transition-all">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
-                      ${r.room.type === 'group' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'}`}>
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                      r.room.type === 'group' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'
+                    }`}>
                       {r.room.type === 'group' ? <Hash size={11}/> : getRoomName(r.room)[0]}
                     </div>
                     <span className="text-xs font-medium text-gray-600">{getRoomName(r.room)}</span>
                     <span className="text-xs text-gray-400 ml-auto">{formatTime(r.message.createdAt)}</span>
                   </div>
                   <p className="text-xs text-gray-500 mb-1">{r.message.senderName}</p>
-                  <p className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html:
-                    snippet.replace(new RegExp(`(${query})`, 'gi'),
-                      '<mark class="bg-yellow-100 text-yellow-800 rounded px-0.5">$1</mark>')
-                  }}/>
+                  <p className="text-sm text-gray-800"
+                    dangerouslySetInnerHTML={{ __html:
+                      snippet.replace(new RegExp(`(${query})`, 'gi'),
+                        '<mark class="bg-yellow-100 text-yellow-800 rounded px-0.5">$1</mark>')
+                    }}/>
                 </div>
               )
             })}
           </div>
         )}
 
-        {query.trim() && results.length === 0 && !searching && (
+        {query.trim() && results.length === 0 && (
           <div className="text-center py-16 text-gray-400">
             <MessageSquare size={32} className="mx-auto mb-3 opacity-30"/>
             <p className="text-sm">'{query}'에 대한 채팅 결과가 없습니다</p>
