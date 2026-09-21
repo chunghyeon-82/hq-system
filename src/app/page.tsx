@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import MessengerShell from '@/components/MessengerShell'
 
 export default function Root() {
   const { user, loading } = useAuth()
@@ -11,9 +12,13 @@ export default function Root() {
   useEffect(() => {
     if (loading) return
     if (redirected.current) return
-    redirected.current = true
-    router.replace(user ? '/dashboard' : '/login')
+    if (!user) {
+      redirected.current = true
+      router.replace('/login')
+    }
   }, [user, loading, router])
 
-  return null
+  if (loading || !user) return null
+
+  return <MessengerShell/>
 }

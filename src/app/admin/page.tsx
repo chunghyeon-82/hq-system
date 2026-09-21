@@ -336,8 +336,10 @@ export default function AdminPage() {
                   <div className="flex flex-wrap gap-2">
                     <PermToggle label="사업장 정보 수정" checked={!!newPerms.canEditBusiness}
                       onChange={v => setNewPerms(p => ({ ...p, canEditBusiness: v }))}/>
-                    <PermToggle label="전체 메시지 발송" checked={!!newPerms.canBroadcast}
+                    <PermToggle label="전달사항 등록/수정/삭제" checked={!!newPerms.canBroadcast}
                       onChange={v => setNewPerms(p => ({ ...p, canBroadcast: v }))}/>
+                    <PermToggle label="전달사항 댓글 작성" checked={!!newPerms.canComment}
+                      onChange={v => setNewPerms(p => ({ ...p, canComment: v }))}/>
                   </div>
                 </div>
               )}
@@ -440,6 +442,9 @@ function MemberCard({ u, user, businesses, editUser, editName, editRole, editCus
                   <ShieldCheck size={10}/> 사업장 수정
                 </span>
               )}
+              {u.permissions.canComment && (
+                  <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">댓글</span>
+                )}
               {u.permissions.canBroadcast && (
                 <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-full">
                   <ShieldCheck size={10}/> 전체 발송
@@ -536,8 +541,10 @@ function MemberCard({ u, user, businesses, editUser, editName, editRole, editCus
               <div className="flex flex-wrap gap-2">
                 <PermToggle label="사업장 정보 수정" checked={!!editPerms.canEditBusiness}
                   onChange={v => setEditPerms(p => ({ ...p, canEditBusiness: v }))}/>
-                <PermToggle label="전체 메시지 발송" checked={!!editPerms.canBroadcast}
+                <PermToggle label="전달사항 등록/수정/삭제" checked={!!editPerms.canBroadcast}
                   onChange={v => setEditPerms(p => ({ ...p, canBroadcast: v }))}/>
+                <PermToggle label="전달사항 댓글 작성" checked={!!editPerms.canComment}
+                  onChange={v => setEditPerms(p => ({ ...p, canComment: v }))}/>
               </div>
             </div>
           )}

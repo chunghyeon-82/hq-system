@@ -2,7 +2,8 @@ export type UserRole = 'ADMIN' | 'HQ_CHIEF' | 'HQ_MEMBER' | 'BIZ_REP' | 'ETC'
 
 export interface UserPermissions {
   canEditBusiness?: boolean
-  canBroadcast?:    boolean
+  canBroadcast?:    boolean   // 전달사항 등록/수정/삭제 권한
+  canComment?:      boolean   // 전달사항 댓글 작성 권한
 }
 
 export interface AppUser {
