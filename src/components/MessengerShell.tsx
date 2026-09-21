@@ -206,7 +206,7 @@ export default function MessengerShell({ children, title }: Props) {
       roomId = await createGroupRoom(user.uid, name, members)
     }
     const found = rooms.find(r => r.id === roomId)
-    setActiveRoom(found ?? { id: roomId, name, type: selectedUids.length === 1 ? 'direct' : 'group', members, createdBy: user.uid })
+    setActiveRoom(found ?? { id: roomId, name, type: selectedUids.length === 1 ? 'direct' : 'group', members, memberUids: members.map(m => m.uid), createdBy: user.uid })
     setActiveBroadcast(null)
     setShowCreate(false)
     setCreateName('')
