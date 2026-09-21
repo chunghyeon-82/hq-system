@@ -589,7 +589,7 @@ export interface ChatRoom {
   name:        string
   type:        'group' | 'direct'
   members:     { uid: string; name: string; role: string; joinedAt?: unknown }[]
-  memberUids?:  string[]   // array-contains 쿼리용
+  memberUids:  string[]   // array-contains 쿼리용
   createdBy:   string
   lastMessage?: string
   lastAt?:     unknown
@@ -644,8 +644,8 @@ export async function getOrCreateDirectRoom(
     name: `${myName}, ${targetName}`,
     type: 'direct',
     members: [
-      { uid: myUid,    name: myName,    role: myRole,    joinedAt: serverTimestamp() },
-      { uid: targetUid, name: targetName, role: targetRole, joinedAt: serverTimestamp() },
+      { uid: myUid,    name: myName,    role: myRole,    joinedAt: new Date().toISOString() },
+      { uid: targetUid, name: targetName, role: targetRole, joinedAt: new Date().toISOString() },
     ],
     memberUids: [myUid, targetUid],
     createdBy: myUid,
@@ -662,7 +662,7 @@ export async function createGroupRoom(
   name: string,
   members: { uid: string; name: string; role: string }[]
 ): Promise<string> {
-  const membersWithJoin = members.map(m => ({ ...m, joinedAt: serverTimestamp() }))
+  const membersWithJoin = members.map(m => ({ ...m, joinedAt: new Date().toISOString() }))
   const ref = await addDoc(collection(db, 'chatRooms'), {
     name,
     type: 'group',
@@ -861,7 +861,7 @@ export async function inviteToChatRoom(
   const existingUids = (room.memberUids ?? []) as string[]
   const toAdd = newMembers.filter(m => !existingUids.includes(m.uid))
   if (toAdd.length === 0) return
-  const now = serverTimestamp()
+  const now = new Date().toISOString()
   const updatedMembers = [
     ...(room.members ?? []),
     ...toAdd.map(m => ({ ...m, joinedAt: now })),
