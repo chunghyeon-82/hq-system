@@ -90,9 +90,9 @@ export default function MessengerShell({ children, title }: Props) {
     return () => { u1(); u2(); u3() }
   }, [user, loading])
 
-  // 메시지 구독
+  // 메시지 구독 (roomId 없으면 구독 안함)
   useEffect(() => {
-    if (!activeRoom) { setMessages([]); return }
+    if (!activeRoom || !activeRoom.id) { setMessages([]); return }
     return listenChatRoomMessages(activeRoom.id, setMessages)
   }, [activeRoom?.id])
 
