@@ -589,7 +589,7 @@ export interface ChatRoom {
   name:        string
   type:        'group' | 'direct'
   members:     { uid: string; name: string; role: string; joinedAt?: unknown }[]
-  memberUids:  string[]   // array-contains 쿼리용
+  memberUids?:  string[]   // array-contains 쿼리용
   createdBy:   string
   lastMessage?: string
   lastAt?:     unknown
