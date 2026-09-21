@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { signInWithEmailAndPassword } from 'firebase/auth'
@@ -14,10 +14,10 @@ export default function LoginPage() {
   const [err,        setErr]        = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // auth-context가 user를 감지하면 자동 이동
+  // auth-context媛 user瑜?媛먯??섎㈃ ?먮룞 ?대룞
   useEffect(() => {
     if (!loading && user) {
-      router.replace('/dashboard')
+      router.replace('/')
     }
   }, [user, loading, router])
 
@@ -26,9 +26,9 @@ export default function LoginPage() {
     setErr(''); setSubmitting(true)
     try {
       await signInWithEmailAndPassword(auth, email, pw)
-      // 성공 시 useEffect가 dashboard로 이동
+      // ?깃났 ??useEffect媛 dashboard濡??대룞
     } catch {
-      setErr('이메일 또는 비밀번호가 올바르지 않습니다.')
+      setErr('?대찓???먮뒗 鍮꾨?踰덊샇媛 ?щ컮瑜댁? ?딆뒿?덈떎.')
       setSubmitting(false)
     }
   }
@@ -40,29 +40,30 @@ export default function LoginPage() {
           <div className="bg-primary-600 text-white rounded-2xl p-3 mb-3">
             <Building2 size={32} />
           </div>
-          <h1 className="text-xl font-bold text-gray-900">본부 관리 시스템</h1>
-          <p className="text-sm text-gray-500 mt-1">로그인하여 시작하세요</p>
+          <h1 className="text-xl font-bold text-gray-900">蹂몃? 愿由??쒖뒪??/h1>
+          <p className="text-sm text-gray-500 mt-1">濡쒓렇?명븯???쒖옉?섏꽭??/p>
         </div>
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">?대찓??/label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
               placeholder="example@email.com" required />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">비밀번호</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">鍮꾨?踰덊샇</label>
             <input type="password" value={pw} onChange={e => setPw(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-              placeholder="••••••••" required />
+              placeholder="?™™™™™™™? required />
           </div>
           {err && <p className="text-red-500 text-sm">{err}</p>}
           <button type="submit" disabled={submitting}
             className="w-full bg-primary-600 text-white rounded-lg py-2.5 font-medium text-sm hover:bg-primary-800 disabled:opacity-60 transition-colors">
-            {submitting ? '로그인 중...' : '로그인'}
+            {submitting ? '濡쒓렇??以?..' : '濡쒓렇??}
           </button>
         </form>
       </div>
     </div>
   )
 }
+
