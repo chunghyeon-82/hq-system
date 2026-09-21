@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import AppShell from '@/components/AppShell'
+import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
 import { listenUsers, listenBusinesses, updateBusiness, ensureHQBusiness } from '@/lib/db'
 import { createUserWithEmailAndPassword } from 'firebase/auth'
@@ -205,7 +205,7 @@ export default function AdminPage() {
     saving, showPerms, openEdit, handleSaveEdit, handleDelete, setEditUser, hqBizId }
 
   return (
-    <AppShell title="멤버 관리">
+    <MessengerShell title="멤버 관리">
       <div className="max-w-2xl mx-auto p-4 md:p-6 space-y-5">
         <div className="flex items-center justify-between">
           <p className="text-sm text-gray-500">전체 {users.length}명</p>
@@ -357,7 +357,7 @@ export default function AdminPage() {
           </div>
         </div>
       )}
-    </AppShell>
+    </MessengerShell>
   )
 }
 
