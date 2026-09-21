@@ -798,8 +798,7 @@ export default function MessengerShell({ children, title }: Props) {
           </div>
         </div>
       )}
-    </div>
-
+  
       {/* ── 멤버 초대 모달 ── */}
       {showInvite && activeRoom && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
