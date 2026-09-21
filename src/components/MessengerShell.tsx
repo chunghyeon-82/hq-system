@@ -61,8 +61,6 @@ export default function MessengerShell({ children, title }: Props) {
   const [activeRoom,     setActiveRoom]     = useState<ChatRoom | null>(null)
   const [chatInput,      setChatInput]      = useState('')
   const [sending,        setSending]        = useState(false)
-  const [mobileOpen,     setMobileOpen]     = useState(false)
-
   // 전달사항 상태
   const [activeBroadcast,  setActiveBroadcast]  = useState<Message | null>(null)
   const [comments,         setComments]          = useState<BroadcastComment[]>([])
@@ -180,7 +178,6 @@ export default function MessengerShell({ children, title }: Props) {
     setActiveRoom(room)
     setActiveBroadcast(null)
     setLeftTab('rooms')
-    setMobileOpen(false)
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
@@ -296,15 +293,8 @@ export default function MessengerShell({ children, title }: Props) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileOpen(false)}/>
-      )}
-
       {/* ── 왼쪽 사이드바 ── */}
-      <div className={clsx(
-        'fixed inset-y-0 left-0 z-50 w-64 flex flex-col bg-[#1e2130] text-white transition-transform duration-200 md:relative md:translate-x-0 md:z-auto',
-        mobileOpen ? 'translate-x-0' : '-translate-x-full'
-      )}>
+      <div className="w-64 flex-shrink-0 flex flex-col bg-[#1e2130] text-white">
         {/* 프로필 */}
         <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2.5 shrink-0">
           <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-sm font-bold shrink-0">
@@ -380,7 +370,7 @@ export default function MessengerShell({ children, title }: Props) {
                 const isNew = msg.status === 'open'
                 return (
                   <button key={msg.id}
-                    onClick={() => { setActiveBroadcast(msg); setActiveRoom(null); setMobileOpen(false) }}
+                    onClick={() => { setActiveBroadcast(msg); setActiveRoom(null) }}
                     className={clsx(
                       'w-full flex items-start gap-2.5 px-3 py-2.5 transition-colors text-left border-b border-white/5',
                       isActive ? 'bg-primary-600/20 border-l-2 border-primary-400' : 'hover:bg-white/5'
@@ -481,7 +471,7 @@ export default function MessengerShell({ children, title }: Props) {
                 const unread   = room.unread?.[user?.uid ?? ''] ?? 0
                 const isActive = activeRoom?.id === room.id
                 return (
-                  <button key={room.id} onClick={() => { setActiveRoom(room); setActiveBroadcast(null); setMobileOpen(false) }}
+                  <button key={room.id} onClick={() => { setActiveRoom(room); setActiveBroadcast(null) }}
                     className={clsx(
                       'w-full flex items-center gap-2.5 px-3 py-2.5 transition-colors text-left border-b border-white/5',
                       isActive ? 'bg-primary-600/30 border-l-2 border-primary-400' : 'hover:bg-white/5'
@@ -523,7 +513,7 @@ export default function MessengerShell({ children, title }: Props) {
               { icon: Settings, label: '설정', path: '/settings' },
               { icon: Users,    label: '멤버관리', path: '/admin', adminOnly: true },
             ].filter(m => !m.adminOnly || isAdmin).map(m => (
-              <button key={m.path} onClick={() => { router.push(m.path); setMobileOpen(false) }}
+              <button key={m.path} onClick={() => { router.push(m.path) }}
                 className={clsx('flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-colors',
                   pathname === m.path ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5')}>
                 <m.icon size={15}/>
@@ -545,21 +535,14 @@ export default function MessengerShell({ children, title }: Props) {
       <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
         {children ? (
           <>
-            <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-10 shrink-0">
-              <button onClick={() => setMobileOpen(true)} className="p-1 text-gray-500">
-                <Menu size={20}/>
-              </button>
-              <h1 className="font-semibold text-gray-900 text-sm flex-1">{title}</h1>
-            </div>
+
             <div className="flex-1 overflow-y-auto">{children}</div>
           </>
         ) : activeBroadcast ? (
           // ── 전달사항 상세 ──
           <div className="flex-1 flex flex-col">
             <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
-              <button onClick={() => setMobileOpen(true)} className="md:hidden p-1 text-gray-400">
-                <Menu size={20}/>
-              </button>
+
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 truncate">{activeBroadcast.title}</p>
                 <p className="text-xs text-gray-400">{activeBroadcast.authorName} · {formatTime(activeBroadcast.createdAt)}</p>
@@ -630,9 +613,7 @@ export default function MessengerShell({ children, title }: Props) {
           // ── 채팅창 ──
           <>
             <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
-              <button onClick={() => setMobileOpen(true)} className="md:hidden p-1 text-gray-400">
-                <Menu size={20}/>
-              </button>
+
               <div className={clsx('w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0',
                 activeRoom.type === 'group' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700')}>
                 {activeRoom.type === 'group' ? <Hash size={16}/> : getRoomInitial(activeRoom)}
@@ -720,9 +701,7 @@ export default function MessengerShell({ children, title }: Props) {
         ) : (
           // 기본 화면
           <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <button onClick={() => setMobileOpen(true)} className="md:hidden absolute top-4 left-4 p-2 text-gray-400">
-              <Menu size={20}/>
-            </button>
+
             <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
               <MessageSquare size={28} className="text-gray-400"/>
             </div>
