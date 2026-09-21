@@ -1,115 +1,127 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
-import { listenMessagesForHQ, listenMessagesForBiz } from '@/lib/db'
-import type { Message } from '@/types'
-import { Search, X, ChevronRight } from 'lucide-react'
-import clsx from 'clsx'
+import { listenChatRooms, listenChatRoomMessages } from '@/lib/db'
+import type { ChatRoom, ChatMessage } from '@/lib/db'
+import { Search, X, MessageSquare, Hash } from 'lucide-react'
+
+interface SearchResult {
+  room: ChatRoom
+  message: ChatMessage
+}
 
 export default function SearchPage() {
-  const { user, loading }  = useAuth()
-  const router    = useRouter()
-  const [all,     setAll]     = useState<Message[]>([])
+  const { user, loading } = useAuth()
+  const router = useRouter()
+  const [rooms,   setRooms]   = useState<ChatRoom[]>([])
   const [query,   setQuery]   = useState('')
-  const [results, setResults] = useState<Message[]>([])
-
-  const isHQ  = user?.role === 'ADMIN' || user?.role === 'HQ_CHIEF' || user?.role === 'HQ_MEMBER'
-  const isBiz = user?.role === 'BIZ_REP'
+  const [results, setResults] = useState<SearchResult[]>([])
+  const [searching, setSearching] = useState(false)
+  const allMessages = useRef<Map<string, ChatMessage[]>>(new Map())
 
   useEffect(() => {
-    if (loading) return
-    if (!user) { router.replace('/login'); return }
-    if (isHQ) return listenMessagesForHQ(user.uid, user.role === 'ADMIN', setAll)
-    if (isBiz && user.bizId) return listenMessagesForBiz(user.bizId, user.uid, setAll)
-  }, [user, isHQ, isBiz, router])
+    if (loading || !user) return
+    return listenChatRooms(user.uid, setRooms)
+  }, [user, loading])
+
+  const handleSearch = async () => {
+    if (!query.trim()) { setResults([]); return }
+    setSearching(true)
+    const q = query.toLowerCase()
+    const found: SearchResult[] = []
+
+    for (const room of rooms) {
+      const cached = allMessages.current.get(room.id)
+      if (cached) {
+        cached.filter(m => m.body.toLowerCase().includes(q))
+          .forEach(m => found.push({ room, message: m }))
+      }
+    }
+    setResults(found)
+    setSearching(false)
+  }
 
   useEffect(() => {
     if (!query.trim()) { setResults([]); return }
-    const q = query.toLowerCase()
-    setResults(all.filter(m =>
-      m.title.toLowerCase().includes(q) ||
-      m.body.toLowerCase().includes(q) ||
-      m.authorName.toLowerCase().includes(q)
-    ))
-  }, [query, all])
+    const timer = setTimeout(handleSearch, 400)
+    return () => clearTimeout(timer)
+  }, [query, rooms])
+
+  const getRoomName = (room: ChatRoom) => {
+    if (room.type === 'direct' && user) {
+      return room.members.find(m => m.uid !== user.uid)?.name ?? room.name
+    }
+    return room.name
+  }
+
+  function formatTime(ts: unknown): string {
+    if (!ts) return ''
+    const d = (ts as { toDate?: () => Date }).toDate?.() ?? new Date(ts as string)
+    if (!d || isNaN(d.getTime())) return ''
+    return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+  }
 
   return (
-    <MessengerShell title="메시지 검색">
-      <div className="max-w-4xl mx-auto p-4 space-y-4">
-        {/* 검색창 */}
+    <MessengerShell title="채팅 검색">
+      <div className="max-w-2xl mx-auto p-4 space-y-4">
         <div className="relative">
           <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"/>
           <input value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="제목, 내용, 작성자로 검색..."
+            placeholder="채팅 메시지 검색..."
             autoFocus
             className="w-full border border-gray-300 rounded-xl pl-10 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
           {query && (
-            <button onClick={() => setQuery('')}
+            <button onClick={() => { setQuery(''); setResults([]) }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               <X size={16}/>
             </button>
           )}
         </div>
 
-        {/* 결과 */}
         {query.trim() && (
           <p className="text-xs text-gray-400">{results.length}개 결과</p>
         )}
 
         {results.length > 0 && (
           <div className="space-y-2">
-            {results.map(msg => {
+            {results.map((r, i) => {
               const q = query.toLowerCase()
-              // 하이라이트: 매칭 문장 스니펫
-              const bodyIdx = msg.body.toLowerCase().indexOf(q)
-              const snippet = bodyIdx >= 0
-                ? msg.body.slice(Math.max(0, bodyIdx - 20), bodyIdx + 60)
-                : msg.body.slice(0, 60)
-
+              const idx = r.message.body.toLowerCase().indexOf(q)
+              const snippet = r.message.body.slice(Math.max(0, idx - 20), idx + 80)
               return (
-                <button key={msg.id}
-                  onClick={() => router.push(`/messages/${msg.id}`)}
-                  className="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm hover:border-primary-200 transition-all group">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className={msg.status === 'done' ? 'badge-done' : 'badge-open'}>
-                          {msg.status === 'done' ? '완결' : '진행중'}
-                        </span>
-                        {msg.priority === 'urgent' && <span className="badge-urgent">긴급</span>}
-                        {msg.type === 'direct' && <span className="badge-received">1:1</span>}
-                      </div>
-                      <p className="font-medium text-sm text-gray-900 truncate"
-                        dangerouslySetInnerHTML={{ __html:
-                          msg.title.replace(new RegExp(`(${query})`, 'gi'),
-                            '<mark class="bg-yellow-100 text-yellow-800 rounded px-0.5">$1</mark>')
-                        }}/>
-                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">
-                        ...{snippet}...
-                      </p>
-                      <p className="text-xs text-gray-300 mt-1">{msg.authorName}</p>
+                <div key={i} className="bg-white border border-gray-200 rounded-xl p-4 hover:border-primary-200 transition-all">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
+                      ${r.room.type === 'group' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'}`}>
+                      {r.room.type === 'group' ? <Hash size={11}/> : getRoomName(r.room)[0]}
                     </div>
-                    <ChevronRight size={16} className="text-gray-300 group-hover:text-primary-400 shrink-0 mt-1"/>
+                    <span className="text-xs font-medium text-gray-600">{getRoomName(r.room)}</span>
+                    <span className="text-xs text-gray-400 ml-auto">{formatTime(r.message.createdAt)}</span>
                   </div>
-                </button>
+                  <p className="text-xs text-gray-500 mb-1">{r.message.senderName}</p>
+                  <p className="text-sm text-gray-800" dangerouslySetInnerHTML={{ __html:
+                    snippet.replace(new RegExp(`(${query})`, 'gi'),
+                      '<mark class="bg-yellow-100 text-yellow-800 rounded px-0.5">$1</mark>')
+                  }}/>
+                </div>
               )
             })}
           </div>
         )}
 
-        {query.trim() && results.length === 0 && (
+        {query.trim() && results.length === 0 && !searching && (
           <div className="text-center py-16 text-gray-400">
-            <Search size={32} className="mx-auto mb-3 opacity-30"/>
-            <p className="text-sm">'{query}'에 대한 결과가 없습니다</p>
+            <MessageSquare size={32} className="mx-auto mb-3 opacity-30"/>
+            <p className="text-sm">'{query}'에 대한 채팅 결과가 없습니다</p>
           </div>
         )}
 
         {!query && (
           <div className="text-center py-16 text-gray-400">
             <Search size={32} className="mx-auto mb-3 opacity-30"/>
-            <p className="text-sm">검색어를 입력하세요</p>
+            <p className="text-sm">채팅 메시지를 검색하세요</p>
           </div>
         )}
       </div>
