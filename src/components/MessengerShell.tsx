@@ -666,8 +666,11 @@ export default function MessengerShell({ children, title }: Props) {
                 // 내 joinedAt 이후 메시지만 표시
                 const myMember = activeRoom.members.find(m => m.uid === user?.uid)
                 if (!myMember?.joinedAt) return true
-                const joinedMs = (myMember.joinedAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
-                const msgMs = (msg.createdAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
+                const joinedMs = typeof myMember.joinedAt === 'string'
+                  ? new Date(myMember.joinedAt).getTime()
+                  : (myMember.joinedAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
+                const msgMs = (msg.createdAt as {toDate?:()=>Date})?.toDate?.()?.getTime()
+                  ?? new Date(msg.createdAt as string).getTime()
                 return msgMs >= joinedMs
               }).map((msg, idx, filteredMsgs) => {
                 const isMine = msg.senderUid === user?.uid
