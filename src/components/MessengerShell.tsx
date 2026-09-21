@@ -9,7 +9,7 @@ import {
   listenChatRooms, listenChatRoomMessages,
   getOrCreateDirectRoom, createGroupRoom,
   sendChatRoomMessage, markChatRoomRead,
-  deleteChatRoom, leaveChatRoom,
+  deleteChatRoom, leaveChatRoom, inviteToChatRoom,
   listenMessagesForHQ, listenMessagesForBiz,
   listenBroadcastComments, addBroadcastComment, deleteBroadcastComment,
 } from '@/lib/db'
@@ -79,6 +79,9 @@ export default function MessengerShell({ children, title }: Props) {
   const [createName,   setCreateName]   = useState('')
   const [selectedUids, setSelectedUids] = useState<string[]>([])
   const [creating,     setCreating]     = useState(false)
+  const [showInvite,   setShowInvite]   = useState(false)
+  const [inviteUids,   setInviteUids]   = useState<string[]>([])
+  const [inviting,     setInviting]     = useState(false)
 
   const bottomRef    = useRef<HTMLDivElement>(null)
   const inputRef     = useRef<HTMLInputElement>(null)
@@ -246,6 +249,22 @@ export default function MessengerShell({ children, title }: Props) {
     setCommentInput('')
     await addBroadcastComment(activeBroadcast.id, user.uid, user.name, text)
     setSendingComment(false)
+  }
+
+  // 멤버 초대 (1:1 → 그룹 전환 포함)
+  const handleInvite = async () => {
+    if (!user || !activeRoom || inviteUids.length === 0) return
+    setInviting(true)
+    const toInvite = allUsers.filter(u => inviteUids.includes(u.uid))
+      .map(u => ({ uid: u.uid, name: u.name, role: u.role }))
+    await inviteToChatRoom(activeRoom.id, toInvite)
+    // 1:1이었다면 그룹으로 타입 변경
+    if (activeRoom.type === 'direct') {
+      setActiveRoom(prev => prev ? { ...prev, type: 'group' } : prev)
+    }
+    setShowInvite(false)
+    setInviteUids([])
+    setInviting(false)
   }
 
   // 채팅방 나가기/삭제
@@ -626,12 +645,10 @@ export default function MessengerShell({ children, title }: Props) {
                     : ROLE_LABEL[activeRoom.members.find(m => m.uid !== user?.uid)?.role ?? '']}
                 </p>
               </div>
-              {activeRoom.type === 'group' && (
-                <button onClick={() => setShowCreate(true)}
-                  className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
-                  <UserPlus size={16}/>
-                </button>
-              )}
+              <button onClick={() => setShowInvite(true)}
+                className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
+                <UserPlus size={16}/>
+              </button>
               <button onClick={handleLeaveRoom}
                 className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                 <Trash2 size={15}/>
@@ -644,9 +661,16 @@ export default function MessengerShell({ children, title }: Props) {
                   <p className="text-sm">첫 메시지를 보내보세요</p>
                 </div>
               )}
-              {messages.map((msg, idx) => {
+              {messages.filter(msg => {
+                // 내 joinedAt 이후 메시지만 표시
+                const myMember = activeRoom.members.find(m => m.uid === user?.uid)
+                if (!myMember?.joinedAt) return true
+                const joinedMs = (myMember.joinedAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
+                const msgMs = (msg.createdAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
+                return msgMs >= joinedMs
+              }).map((msg, idx, filteredMsgs) => {
                 const isMine = msg.senderUid === user?.uid
-                const prev   = idx > 0 ? messages[idx-1] : null
+                const prev   = idx > 0 ? filteredMsgs[idx-1] : null
                 const showDate = idx === 0 || (() => {
                   const pd = (prev?.createdAt as {toDate?:()=>Date})?.toDate?.()
                   const cd = (msg.createdAt  as {toDate?:()=>Date})?.toDate?.()
@@ -769,6 +793,55 @@ export default function MessengerShell({ children, title }: Props) {
                 disabled={selectedUids.length === 0 || creating}
                 className="w-full py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50 transition-colors">
                 {creating ? '생성 중...' : selectedUids.length === 1 ? '1:1 채팅 시작' : '그룹 채팅방 만들기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+
+      {/* ── 멤버 초대 모달 ── */}
+      {showInvite && activeRoom && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4"
+          onClick={e => { if (e.target === e.currentTarget) setShowInvite(false) }}>
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="font-semibold text-gray-900">멤버 초대</h3>
+                <p className="text-xs text-gray-400 mt-0.5">초대된 멤버는 초대 이후 메시지만 볼 수 있습니다</p>
+              </div>
+              <button onClick={() => setShowInvite(false)} className="text-gray-400"><X size={18}/></button>
+            </div>
+            <div className="p-5">
+              <div className="border border-gray-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto mb-4">
+                {allUsers.filter(u =>
+                  u.uid !== user?.uid &&
+                  !activeRoom.members.some(m => m.uid === u.uid)
+                ).map(u => (
+                  <button key={u.uid}
+                    onClick={() => setInviteUids(prev =>
+                      prev.includes(u.uid) ? prev.filter(id => id !== u.uid) : [...prev, u.uid]
+                    )}
+                    className={clsx('w-full flex items-center gap-3 px-4 py-2.5 border-b border-gray-50 last:border-0 transition-colors text-left',
+                      inviteUids.includes(u.uid) ? 'bg-primary-50' : 'hover:bg-gray-50')}>
+                    <div className="w-8 h-8 rounded-full bg-primary-100 flex items-center justify-center text-xs font-bold text-primary-700 shrink-0">
+                      {u.name[0]}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800">{u.name}</p>
+                      <p className="text-xs text-gray-400">{ROLE_LABEL[u.role]}</p>
+                    </div>
+                    <div className={clsx('w-5 h-5 rounded border-2 flex items-center justify-center shrink-0',
+                      inviteUids.includes(u.uid) ? 'border-primary-600 bg-primary-600' : 'border-gray-300')}>
+                      {inviteUids.includes(u.uid) && <Check size={11} className="text-white"/>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <button onClick={handleInvite}
+                disabled={inviteUids.length === 0 || inviting}
+                className="w-full py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-800 disabled:opacity-50 transition-colors">
+                {inviting ? '초대 중...' : `${inviteUids.length}명 초대하기`}
               </button>
             </div>
           </div>
