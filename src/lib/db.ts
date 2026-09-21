@@ -809,3 +809,36 @@ export async function deleteDirectChatRoom(roomId: string) {
   await Promise.all(msgsSnap.docs.map(d => deleteDoc(d.ref)))
   await deleteDoc(doc(db, 'directChats', roomId))
 }
+
+// ── 전달사항 댓글 ───────────────────────────────────────────────────
+
+export interface BroadcastComment {
+  id:         string
+  authorUid:  string
+  authorName: string
+  body:       string
+  createdAt:  unknown
+}
+
+// 댓글 목록 구독
+export function listenBroadcastComments(msgId: string, cb: (comments: BroadcastComment[]) => void) {
+  return onSnapshot(
+    query(collection(db, 'messages', msgId, 'comments'), orderBy('createdAt', 'asc')),
+    snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as BroadcastComment)))
+  )
+}
+
+// 댓글 작성
+export async function addBroadcastComment(msgId: string, authorUid: string, authorName: string, body: string) {
+  await addDoc(collection(db, 'messages', msgId, 'comments'), {
+    authorUid,
+    authorName,
+    body,
+    createdAt: serverTimestamp(),
+  })
+}
+
+// 댓글 삭제
+export async function deleteBroadcastComment(msgId: string, commentId: string) {
+  await deleteDoc(doc(db, 'messages', msgId, 'comments', commentId))
+}
