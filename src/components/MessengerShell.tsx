@@ -176,6 +176,7 @@ export default function MessengerShell({ children, title }: Props) {
         { uid: user.uid, name: user.name, role: user.role },
         { uid: target.uid, name: target.name, role: target.role },
       ],
+      memberUids: [user.uid, target.uid],
       createdBy: user.uid,
     }
     setActiveRoom(room)
