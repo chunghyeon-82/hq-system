@@ -110,27 +110,32 @@ export default function MessengerShell({ children, title }: Props) {
   // 멤버 클릭 → 1:1 채팅방 열기 (기존 방 있으면 재사용)
   const openDirectChat = async (target: AppUser) => {
     if (!user) return
-    const roomId = await getOrCreateDirectRoom(
-      user.uid, user.name, user.role,
-      target.uid, target.name, target.role
+    // 먼저 기존 채팅방 있는지 확인
+    const existing = rooms.find(r =>
+      r.type === 'direct' &&
+      r.members.some(m => m.uid === target.uid) &&
+      r.members.some(m => m.uid === user.uid)
     )
-    // 방 목록에서 찾아서 활성화
-    const found = rooms.find(r => r.id === roomId)
-    if (found) {
-      setActiveRoom(found)
-    } else {
-      setActiveRoom({
-        id: roomId,
-        name: target.name,
-        type: 'direct',
-        members: [
-          { uid: user.uid, name: user.name, role: user.role },
-          { uid: target.uid, name: target.name, role: target.role },
-        ],
-        createdBy: user.uid,
-      })
+    if (existing) {
+      setActiveRoom(existing)
+      setLeftTab('rooms')
+      setMobileOpen(false)
+      setTimeout(() => inputRef.current?.focus(), 100)
+      return
     }
-    setLeftTab('rooms')   // 채팅 탭으로 전환
+    // 없으면 임시 방 객체로 바로 채팅창 열기
+    const tempRoom: ChatRoom = {
+      id: '',  // 전송 시 생성
+      name: target.name,
+      type: 'direct',
+      members: [
+        { uid: user.uid, name: user.name, role: user.role },
+        { uid: target.uid, name: target.name, role: target.role },
+      ],
+      createdBy: user.uid,
+    }
+    setActiveRoom(tempRoom)
+    setLeftTab('rooms')
     setMobileOpen(false)
     setTimeout(() => inputRef.current?.focus(), 100)
   }
@@ -168,8 +173,19 @@ export default function MessengerShell({ children, title }: Props) {
     setSending(true)
     const text = chatInput.trim()
     setChatInput('')
+    let roomId = activeRoom.id
+    // 임시 방(id 없음)이면 Firestore에 방 생성
+    if (!roomId) {
+      const target = activeRoom.members.find(m => m.uid !== user.uid)
+      if (!target) { setSending(false); return }
+      roomId = await getOrCreateDirectRoom(
+        user.uid, user.name, user.role,
+        target.uid, target.name, target.role
+      )
+      setActiveRoom(prev => prev ? { ...prev, id: roomId } : prev)
+    }
     const memberUids = activeRoom.members.map(m => m.uid)
-    await sendChatRoomMessage(activeRoom.id, user.uid, user.name, text, memberUids)
+    await sendChatRoomMessage(roomId, user.uid, user.name, text, memberUids)
     // 푸시 알림
     const targetUids = memberUids.filter(uid => uid !== user.uid)
     fetch('/api/push', {
