@@ -60,7 +60,7 @@ export default function MessengerShell({ children, title }: Props) {
   const [mobileOpen,  setMobileOpen]  = useState(false)
 
   // 왼쪽 패널 탭: 채팅목록 | 멤버트리
-  const [leftTab,  setLeftTab]  = useState<'rooms' | 'members'>('rooms')
+  const [leftTab,  setLeftTab]  = useState<'rooms' | 'members'>('members')
   // 멤버트리 열림/닫힘
   const [openHQ,      setOpenHQ]      = useState(true)
   const [openBiz,     setOpenBiz]     = useState(true)
@@ -107,7 +107,7 @@ export default function MessengerShell({ children, title }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // 멤버 클릭 → 1:1 채팅방 열기
+  // 멤버 클릭 → 1:1 채팅방 열기 (기존 방 있으면 재사용)
   const openDirectChat = async (target: AppUser) => {
     if (!user) return
     const roomId = await getOrCreateDirectRoom(
@@ -119,7 +119,6 @@ export default function MessengerShell({ children, title }: Props) {
     if (found) {
       setActiveRoom(found)
     } else {
-      // 방금 생성된 방 — rooms 업데이트 기다리기
       setActiveRoom({
         id: roomId,
         name: target.name,
@@ -131,7 +130,7 @@ export default function MessengerShell({ children, title }: Props) {
         createdBy: user.uid,
       })
     }
-    setLeftTab('rooms')
+    setLeftTab('rooms')   // 채팅 탭으로 전환
     setMobileOpen(false)
     setTimeout(() => inputRef.current?.focus(), 100)
   }
@@ -257,24 +256,24 @@ export default function MessengerShell({ children, title }: Props) {
           </button>
         </div>
 
-        {/* 탭: 채팅목록 | 멤버 */}
+        {/* 탭: 멤버 | 채팅 */}
         <div className="flex border-b border-white/10">
-          <button onClick={() => setLeftTab('rooms')}
-            className={clsx('flex-1 py-2 text-xs font-medium transition-colors relative',
-              leftTab === 'rooms' ? 'text-white' : 'text-white/40 hover:text-white/70')}>
-            채팅
-            {leftTab === 'rooms' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-400"/>}
-            {totalUnread > 0 && leftTab !== 'rooms' && (
-              <span className="ml-1 w-4 h-4 inline-flex items-center justify-center bg-red-500 rounded-full text-[9px] font-bold">
-                {totalUnread > 9 ? '9+' : totalUnread}
-              </span>
-            )}
-          </button>
           <button onClick={() => setLeftTab('members')}
             className={clsx('flex-1 py-2 text-xs font-medium transition-colors relative',
               leftTab === 'members' ? 'text-white' : 'text-white/40 hover:text-white/70')}>
             멤버
             {leftTab === 'members' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-400"/>}
+          </button>
+          <button onClick={() => setLeftTab('rooms')}
+            className={clsx('flex-1 py-2 text-xs font-medium transition-colors relative',
+              leftTab === 'rooms' ? 'text-white' : 'text-white/40 hover:text-white/70')}>
+            채팅
+            {leftTab === 'rooms' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-400"/>}
+            {totalUnread > 0 && (
+              <span className="ml-1 w-4 h-4 inline-flex items-center justify-center bg-red-500 rounded-full text-[9px] font-bold">
+                {totalUnread > 9 ? '9+' : totalUnread}
+              </span>
+            )}
           </button>
         </div>
 
@@ -314,8 +313,8 @@ export default function MessengerShell({ children, title }: Props) {
                         {room.type === 'group' ? <Hash size={14}/> : initial}
                       </div>
                       {unread > 0 && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold">
-                          {unread > 9 ? '9+' : unread}
+                        <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold px-1">
+                          {unread > 99 ? '99+' : unread}
                         </div>
                       )}
                     </div>
