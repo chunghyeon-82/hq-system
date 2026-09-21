@@ -10,14 +10,17 @@ import {
   getOrCreateDirectRoom, createGroupRoom,
   sendChatRoomMessage, markChatRoomRead,
   deleteChatRoom, leaveChatRoom,
+  listenMessagesForHQ, listenMessagesForBiz,
+  listenBroadcastComments, addBroadcastComment, deleteBroadcastComment,
 } from '@/lib/db'
-import type { ChatRoom, ChatMessage } from '@/lib/db'
-import type { AppUser, Business } from '@/types'
+import type { ChatRoom, ChatMessage, BroadcastComment } from '@/lib/db'
+import type { AppUser, Business, Message } from '@/types'
 import {
   ChevronDown, ChevronRight, LogOut, Users, Plus,
   MessageSquare, Send, Calendar, Search, X,
-  Megaphone, Building2, Lock, Menu, Trash2,
-  Settings, UserPlus, Hash, Check
+  Building2, Lock, Menu, Trash2, Edit2,
+  Settings, UserPlus, Hash, Check, Megaphone,
+  Bell, ChevronUp, MoreVertical
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -49,39 +52,49 @@ export default function MessengerShell({ children, title }: Props) {
   const router   = useRouter()
   const pathname = usePathname()
 
-  const [businesses, setBusinesses] = useState<Business[]>([])
-  const [allUsers,   setAllUsers]   = useState<AppUser[]>([])
-  const [rooms,      setRooms]      = useState<ChatRoom[]>([])
-  const [messages,   setMessages]   = useState<ChatMessage[]>([])
+  const [businesses,  setBusinesses]  = useState<Business[]>([])
+  const [allUsers,    setAllUsers]    = useState<AppUser[]>([])
+  const [rooms,       setRooms]       = useState<ChatRoom[]>([])
+  const [messages,    setMessages]    = useState<ChatMessage[]>([])
+  const [broadcasts,  setBroadcasts]  = useState<Message[]>([])
 
-  const [activeRoom,  setActiveRoom]  = useState<ChatRoom | null>(null)
-  const [chatInput,   setChatInput]   = useState('')
-  const [sending,     setSending]     = useState(false)
-  const [mobileOpen,  setMobileOpen]  = useState(false)
+  const [activeRoom,     setActiveRoom]     = useState<ChatRoom | null>(null)
+  const [chatInput,      setChatInput]      = useState('')
+  const [sending,        setSending]        = useState(false)
+  const [mobileOpen,     setMobileOpen]     = useState(false)
 
-  // 왼쪽 패널 탭: 채팅목록 | 멤버트리
-  const [leftTab,  setLeftTab]  = useState<'rooms' | 'members'>('members')
-  // 멤버트리 열림/닫힘
-  const [openHQ,      setOpenHQ]      = useState(true)
-  const [openBiz,     setOpenBiz]     = useState(true)
-  const [openBizIds,  setOpenBizIds]  = useState<Set<string>>(new Set())
+  // 전달사항 상태
+  const [activeBroadcast,  setActiveBroadcast]  = useState<Message | null>(null)
+  const [comments,         setComments]          = useState<BroadcastComment[]>([])
+  const [commentInput,     setCommentInput]      = useState('')
+  const [sendingComment,   setSendingComment]    = useState(false)
+  const [unreadBroadcast,  setUnreadBroadcast]   = useState(0)
+
+  // 왼쪽 패널: 전달사항 | 멤버 | 채팅
+  const [leftTab,   setLeftTab]   = useState<'broadcast' | 'members' | 'rooms'>('members')
+  const [openHQ,    setOpenHQ]    = useState(true)
+  const [openBiz,   setOpenBiz]   = useState(true)
+  const [openBizIds, setOpenBizIds] = useState<Set<string>>(new Set())
 
   // 채팅방 만들기 모달
-  const [showCreate,    setShowCreate]    = useState(false)
-  const [createName,    setCreateName]    = useState('')
-  const [selectedUids,  setSelectedUids]  = useState<string[]>([])
-  const [creating,      setCreating]      = useState(false)
+  const [showCreate,   setShowCreate]   = useState(false)
+  const [createName,   setCreateName]   = useState('')
+  const [selectedUids, setSelectedUids] = useState<string[]>([])
+  const [creating,     setCreating]     = useState(false)
 
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const inputRef  = useRef<HTMLInputElement>(null)
+  const bottomRef    = useRef<HTMLDivElement>(null)
+  const inputRef     = useRef<HTMLInputElement>(null)
+  const commentRef   = useRef<HTMLInputElement>(null)
 
-  const isAdmin = user?.role === 'ADMIN'
-  const isHQ    = user && ['ADMIN', 'HQ_CHIEF', 'HQ_MEMBER'].includes(user.role)
+  const isAdmin      = user?.role === 'ADMIN'
+  const isHQ         = user && ['ADMIN', 'HQ_CHIEF', 'HQ_MEMBER'].includes(user.role)
+  const isBiz        = user?.role === 'BIZ_REP'
   const canBroadcast = isAdmin || user?.role === 'HQ_CHIEF' || !!user?.permissions?.canBroadcast
+  const canComment   = canBroadcast || !!user?.permissions?.canComment
 
-  // 총 안읽음
   const totalUnread = rooms.reduce((s, r) => s + (r.unread?.[user?.uid ?? ''] ?? 0), 0)
 
+  // 데이터 구독
   useEffect(() => {
     if (loading || !user) return
     const u1 = listenBusinesses(setBusinesses)
@@ -90,7 +103,40 @@ export default function MessengerShell({ children, title }: Props) {
     return () => { u1(); u2(); u3() }
   }, [user, loading])
 
-  // 메시지 구독 (roomId 없으면 구독 안함)
+  // 전달사항 구독
+  useEffect(() => {
+    if (!user) return
+    if (isHQ || isAdmin) {
+      return listenMessagesForHQ(user.uid, !!isAdmin, msgs => {
+        const broadcasts = msgs.filter(m => m.type === 'broadcast')
+          .sort((a, b) => {
+            const ta = new Date(a.createdAt as string).getTime()
+            const tb = new Date(b.createdAt as string).getTime()
+            return tb - ta
+          })
+        setBroadcasts(broadcasts)
+        const pending = broadcasts.filter(m => m.status === 'open').length
+        setUnreadBroadcast(pending)
+      })
+    }
+    if (isBiz && user.bizId) {
+      return listenMessagesForBiz(user.bizId, user.uid, msgs => {
+        const broadcasts = msgs.filter(m => m.type === 'broadcast')
+          .sort((a, b) => {
+            const ta = new Date(a.createdAt as string).getTime()
+            const tb = new Date(b.createdAt as string).getTime()
+            return tb - ta
+          })
+        setBroadcasts(broadcasts)
+        const pending = broadcasts.filter(m =>
+          m.receipts?.some(r => r.bizId === user.bizId && r.status === 'pending')
+        ).length
+        setUnreadBroadcast(pending)
+      })
+    }
+  }, [user, isHQ, isAdmin, isBiz])
+
+  // 채팅 메시지 구독
   useEffect(() => {
     if (!activeRoom || !activeRoom.id) { setMessages([]); return }
     return listenChatRoomMessages(activeRoom.id, setMessages)
@@ -98,19 +144,24 @@ export default function MessengerShell({ children, title }: Props) {
 
   // 읽음 처리
   useEffect(() => {
-    if (!activeRoom || !user) return
+    if (!activeRoom?.id || !user) return
     markChatRoomRead(activeRoom.id, user.uid)
   }, [activeRoom?.id, messages.length, user])
+
+  // 전달사항 댓글 구독
+  useEffect(() => {
+    if (!activeBroadcast) { setComments([]); return }
+    return listenBroadcastComments(activeBroadcast.id, setComments)
+  }, [activeBroadcast?.id])
 
   // 스크롤 하단
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages, comments])
 
-  // 멤버 클릭 → 1:1 채팅창 바로 열기 (동기 방식)
+  // 멤버 클릭 → 1:1 채팅창 바로 열기
   const openDirectChat = (target: AppUser) => {
     if (!user) return
-    // 기존 채팅방 찾기
     const existing = rooms.find(r =>
       r.type === 'direct' &&
       r.members.some(m => m.uid === target.uid) &&
@@ -127,6 +178,7 @@ export default function MessengerShell({ children, title }: Props) {
       createdBy: user.uid,
     }
     setActiveRoom(room)
+    setActiveBroadcast(null)
     setLeftTab('rooms')
     setMobileOpen(false)
     setTimeout(() => inputRef.current?.focus(), 100)
@@ -142,16 +194,19 @@ export default function MessengerShell({ children, title }: Props) {
         .map(u => ({ uid: u.uid, name: u.name, role: u.role }))
     ]
     const name = createName.trim() || members.map(m => m.name).join(', ')
-    const roomId = selectedUids.length === 1
-      ? await getOrCreateDirectRoom(
-          user.uid, user.name, user.role,
-          allUsers.find(u => u.uid === selectedUids[0])!.uid,
-          allUsers.find(u => u.uid === selectedUids[0])!.name,
-          allUsers.find(u => u.uid === selectedUids[0])!.role,
-        )
-      : await createGroupRoom(user.uid, name, members)
+    let roomId: string
+    if (selectedUids.length === 1) {
+      const target = allUsers.find(u => u.uid === selectedUids[0])!
+      roomId = await getOrCreateDirectRoom(
+        user.uid, user.name, user.role,
+        target.uid, target.name, target.role
+      )
+    } else {
+      roomId = await createGroupRoom(user.uid, name, members)
+    }
     const found = rooms.find(r => r.id === roomId)
-    if (found) setActiveRoom(found)
+    setActiveRoom(found ?? { id: roomId, name, type: selectedUids.length === 1 ? 'direct' : 'group', members, createdBy: user.uid })
+    setActiveBroadcast(null)
     setShowCreate(false)
     setCreateName('')
     setSelectedUids([])
@@ -166,7 +221,6 @@ export default function MessengerShell({ children, title }: Props) {
     const text = chatInput.trim()
     setChatInput('')
     let roomId = activeRoom.id
-    // 임시 방(id 없음)이면 Firestore에 방 생성
     if (!roomId) {
       const target = activeRoom.members.find(m => m.uid !== user.uid)
       if (!target) { setSending(false); return }
@@ -178,7 +232,6 @@ export default function MessengerShell({ children, title }: Props) {
     }
     const memberUids = activeRoom.members.map(m => m.uid)
     await sendChatRoomMessage(roomId, user.uid, user.name, text, memberUids)
-    // 푸시 알림
     const targetUids = memberUids.filter(uid => uid !== user.uid)
     fetch('/api/push', {
       method: 'POST',
@@ -186,6 +239,16 @@ export default function MessengerShell({ children, title }: Props) {
       body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids }),
     }).catch(() => {})
     setSending(false)
+  }
+
+  // 댓글 전송
+  const handleSendComment = async () => {
+    if (!user || !activeBroadcast || !commentInput.trim() || sendingComment) return
+    setSendingComment(true)
+    const text = commentInput.trim()
+    setCommentInput('')
+    await addBroadcastComment(activeBroadcast.id, user.uid, user.name, text)
+    setSendingComment(false)
   }
 
   // 채팅방 나가기/삭제
@@ -201,35 +264,29 @@ export default function MessengerShell({ children, title }: Props) {
     setMessages([])
   }
 
-  // 사이드바 데이터
-  const hqMembers   = allUsers.filter(u => ['HQ_CHIEF', 'HQ_MEMBER'].includes(u.role) && u.uid !== user?.uid)
-  const normalBizs  = businesses.filter(b => !b.isHQ)
-  const bizMembers  = (bizId: string) => allUsers.filter(u => u.bizId === bizId && u.role === 'BIZ_REP')
+  const getRoomDisplayName = (room: ChatRoom) => {
+    if (room.type === 'direct' && user) {
+      return room.members.find(m => m.uid !== user.uid)?.name ?? room.name
+    }
+    return room.name
+  }
 
-  // 채팅방 정렬 (최신순)
+  const getRoomInitial = (room: ChatRoom) => {
+    if (room.type === 'direct' && user) {
+      return room.members.find(m => m.uid !== user.uid)?.name?.[0] ?? '?'
+    }
+    return room.name?.[0] ?? '#'
+  }
+
   const sortedRooms = [...rooms].sort((a, b) => {
     const ta = (a.lastAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
     const tb = (b.lastAt as {toMillis?:()=>number})?.toMillis?.() ?? 0
     return tb - ta
   })
 
-  // 채팅방 표시 이름
-  const getRoomDisplayName = (room: ChatRoom) => {
-    if (room.type === 'direct' && user) {
-      const other = room.members.find(m => m.uid !== user.uid)
-      return other?.name ?? room.name
-    }
-    return room.name
-  }
-
-  // 채팅방 아바타 이니셜
-  const getRoomInitial = (room: ChatRoom) => {
-    if (room.type === 'direct' && user) {
-      const other = room.members.find(m => m.uid !== user.uid)
-      return other?.name?.[0] ?? '?'
-    }
-    return room.name?.[0] ?? '#'
-  }
+  const hqMembers  = allUsers.filter(u => ['HQ_CHIEF', 'HQ_MEMBER'].includes(u.role))
+  const normalBizs = businesses.filter(b => !b.isHQ)
+  const bizMembers = (bizId: string) => allUsers.filter(u => u.bizId === bizId && u.role === 'BIZ_REP')
 
   if (loading) return (
     <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -239,7 +296,6 @@ export default function MessengerShell({ children, title }: Props) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* 모바일 오버레이 */}
       {mobileOpen && (
         <div className="fixed inset-0 z-40 bg-black/50 md:hidden" onClick={() => setMobileOpen(false)}/>
       )}
@@ -250,7 +306,7 @@ export default function MessengerShell({ children, title }: Props) {
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
         {/* 프로필 */}
-        <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2.5">
+        <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2.5 shrink-0">
           <div className="w-8 h-8 rounded-full bg-primary-500 flex items-center justify-center text-sm font-bold shrink-0">
             {user?.name?.[0]}
           </div>
@@ -264,8 +320,24 @@ export default function MessengerShell({ children, title }: Props) {
           </button>
         </div>
 
-        {/* 탭: 멤버 | 채팅 */}
-        <div className="flex border-b border-white/10">
+        {/* 전달사항 탭 버튼 (최상단) */}
+        <button
+          onClick={() => { setLeftTab('broadcast'); setActiveRoom(null); setActiveBroadcast(null) }}
+          className={clsx(
+            'w-full flex items-center gap-2.5 px-4 py-2.5 border-b border-white/10 transition-colors shrink-0',
+            leftTab === 'broadcast' ? 'bg-primary-600/20 text-white' : 'text-white/60 hover:text-white hover:bg-white/5'
+          )}>
+          <Megaphone size={15} className={leftTab === 'broadcast' ? 'text-primary-400' : ''}/>
+          <span className="text-xs font-semibold flex-1 text-left">전달사항</span>
+          {unreadBroadcast > 0 && (
+            <div className="min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold px-1">
+              {unreadBroadcast > 99 ? '99+' : unreadBroadcast}
+            </div>
+          )}
+        </button>
+
+        {/* 멤버 | 채팅 탭 */}
+        <div className="flex border-b border-white/10 shrink-0">
           <button onClick={() => setLeftTab('members')}
             className={clsx('flex-1 py-2 text-xs font-medium transition-colors relative',
               leftTab === 'members' ? 'text-white' : 'text-white/40 hover:text-white/70')}>
@@ -287,61 +359,50 @@ export default function MessengerShell({ children, title }: Props) {
 
         {/* 탭 내용 */}
         <div className="flex-1 overflow-y-auto">
-          {leftTab === 'rooms' ? (
-            <>
-              {/* 채팅방 만들기 */}
-              <div className="px-3 pt-3 pb-1">
-                <button onClick={() => setShowCreate(true)}
-                  className="w-full flex items-center gap-2 px-3 py-2 bg-primary-600 hover:bg-primary-700 rounded-xl text-xs font-medium transition-colors">
-                  <Plus size={13}/> 채팅방 만들기
-                </button>
-              </div>
-              {/* 채팅방 목록 */}
-              {sortedRooms.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-32 gap-2 text-white/30">
-                  <MessageSquare size={20} className="opacity-50"/>
-                  <p className="text-xs">채팅방이 없습니다</p>
+          {leftTab === 'broadcast' && (
+            // 전달사항 목록
+            <div className="py-2">
+              {canBroadcast && (
+                <div className="px-3 pb-2">
+                  <button onClick={() => router.push('/compose')}
+                    className="w-full flex items-center gap-2 px-3 py-2 bg-primary-600 hover:bg-primary-700 rounded-xl text-xs font-medium transition-colors">
+                    <Plus size={13}/> 전달사항 등록
+                  </button>
                 </div>
-              ) : sortedRooms.map(room => {
-                const unread   = room.unread?.[user?.uid ?? ''] ?? 0
-                const isActive = activeRoom?.id === room.id
-                const dispName = getRoomDisplayName(room)
-                const initial  = getRoomInitial(room)
+              )}
+              {broadcasts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 gap-2 text-white/30">
+                  <Megaphone size={20} className="opacity-50"/>
+                  <p className="text-xs">전달사항이 없습니다</p>
+                </div>
+              ) : broadcasts.map(msg => {
+                const isActive = activeBroadcast?.id === msg.id
+                const isNew = msg.status === 'open'
                 return (
-                  <button key={room.id} onClick={() => { setActiveRoom(room); setMobileOpen(false) }}
+                  <button key={msg.id}
+                    onClick={() => { setActiveBroadcast(msg); setActiveRoom(null); setMobileOpen(false) }}
                     className={clsx(
-                      'w-full flex items-center gap-2.5 px-3 py-2.5 transition-colors text-left',
-                      isActive ? 'bg-primary-600/30 border-l-2 border-primary-400' : 'hover:bg-white/5'
+                      'w-full flex items-start gap-2.5 px-3 py-2.5 transition-colors text-left border-b border-white/5',
+                      isActive ? 'bg-primary-600/20 border-l-2 border-primary-400' : 'hover:bg-white/5'
                     )}>
-                    <div className="relative shrink-0">
-                      <div className={clsx(
-                        'w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold',
-                        room.type === 'group' ? 'bg-amber-600' : 'bg-primary-700'
-                      )}>
-                        {room.type === 'group' ? <Hash size={14}/> : initial}
-                      </div>
-                      {unread > 0 && (
-                        <div className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold px-1">
-                          {unread > 99 ? '99+' : unread}
-                        </div>
-                      )}
+                    <div className="w-8 h-8 rounded-full bg-primary-800 flex items-center justify-center shrink-0 mt-0.5">
+                      <Megaphone size={13} className="text-primary-300"/>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <p className="text-xs font-medium truncate">{dispName}</p>
-                        <span className="text-[9px] text-white/30 shrink-0">{formatTime(room.lastAt)}</span>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        {isNew && <div className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"/>}
+                        <p className="text-xs font-medium truncate text-white/90">{msg.title}</p>
                       </div>
-                      <p className={clsx('text-[10px] truncate mt-0.5',
-                        unread > 0 ? 'text-white/70 font-medium' : 'text-white/30')}>
-                        {room.lastMessage || (room.type === 'group' ? `${room.members.length}명` : '새 대화')}
-                      </p>
+                      <p className="text-[10px] text-white/40 truncate">{msg.authorName}</p>
+                      <p className="text-[10px] text-white/30">{formatTime(msg.createdAt)}</p>
                     </div>
                   </button>
                 )
               })}
-            </>
-          ) : (
-            // 멤버 트리
+            </div>
+          )}
+
+          {leftTab === 'members' && (
             <div className="py-2">
               {/* 운영본부 */}
               <button onClick={() => setOpenHQ(v => !v)}
@@ -374,14 +435,14 @@ export default function MessengerShell({ children, title }: Props) {
               </button>
               {openBiz && normalBizs.map(biz => {
                 const isOpen = openBizIds.has(biz.id)
-                const mems   = bizMembers(biz.id)
+                const mems = bizMembers(biz.id)
                 return (
                   <div key={biz.id}>
                     <button onClick={() => setOpenBizIds(prev => {
-                        const next = new Set(prev)
-                        next.has(biz.id) ? next.delete(biz.id) : next.add(biz.id)
-                        return next
-                      })}
+                      const next = new Set(prev)
+                      next.has(biz.id) ? next.delete(biz.id) : next.add(biz.id)
+                      return next
+                    })}
                       className="w-full flex items-center gap-2 pl-8 pr-4 py-1.5 hover:bg-white/5 text-white/50 hover:text-white transition-colors">
                       {isOpen ? <ChevronDown size={11}/> : <ChevronRight size={11}/>}
                       <span className="text-xs flex-1 text-left truncate">{biz.name}</span>
@@ -402,18 +463,66 @@ export default function MessengerShell({ children, title }: Props) {
               })}
             </div>
           )}
+
+          {leftTab === 'rooms' && (
+            <>
+              <div className="px-3 pt-3 pb-1">
+                <button onClick={() => setShowCreate(true)}
+                  className="w-full flex items-center gap-2 px-3 py-2 bg-primary-600 hover:bg-primary-700 rounded-xl text-xs font-medium transition-colors">
+                  <Plus size={13}/> 채팅방 만들기
+                </button>
+              </div>
+              {sortedRooms.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 gap-2 text-white/30">
+                  <MessageSquare size={20} className="opacity-50"/>
+                  <p className="text-xs">채팅방이 없습니다</p>
+                </div>
+              ) : sortedRooms.map(room => {
+                const unread   = room.unread?.[user?.uid ?? ''] ?? 0
+                const isActive = activeRoom?.id === room.id
+                return (
+                  <button key={room.id} onClick={() => { setActiveRoom(room); setActiveBroadcast(null); setMobileOpen(false) }}
+                    className={clsx(
+                      'w-full flex items-center gap-2.5 px-3 py-2.5 transition-colors text-left border-b border-white/5',
+                      isActive ? 'bg-primary-600/30 border-l-2 border-primary-400' : 'hover:bg-white/5'
+                    )}>
+                    <div className="relative shrink-0">
+                      <div className={clsx('w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold',
+                        room.type === 'group' ? 'bg-amber-700' : 'bg-primary-700')}>
+                        {room.type === 'group' ? <Hash size={14}/> : getRoomInitial(room)}
+                      </div>
+                      {unread > 0 && (
+                        <div className="absolute -top-1 -right-1 min-w-[16px] h-4 bg-red-500 rounded-full flex items-center justify-center text-[9px] font-bold px-1">
+                          {unread > 99 ? '99+' : unread}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-xs font-medium truncate">{getRoomDisplayName(room)}</p>
+                        <span className="text-[9px] text-white/30 shrink-0">{formatTime(room.lastAt)}</span>
+                      </div>
+                      <p className={clsx('text-[10px] truncate mt-0.5',
+                        unread > 0 ? 'text-white/70 font-medium' : 'text-white/30')}>
+                        {room.lastMessage || (room.type === 'group' ? `${room.members.length}명` : '새 대화')}
+                      </p>
+                    </div>
+                  </button>
+                )
+              })}
+            </>
+          )}
         </div>
 
-        {/* 하단 메뉴 아이콘 */}
-        <div className="border-t border-white/10 px-2 py-2">
-          <div className="grid grid-cols-5 gap-1">
+        {/* 하단 메뉴 */}
+        <div className="border-t border-white/10 px-2 py-2 shrink-0">
+          <div className="grid grid-cols-4 gap-1">
             {[
-              { icon: Send,      label: '전달', path: '/businesses' },
-              { icon: Megaphone, label: '공지', path: '/notices' },
-              { icon: Calendar,  label: '일정', path: '/calendar' },
-              { icon: Search,    label: '검색', path: '/search' },
-              { icon: Settings,  label: '설정', path: '/settings' },
-            ].map(m => (
+              { icon: Calendar, label: '일정', path: '/calendar' },
+              { icon: Search,   label: '검색', path: '/search' },
+              { icon: Settings, label: '설정', path: '/settings' },
+              { icon: Users,    label: '멤버관리', path: '/admin', adminOnly: true },
+            ].filter(m => !m.adminOnly || isAdmin).map(m => (
               <button key={m.path} onClick={() => { router.push(m.path); setMobileOpen(false) }}
                 className={clsx('flex flex-col items-center gap-0.5 py-1.5 rounded-lg transition-colors',
                   pathname === m.path ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white hover:bg-white/5')}>
@@ -421,26 +530,20 @@ export default function MessengerShell({ children, title }: Props) {
                 <span className="text-[9px]">{m.label}</span>
               </button>
             ))}
-          </div>
-          {isAdmin && (
-            <div className="grid grid-cols-2 gap-1 mt-1">
-              <button onClick={() => router.push('/admin')}
-                className="flex items-center justify-center gap-1 py-1.5 text-white/30 hover:text-white hover:bg-white/5 rounded-lg text-[9px] transition-colors">
-                <Users size={12}/> 멤버관리
-              </button>
+            {isAdmin && (
               <button onClick={() => router.push('/approval')}
-                className="flex items-center justify-center gap-1 py-1.5 text-white/20 hover:text-white/50 hover:bg-white/5 rounded-lg text-[9px] transition-colors">
-                <Lock size={12}/> 전자결재
+                className="flex flex-col items-center gap-0.5 py-1.5 rounded-lg text-white/20 hover:text-white/50 hover:bg-white/5 transition-colors">
+                <Lock size={15}/>
+                <span className="text-[9px]">결재</span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
       {/* ── 오른쪽 영역 ── */}
       <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
         {children ? (
-          // 일반 페이지 (공지, 캘린더 등)
           <>
             <div className="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 sticky top-0 z-10 shrink-0">
               <button onClick={() => setMobileOpen(true)} className="p-1 text-gray-500">
@@ -450,28 +553,82 @@ export default function MessengerShell({ children, title }: Props) {
             </div>
             <div className="flex-1 overflow-y-auto">{children}</div>
           </>
-        ) : !activeRoom ? (
-          // 채팅방 미선택
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <button onClick={() => setMobileOpen(true)} className="md:hidden absolute top-4 left-4 p-2 text-gray-400">
-              <Menu size={20}/>
-            </button>
-            <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
-              <MessageSquare size={28} className="text-gray-400"/>
+        ) : activeBroadcast ? (
+          // ── 전달사항 상세 ──
+          <div className="flex-1 flex flex-col">
+            <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
+              <button onClick={() => setMobileOpen(true)} className="md:hidden p-1 text-gray-400">
+                <Menu size={20}/>
+              </button>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 truncate">{activeBroadcast.title}</p>
+                <p className="text-xs text-gray-400">{activeBroadcast.authorName} · {formatTime(activeBroadcast.createdAt)}</p>
+              </div>
+              {canBroadcast && activeBroadcast.authorUid === user?.uid && (
+                <button onClick={() => router.push(`/messages/${activeBroadcast.id}`)}
+                  className="p-1.5 text-gray-400 hover:text-primary-600 rounded-lg hover:bg-primary-50 transition-colors">
+                  <Edit2 size={15}/>
+                </button>
+              )}
             </div>
-            <div className="text-center">
-              <p className="text-gray-600 font-medium">채팅방을 선택하세요</p>
-              <p className="text-sm text-gray-400 mt-1">왼쪽에서 채팅방을 선택하거나 새로 만드세요</p>
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              {/* 본문 */}
+              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-4">
+                <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {activeBroadcast.body}
+                </div>
+              </div>
+              {/* 댓글 목록 */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-gray-500">댓글 {comments.length}개</p>
+                {comments.map(c => (
+                  <div key={c.id} className="flex items-start gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 shrink-0 mt-0.5">
+                      {c.authorName[0]}
+                    </div>
+                    <div className="flex-1 bg-white rounded-xl px-3.5 py-2.5 shadow-sm border border-gray-100">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-gray-800">{c.authorName}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] text-gray-400">{formatTime(c.createdAt)}</span>
+                          {(isAdmin || c.authorUid === user?.uid) && (
+                            <button onClick={() => deleteBroadcastComment(activeBroadcast.id, c.id)}
+                              className="p-0.5 text-gray-300 hover:text-red-400 rounded transition-colors">
+                              <X size={11}/>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-700">{c.body}</p>
+                    </div>
+                  </div>
+                ))}
+                <div ref={bottomRef}/>
+              </div>
             </div>
-            <button onClick={() => setShowCreate(true)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-800">
-              <Plus size={15}/> 채팅방 만들기
-            </button>
+            {/* 댓글 입력창 */}
+            {canComment ? (
+              <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
+                <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
+                  <input ref={commentRef} value={commentInput} onChange={e => setCommentInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
+                    placeholder="댓글 입력..."
+                    className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
+                  <button onClick={handleSendComment} disabled={!commentInput.trim() || sendingComment}
+                    className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
+                    <Send size={14}/>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
+                <p className="text-xs text-gray-400 text-center">댓글 권한이 없습니다</p>
+              </div>
+            )}
           </div>
-        ) : (
-          // 채팅창
+        ) : activeRoom ? (
+          // ── 채팅창 ──
           <>
-            {/* 헤더 */}
             <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
               <button onClick={() => setMobileOpen(true)} className="md:hidden p-1 text-gray-400">
                 <Menu size={20}/>
@@ -488,9 +645,9 @@ export default function MessengerShell({ children, title }: Props) {
                     : ROLE_LABEL[activeRoom.members.find(m => m.uid !== user?.uid)?.role ?? '']}
                 </p>
               </div>
-              {/* 멤버 초대 (그룹만) */}
               {activeRoom.type === 'group' && (
-                <button className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
+                <button onClick={() => setShowCreate(true)}
+                  className="p-1.5 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors">
                   <UserPlus size={16}/>
                 </button>
               )}
@@ -499,8 +656,6 @@ export default function MessengerShell({ children, title }: Props) {
                 <Trash2 size={15}/>
               </button>
             </div>
-
-            {/* 메시지 목록 */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
               {messages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
@@ -509,8 +664,8 @@ export default function MessengerShell({ children, title }: Props) {
                 </div>
               )}
               {messages.map((msg, idx) => {
-                const isMine   = msg.senderUid === user?.uid
-                const prev     = idx > 0 ? messages[idx-1] : null
+                const isMine = msg.senderUid === user?.uid
+                const prev   = idx > 0 ? messages[idx-1] : null
                 const showDate = idx === 0 || (() => {
                   const pd = (prev?.createdAt as {toDate?:()=>Date})?.toDate?.()
                   const cd = (msg.createdAt  as {toDate?:()=>Date})?.toDate?.()
@@ -536,9 +691,7 @@ export default function MessengerShell({ children, title }: Props) {
                         {showName && <p className="text-xs text-gray-500 mb-1 ml-1">{msg.senderName}</p>}
                         <div className={clsx(
                           'px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words',
-                          isMine
-                            ? 'bg-primary-600 text-white rounded-br-sm'
-                            : 'bg-white text-gray-800 rounded-bl-sm shadow-sm border border-gray-100'
+                          isMine ? 'bg-primary-600 text-white rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm shadow-sm border border-gray-100'
                         )}>
                           {msg.body}
                         </div>
@@ -551,8 +704,6 @@ export default function MessengerShell({ children, title }: Props) {
               })}
               <div ref={bottomRef}/>
             </div>
-
-            {/* 입력창 */}
             <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
               <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
                 <input ref={inputRef} value={chatInput} onChange={e => setChatInput(e.target.value)}
@@ -566,6 +717,27 @@ export default function MessengerShell({ children, title }: Props) {
               </div>
             </div>
           </>
+        ) : (
+          // 기본 화면
+          <div className="flex-1 flex flex-col items-center justify-center gap-4">
+            <button onClick={() => setMobileOpen(true)} className="md:hidden absolute top-4 left-4 p-2 text-gray-400">
+              <Menu size={20}/>
+            </button>
+            <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+              <MessageSquare size={28} className="text-gray-400"/>
+            </div>
+            <div className="text-center">
+              <p className="text-gray-600 font-medium">안녕하세요, {user?.name}님!</p>
+              <p className="text-sm text-gray-400 mt-1">왼쪽에서 대화 상대를 선택하세요</p>
+            </div>
+            {unreadBroadcast > 0 && (
+              <button onClick={() => setLeftTab('broadcast')}
+                className="flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-600 rounded-xl text-sm hover:bg-red-100 transition-colors">
+                <Bell size={15}/>
+                읽지 않은 전달사항 {unreadBroadcast}건
+              </button>
+            )}
+          </div>
         )}
       </div>
 
