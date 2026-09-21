@@ -588,7 +588,8 @@ export interface ChatRoom {
   id:          string
   name:        string
   type:        'group' | 'direct'
-  members:     { uid: string; name: string; role: string }[]
+  members:     { uid: string; name: string; role: string; joinedAt?: unknown }[]
+  memberUids:  string[]   // array-contains 쿼리용
   createdBy:   string
   lastMessage?: string
   lastAt?:     unknown
@@ -607,7 +608,7 @@ export interface ChatMessage {
 // 내가 참여한 채팅방 목록 구독
 export function listenChatRooms(myUid: string, cb: (rooms: ChatRoom[]) => void) {
   return onSnapshot(
-    query(collection(db, 'chatRooms'), where('members', 'array-contains', myUid)),
+    query(collection(db, 'chatRooms'), where('memberUids', 'array-contains', myUid)),
     snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() } as ChatRoom)))
   )
 }
@@ -629,12 +630,12 @@ export async function getOrCreateDirectRoom(
   const snap = await getDocs(
     query(collection(db, 'chatRooms'),
       where('type', '==', 'direct'),
-      where('members', 'array-contains', myUid)
+      where('memberUids', 'array-contains', myUid)
     )
   )
   const existing = snap.docs.find(d => {
-    const members = d.data().members as {uid:string}[]
-    return members.some(m => m.uid === targetUid)
+    const uids = d.data().memberUids as string[]
+    return uids?.includes(targetUid)
   })
   if (existing) return existing.id
 
@@ -643,9 +644,10 @@ export async function getOrCreateDirectRoom(
     name: `${myName}, ${targetName}`,
     type: 'direct',
     members: [
-      { uid: myUid,    name: myName,    role: myRole },
-      { uid: targetUid, name: targetName, role: targetRole },
+      { uid: myUid,    name: myName,    role: myRole,    joinedAt: serverTimestamp() },
+      { uid: targetUid, name: targetName, role: targetRole, joinedAt: serverTimestamp() },
     ],
+    memberUids: [myUid, targetUid],
     createdBy: myUid,
     lastMessage: '',
     lastAt: serverTimestamp(),
@@ -660,10 +662,12 @@ export async function createGroupRoom(
   name: string,
   members: { uid: string; name: string; role: string }[]
 ): Promise<string> {
+  const membersWithJoin = members.map(m => ({ ...m, joinedAt: serverTimestamp() }))
   const ref = await addDoc(collection(db, 'chatRooms'), {
     name,
     type: 'group',
-    members,
+    members: membersWithJoin,
+    memberUids: members.map(m => m.uid),
     createdBy: creatorUid,
     lastMessage: '',
     lastAt: serverTimestamp(),
@@ -729,7 +733,10 @@ export async function leaveChatRoom(
   if (remaining.length === 0) {
     await deleteChatRoom(roomId)
   } else {
-    await updateDoc(doc(db, 'chatRooms', roomId), { members: remaining })
+    await updateDoc(doc(db, 'chatRooms', roomId), {
+      members: remaining,
+      memberUids: remaining.map(m => m.uid),
+    })
   }
 }
 
@@ -841,4 +848,30 @@ export async function addBroadcastComment(msgId: string, authorUid: string, auth
 // 댓글 삭제
 export async function deleteBroadcastComment(msgId: string, commentId: string) {
   await deleteDoc(doc(db, 'messages', msgId, 'comments', commentId))
+}
+
+// 그룹 채팅방에 멤버 초대
+export async function inviteToChatRoom(
+  roomId: string,
+  newMembers: { uid: string; name: string; role: string }[]
+) {
+  const roomSnap = await getDoc(doc(db, 'chatRooms', roomId))
+  if (!roomSnap.exists()) return
+  const room = roomSnap.data()
+  const existingUids = (room.memberUids ?? []) as string[]
+  const toAdd = newMembers.filter(m => !existingUids.includes(m.uid))
+  if (toAdd.length === 0) return
+  const now = serverTimestamp()
+  const updatedMembers = [
+    ...(room.members ?? []),
+    ...toAdd.map(m => ({ ...m, joinedAt: now })),
+  ]
+  await updateDoc(doc(db, 'chatRooms', roomId), {
+    members: updatedMembers,
+    memberUids: updatedMembers.map((m: {uid:string}) => m.uid),
+    unread: {
+      ...(room.unread ?? {}),
+      ...Object.fromEntries(toAdd.map(m => [m.uid, 0])),
+    },
+  })
 }
