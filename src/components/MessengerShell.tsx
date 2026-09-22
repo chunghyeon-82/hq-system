@@ -220,8 +220,29 @@ export default function MessengerShell({ children, title }: Props) {
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
-  // handleSend는 input이 uncontrolled로 변경되어 버튼/엔터에서 직접 처리
-  const handleSend = async () => {}
+  const handleSend = async () => {
+    if (!user || !activeRoom || sending) return
+    const val = inputRef.current?.value.trim()
+    if (!val) return
+    if (inputRef.current) inputRef.current.value = ''
+    setSending(true)
+    const text = val
+    let roomId = activeRoom.id
+    if (!roomId) {
+      const target = activeRoom.members.find(m => m.uid !== user.uid)
+      if (!target) { setSending(false); return }
+      roomId = await getOrCreateDirectRoom(user.uid, user.name, user.role, target.uid, target.name, target.role)
+      setActiveRoom(prev => prev ? { ...prev, id: roomId } : prev)
+    }
+    await sendChatRoomMessage(roomId, user.uid, user.name, text, activeRoom.members.map(m => m.uid))
+    fetch('/api/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
+      body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids: activeRoom.members.filter(m => m.uid !== user.uid).map(m => m.uid) }),
+    }).catch(() => {})
+    setSending(false)
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
 
   const handleSendComment = async () => {
     if (!user || !activeBroadcast || !commentInput.trim() || sendingComment) return
@@ -397,30 +418,7 @@ export default function MessengerShell({ children, title }: Props) {
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
-                const val = (e.target as HTMLInputElement).value.trim()
-                if (!val) return
-                ;(e.target as HTMLInputElement).value = ''
-                setChatInput('')
-                if (!user || !activeRoom || sending) return
-                setSending(true)
-                const text = val
-                let roomId = activeRoom.id
-                const sendMsg = async () => {
-                  if (!roomId) {
-                    const target = activeRoom.members.find(m => m.uid !== user.uid)
-                    if (!target) { setSending(false); return }
-                    roomId = await getOrCreateDirectRoom(user.uid, user.name, user.role, target.uid, target.name, target.role)
-                    setActiveRoom(prev => prev ? { ...prev, id: roomId } : prev)
-                  }
-                  await sendChatRoomMessage(roomId, user.uid, user.name, text, activeRoom.members.map(m => m.uid))
-                  fetch('/api/push', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
-                    body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids: activeRoom.members.filter(m => m.uid !== user.uid).map(m => m.uid) }),
-                  }).catch(() => {})
-                  setSending(false)
-                }
-                sendMsg()
+                handleSend()
               }
             }}
             placeholder="메시지 입력..."
@@ -430,30 +428,7 @@ export default function MessengerShell({ children, title }: Props) {
             spellCheck={false}
             className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
           <button
-            onClick={() => {
-              const val = inputRef.current?.value.trim()
-              if (!val || sending || !user || !activeRoom) return
-              if (inputRef.current) inputRef.current.value = ''
-              setSending(true)
-              const text = val
-              let roomId = activeRoom.id
-              const sendMsg = async () => {
-                if (!roomId) {
-                  const target = activeRoom.members.find(m => m.uid !== user.uid)
-                  if (!target) { setSending(false); return }
-                  roomId = await getOrCreateDirectRoom(user.uid, user.name, user.role, target.uid, target.name, target.role)
-                  setActiveRoom(prev => prev ? { ...prev, id: roomId } : prev)
-                }
-                await sendChatRoomMessage(roomId, user.uid, user.name, text, activeRoom.members.map(m => m.uid))
-                fetch('/api/push', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
-                  body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids: activeRoom.members.filter(m => m.uid !== user.uid).map(m => m.uid) }),
-                }).catch(() => {})
-                setSending(false)
-              }
-              sendMsg()
-            }}
+            onClick={handleSend}
             disabled={sending}
             className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
             <Send size={14}/>
