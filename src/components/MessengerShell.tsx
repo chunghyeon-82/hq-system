@@ -19,7 +19,7 @@ import {
   ChevronDown, ChevronRight, LogOut, Users, Plus,
   MessageSquare, Send, Calendar, Search, X,
   Building2, Lock, Trash2, Settings,
-  UserPlus, Hash, Check, Megaphone, Bell, Edit2,
+  UserPlus, Hash, Check, Megaphone, Bell, Edit2, Paperclip, CornerUpLeft,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -63,6 +63,11 @@ export default function MessengerShell({ children, title }: Props) {
   const [chatInput,        setChatInput]        = useState('')
   const [commentInput,     setCommentInput]     = useState('')
   const [sending,          setSending]          = useState(false)
+  const [uploadingChat,    setUploadingChat]    = useState(false)
+  const [replyTo,          setReplyTo]          = useState<{msgId:string;senderName:string;body:string} | null>(null)
+  const [longPressTimer,   setLongPressTimer]   = useState<ReturnType<typeof setTimeout> | null>(null)
+  const chatFileRef = useRef<HTMLInputElement>(null)
+  const msgRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const [sendingComment,   setSendingComment]   = useState(false)
   const [unreadBroadcast,  setUnreadBroadcast]  = useState(0)
 
@@ -117,6 +122,12 @@ export default function MessengerShell({ children, title }: Props) {
     const u2 = listenUsers(setAllUsers)
     const u3 = listenChatRooms(user.uid, rooms => {
       setRooms(rooms)
+      // 새 채팅 오면 채팅 탭 자동 전환
+      setLeftTab(prev => {
+        const newUnread = rooms.reduce((s, r) => s + (r.unread?.[user?.uid ?? ''] ?? 0), 0)
+        if (newUnread > 0 && prev !== 'rooms') return 'rooms'
+        return prev
+      })
       // activeRoom을 최신 데이터로 동기화 (input focus 유지)
       setActiveRoom(prev => {
         if (!prev?.id) return prev
@@ -230,6 +241,42 @@ export default function MessengerShell({ children, title }: Props) {
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
+  // 채팅 파일 업로드
+  const handleChatFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user || !activeRoom) return
+    const MAX = 5 * 1024 * 1024
+    if (file.size > MAX) {
+      alert('5MB를 초과하는 파일은 전송할 수 없습니다.')
+      if (chatFileRef.current) chatFileRef.current.value = ''
+      return
+    }
+    setUploadingChat(true)
+    try {
+      const { uploadAttachment } = await import('@/lib/supabase-storage')
+      const { url } = await uploadAttachment(file, user.uid)
+      const isImage = file.type.startsWith('image/')
+      let roomId = activeRoom.id
+      if (!roomId) {
+        const target = activeRoom.members.find(m => m.uid !== user.uid)
+        if (!target) { setUploadingChat(false); return }
+        roomId = await getOrCreateDirectRoom(user.uid, user.name, user.role, target.uid, target.name, target.role)
+        setActiveRoom(prev => prev ? { ...prev, id: roomId } : prev)
+      }
+      const msgBody = isImage ? `[이미지] ${file.name}` : `[파일] ${file.name}`
+      await sendChatRoomMessage(roomId, user.uid, user.name, msgBody, activeRoom.members.map(m => m.uid), {
+        fileUrl: url,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: isImage ? 'image' : 'file',
+      })
+    } catch (err) {
+      alert('파일 전송에 실패했습니다.')
+    }
+    setUploadingChat(false)
+    if (chatFileRef.current) chatFileRef.current.value = ''
+  }
+
   const handleSend = async () => {
     if (!user || !activeRoom || sending) return
     const text = chatInput.trim()
@@ -243,7 +290,8 @@ export default function MessengerShell({ children, title }: Props) {
       roomId = await getOrCreateDirectRoom(user.uid, user.name, user.role, target.uid, target.name, target.role)
       setActiveRoom(prev => prev ? { ...prev, id: roomId } : prev)
     }
-    await sendChatRoomMessage(roomId, user.uid, user.name, text, activeRoom.members.map(m => m.uid))
+    await sendChatRoomMessage(roomId, user.uid, user.name, text, activeRoom.members.map(m => m.uid), undefined, replyTo ?? undefined)
+    setReplyTo(null)
     fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
@@ -398,7 +446,17 @@ export default function MessengerShell({ children, title }: Props) {
                   <div className="flex-1 h-px bg-gray-200"/>
                 </div>
               )}
-              <div className={clsx('flex items-end gap-2 mb-1', isMine ? 'flex-row-reverse' : 'flex-row')}>
+              <div
+                id={`msg-${msg.id}`}
+                ref={el => { if (el) msgRefs.current.set(msg.id, el); else msgRefs.current.delete(msg.id) }}
+                className={clsx('flex items-end gap-2 mb-1 rounded-lg transition-colors duration-500', isMine ? 'flex-row-reverse' : 'flex-row')}
+                onMouseEnter={e => { const b = e.currentTarget.querySelector('.reply-btn') as HTMLElement; if (b) b.style.opacity='1' }}
+                onMouseLeave={e => { const b = e.currentTarget.querySelector('.reply-btn') as HTMLElement; if (b) b.style.opacity='0' }}
+                onTouchStart={() => {
+                  const t = setTimeout(() => setReplyTo({ msgId: msg.id, senderName: msg.senderName, body: (msg as any).fileType ? ((msg as any).fileName ?? msg.body) : msg.body }), 600)
+                  setLongPressTimer(t)
+                }}
+                onTouchEnd={() => { if (longPressTimer) { clearTimeout(longPressTimer); setLongPressTimer(null) } }}>
                 {!isMine && (
                   <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-600 shrink-0 mb-0.5">
                     {msg.senderName[0]}
@@ -406,11 +464,50 @@ export default function MessengerShell({ children, title }: Props) {
                 )}
                 <div className={clsx('flex flex-col max-w-[70%]', isMine ? 'items-end' : 'items-start')}>
                   {showName && <p className="text-xs font-semibold text-gray-700 mb-1 ml-1">{msg.senderName}</p>}
+                  {/* 답장 원문 */}
+                  {(msg as any).replyTo && (
+                    <button
+                      onClick={() => {
+                        const el = msgRefs.current.get((msg as any).replyTo.msgId)
+                        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                        el?.classList.add('bg-yellow-50')
+                        setTimeout(() => el?.classList.remove('bg-yellow-50'), 1500)
+                      }}
+                      className={clsx('w-full text-left px-3 py-1.5 rounded-xl border-l-2 mb-1 max-w-full',
+                        isMine ? 'bg-primary-700 border-white/50' : 'bg-gray-100 border-primary-400')}>
+                      <p className={clsx('text-[10px] font-semibold mb-0.5', isMine ? 'text-white/70' : 'text-primary-600')}>
+                        {(msg as any).replyTo.senderName}
+                      </p>
+                      <p className={clsx('text-xs truncate', isMine ? 'text-white/60' : 'text-gray-500')}>
+                        {(msg as any).replyTo.body}
+                      </p>
+                    </button>
+                  )}
+                  {/* 메시지 버블 */}
                   <div className={clsx('px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words',
                     isMine ? 'bg-primary-600 text-white rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm shadow-sm border border-gray-100')}>
-                    {msg.body}
+                    {(msg as any).fileType === 'image' ? (
+                      <a href={(msg as any).fileUrl} target="_blank" rel="noopener noreferrer">
+                        <img src={(msg as any).fileUrl} alt={(msg as any).fileName} className="max-w-[200px] rounded-lg"/>
+                      </a>
+                    ) : (msg as any).fileType === 'file' ? (
+                      <a href={(msg as any).fileUrl} target="_blank" rel="noopener noreferrer" download={(msg as any).fileName}
+                        className={clsx('flex items-center gap-2', isMine ? 'text-white' : 'text-primary-600')}>
+                        <Paperclip size={14}/>
+                        <span className="text-sm underline">{(msg as any).fileName}</span>
+                        <span className="text-xs opacity-60">{((msg as any).fileSize/1024).toFixed(0)}KB</span>
+                      </a>
+                    ) : msg.body}
                   </div>
-                  <span className="text-[10px] text-gray-400 mt-1 mx-1">{formatTime(msg.createdAt)}</span>
+                  <div className="flex items-center gap-1 mt-1 mx-1">
+                    <span className="text-[10px] text-gray-400">{formatTime(msg.createdAt)}</span>
+                    <button
+                      className="reply-btn text-gray-400 hover:text-primary-600 transition-colors md:block hidden"
+                      style={{ opacity: 0 }}
+                      onClick={() => setReplyTo({ msgId: msg.id, senderName: msg.senderName, body: (msg as any).fileType ? ((msg as any).fileName ?? msg.body) : msg.body })}>
+                      <CornerUpLeft size={11}/>
+                    </button>
+                  </div>
                 </div>
                 {isMine && <div className="w-7 shrink-0"/>}
               </div>
@@ -549,14 +646,9 @@ export default function MessengerShell({ children, title }: Props) {
 
       {/* 탭 내용 */}
       <div className="flex-1 overflow-y-auto">
-        {leftTab === 'broadcast' && (
-          <div className="flex flex-col items-center justify-center h-32 gap-2 text-white/40 py-4">
-            <Megaphone size={24} className="opacity-50"/>
-            <p className="text-xs text-center px-4">오른쪽 화면에서<br/>전달사항을 확인하세요</p>
-          </div>
-        )}
 
-        {leftTab === 'members' && (
+
+        {(leftTab === 'members' || leftTab === 'broadcast') && (
           <div className="py-2">
             <button onClick={() => setOpenHQ(v => !v)}
               className="w-full flex items-center gap-2 px-4 py-2 hover:bg-white/5 text-white/60 hover:text-white transition-colors">
@@ -950,20 +1042,39 @@ export default function MessengerShell({ children, title }: Props) {
         ) : activeRoom ? (
           <>
             <ChatView/>
-            <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
-              <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
-                <input
-                  ref={inputRef}
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-                  placeholder="메시지 입력..."
-                  autoComplete="off"
-                  className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
-                <button onClick={handleSend} disabled={!chatInput.trim() || sending}
-                  className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
-                  <Send size={14}/>
+            <div className="bg-white border-t border-gray-200 shrink-0">
+              {replyTo && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-primary-50 border-b border-primary-100">
+                  <CornerUpLeft size={13} className="text-primary-500 shrink-0"/>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-primary-600">{replyTo.senderName}에게 답장</p>
+                    <p className="text-xs text-gray-500 truncate">{replyTo.body}</p>
+                  </div>
+                  <button onClick={() => setReplyTo(null)} className="text-gray-400 hover:text-gray-600 shrink-0">
+                    <X size={14}/>
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center gap-2 px-4 py-2.5">
+                <input type="file" ref={chatFileRef} onChange={handleChatFileUpload} className="hidden"/>
+                <button onClick={() => chatFileRef.current?.click()} disabled={uploadingChat}
+                  className="p-1.5 text-gray-400 hover:text-primary-600 rounded-lg transition-colors shrink-0">
+                  {uploadingChat ? <Loader2 size={16} className="animate-spin"/> : <Paperclip size={16}/>}
                 </button>
+                <div className="flex-1 flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
+                  <input
+                    ref={inputRef}
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                    placeholder="메시지 입력..."
+                    autoComplete="off"
+                    className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
+                  <button onClick={handleSend} disabled={!chatInput.trim() || sending}
+                    className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
+                    <Send size={14}/>
+                  </button>
+                </div>
               </div>
             </div>
           </>
@@ -1017,20 +1128,37 @@ export default function MessengerShell({ children, title }: Props) {
             ) : activeRoom ? (
               <>
                 <ChatView/>
-                <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
-                  <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
-                    <input
-                      ref={inputRef}
-                      value={chatInput}
-                      onChange={e => setChatInput(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
-                      placeholder="메시지 입력..."
-                      autoComplete="off"
-                      className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
-                    <button onClick={handleSend} disabled={!chatInput.trim() || sending}
-                      className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
-                      <Send size={14}/>
+                <div className="bg-white border-t border-gray-200 shrink-0">
+                  {replyTo && (
+                    <div className="flex items-center gap-2 px-4 py-2 bg-primary-50 border-b border-primary-100">
+                      <CornerUpLeft size={13} className="text-primary-500 shrink-0"/>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-primary-600">{replyTo.senderName}에게 답장</p>
+                        <p className="text-xs text-gray-500 truncate">{replyTo.body}</p>
+                      </div>
+                      <button onClick={() => setReplyTo(null)} className="text-gray-400 shrink-0"><X size={14}/></button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 px-3 py-2.5">
+                    <input type="file" ref={chatFileRef} onChange={handleChatFileUpload} className="hidden"/>
+                    <button onClick={() => chatFileRef.current?.click()} disabled={uploadingChat}
+                      className="p-1.5 text-gray-400 shrink-0">
+                      {uploadingChat ? <Loader2 size={16} className="animate-spin"/> : <Paperclip size={16}/>}
                     </button>
+                    <div className="flex-1 flex items-center gap-2 bg-gray-100 rounded-2xl px-3 py-2">
+                      <input
+                        ref={inputRef}
+                        value={chatInput}
+                        onChange={e => setChatInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                        placeholder="메시지 입력..."
+                        autoComplete="off"
+                        className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
+                      <button onClick={handleSend} disabled={!chatInput.trim() || sending}
+                        className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
+                        <Send size={14}/>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>
