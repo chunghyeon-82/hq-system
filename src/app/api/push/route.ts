@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     process.env.VAPID_PRIVATE_KEY ?? ''
   )
   try {
-    const { title, body, url, targetUids } = await req.json()
+    const { title, body, url, targetUids, alertType } = await req.json()
 
     // 인증 확인
     const auth = req.headers.get('authorization')
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       tokens.map(({ uid, subscription }) =>
         webpush.sendNotification(
           subscription,
-          JSON.stringify({ title, body, url: url || '/dashboard', icon: '/icons/icon-192.png' })
+          JSON.stringify({ title, body, url: url || '/', icon: '/icons/icon-192.png', alertType: alertType || 'vibrate_sound' })
         ).catch(async (err) => {
           // 구독 만료 시 토큰 삭제
           if (err.statusCode === 410 || err.statusCode === 404) {
