@@ -6,7 +6,13 @@ import { useAuth } from '@/lib/auth-context'
 import { uploadAttachment, compressImage } from '@/lib/supabase-storage'
 import { addDoc, collection, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import { Send, Image, X, Calendar, Lock, Loader2, ArrowLeft } from 'lucide-react'
+import { Send, ImageIcon, Paperclip, X, Calendar, Lock, Loader2, ArrowLeft, FileText } from 'lucide-react'
+
+interface AttachedFile {
+  name: string
+  url:  string
+  size: number
+}
 
 function ComposeContent() {
   const { user }     = useAuth()
@@ -18,10 +24,14 @@ function ComposeContent() {
   const [body,        setBody]        = useState('')
   const [expiresAt,   setExpiresAt]   = useState('')
   const [neverDelete, setNeverDelete] = useState(false)
-  const [imageUrls,   setImageUrls]   = useState<string[]>([])
-  const [uploading,   setUploading]   = useState(false)
+  const [images,      setImages]      = useState<string[]>([])
+  const [files,       setFiles]       = useState<AttachedFile[]>([])
+  const [uploadingImg, setUploadingImg] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(false)
   const [submitting,  setSubmitting]  = useState(false)
   const [error,       setError]       = useState('')
+
+  const imgRef  = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const canBroadcast = user?.role === 'ADMIN' ||
@@ -38,27 +48,45 @@ function ComposeContent() {
       setBody(d.body ?? '')
       setExpiresAt(d.expiresAt ?? '')
       setNeverDelete(d.neverDelete ?? false)
-      setImageUrls(d.imageUrls ?? [])
+      setImages(d.imageUrls ?? [])
+      setFiles(d.attachedFiles ?? [])
     })
   }, [editId])
 
-  // 이미지 업로드
+  // 이미지 삽입
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0 || !user) return
-    setUploading(true)
-    const uploaded: string[] = []
-    for (const file of Array.from(files)) {
+    const picked = e.target.files
+    if (!picked || !user) return
+    setUploadingImg(true)
+    for (const file of Array.from(picked)) {
       try {
         const compressed = file.size > 500000 ? await compressImage(file) : file
         const { url } = await uploadAttachment(compressed, user.uid)
-        uploaded.push(url)
-      } catch (e) {
-        console.error('이미지 업로드 실패:', e)
+        setImages(prev => [...prev, url])
+      } catch (err) {
+        setError('이미지 업로드에 실패했습니다.')
+        console.error(err)
       }
     }
-    setImageUrls(prev => [...prev, ...uploaded])
-    setUploading(false)
+    setUploadingImg(false)
+    if (imgRef.current) imgRef.current.value = ''
+  }
+
+  // 파일 첨부
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = e.target.files
+    if (!picked || !user) return
+    setUploadingFile(true)
+    for (const file of Array.from(picked)) {
+      try {
+        const { url } = await uploadAttachment(file, user.uid)
+        setFiles(prev => [...prev, { name: file.name, url, size: file.size }])
+      } catch (err) {
+        setError('파일 업로드에 실패했습니다.')
+        console.error(err)
+      }
+    }
+    setUploadingFile(false)
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -69,29 +97,27 @@ function ComposeContent() {
     setSubmitting(true)
     setError('')
     try {
+      const data = {
+        title:         title.trim(),
+        body:          body.trim(),
+        imageUrls:     images,
+        attachedFiles: files,
+        expiresAt:     expiresAt || null,
+        neverDelete,
+      }
       if (editId) {
-        // 수정
         await updateDoc(doc(db, 'messages', editId), {
-          title:       title.trim(),
-          body:        body.trim(),
-          imageUrls,
-          expiresAt:   expiresAt || null,
-          neverDelete,
-          updatedAt:   serverTimestamp(),
+          ...data,
+          updatedAt: serverTimestamp(),
         })
       } else {
-        // 신규 등록
         await addDoc(collection(db, 'messages'), {
-          type:        'broadcast',
-          title:       title.trim(),
-          body:        body.trim(),
-          imageUrls,
-          authorUid:   user.uid,
-          authorName:  user.name,
-          createdAt:   serverTimestamp(),
-          expiresAt:   expiresAt || null,
-          neverDelete,
-          status:      'open',
+          ...data,
+          type:       'broadcast',
+          authorUid:  user.uid,
+          authorName: user.name,
+          createdAt:  serverTimestamp(),
+          status:     'open',
         })
       }
       router.push('/')
@@ -144,33 +170,65 @@ function ComposeContent() {
         <label className="block text-sm font-semibold text-gray-700 mb-1.5">내용</label>
         <textarea value={body} onChange={e => setBody(e.target.value)}
           placeholder="전달사항 내용을 입력하세요"
-          rows={10}
+          rows={8}
           className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none leading-relaxed"/>
+
+        {/* 이미지 삽입 미리보기 */}
+        {images.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-gray-400">삽입된 이미지 ({images.length}장) — 게시 후 내용에 표시됩니다</p>
+            <div className="grid grid-cols-3 gap-2">
+              {images.map((url, i) => (
+                <div key={i} className="relative rounded-xl overflow-hidden aspect-square border border-gray-200">
+                  <img src={url} alt="" className="w-full h-full object-cover"/>
+                  <button onClick={() => setImages(prev => prev.filter((_, j) => j !== i))}
+                    className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center">
+                    <X size={11} className="text-white"/>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 이미지/파일 버튼 */}
+        <div className="flex gap-2 mt-2">
+          <input ref={imgRef} type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden"/>
+          <button onClick={() => imgRef.current?.click()} disabled={uploadingImg}
+            className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+            {uploadingImg ? <Loader2 size={13} className="animate-spin"/> : <ImageIcon size={13}/>}
+            이미지 삽입
+          </button>
+          <input ref={fileRef} type="file" multiple onChange={handleFileUpload} className="hidden"/>
+          <button onClick={() => fileRef.current?.click()} disabled={uploadingFile}
+            className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
+            {uploadingFile ? <Loader2 size={13} className="animate-spin"/> : <Paperclip size={13}/>}
+            파일 첨부
+          </button>
+        </div>
       </div>
 
-      {/* 이미지 첨부 */}
-      <div>
-        <label className="block text-sm font-semibold text-gray-700 mb-1.5">이미지 첨부</label>
-        <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden"/>
-        <button onClick={() => fileRef.current?.click()} disabled={uploading}
-          className="flex items-center gap-2 px-4 py-2.5 border border-gray-300 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50">
-          {uploading ? <Loader2 size={15} className="animate-spin"/> : <Image size={15}/>}
-          {uploading ? '업로드 중...' : '이미지 선택'}
-        </button>
-        {imageUrls.length > 0 && (
-          <div className="grid grid-cols-3 gap-2 mt-3">
-            {imageUrls.map((url, i) => (
-              <div key={i} className="relative rounded-xl overflow-hidden aspect-square border border-gray-200">
-                <img src={url} alt="" className="w-full h-full object-cover"/>
-                <button onClick={() => setImageUrls(prev => prev.filter((_, j) => j !== i))}
-                  className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center">
-                  <X size={11} className="text-white"/>
+      {/* 첨부파일 목록 */}
+      {files.length > 0 && (
+        <div>
+          <label className="block text-sm font-semibold text-gray-700 mb-2">첨부파일</label>
+          <div className="space-y-2">
+            {files.map((f, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl border border-gray-200">
+                <FileText size={16} className="text-gray-400 shrink-0"/>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-700 truncate">{f.name}</p>
+                  <p className="text-xs text-gray-400">{(f.size / 1024).toFixed(0)}KB</p>
+                </div>
+                <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))}
+                  className="p-1 text-gray-400 hover:text-red-500 rounded transition-colors">
+                  <X size={14}/>
                 </button>
               </div>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 게시 설정 */}
       <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
@@ -196,7 +254,6 @@ function ComposeContent() {
               <span className="text-sm text-gray-700">삭제 금지 (작성자가 직접 삭제할 때까지 유지)</span>
             </div>
           </label>
-          <p className="text-xs text-gray-400 mt-1 ml-6">체크 시 게시기한을 설정할 수 없습니다</p>
         </div>
       </div>
     </div>
