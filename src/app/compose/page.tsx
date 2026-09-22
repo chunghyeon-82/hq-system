@@ -24,6 +24,7 @@ function ComposeContent() {
   const [body,        setBody]        = useState('')
   const [expiresAt,   setExpiresAt]   = useState('')
   const [neverDelete, setNeverDelete] = useState(false)
+  const [targetAudience, setTargetAudience] = useState<string[]>(['hq', 'biz'])
   const [images,      setImages]      = useState<string[]>([])
   const [files,       setFiles]       = useState<AttachedFile[]>([])
   const [uploadingImg, setUploadingImg] = useState(false)
@@ -48,6 +49,7 @@ function ComposeContent() {
       setBody(d.body ?? '')
       setExpiresAt(d.expiresAt ?? '')
       setNeverDelete(d.neverDelete ?? false)
+      setTargetAudience(d.targetAudience ?? ['hq', 'biz'])
       setImages(d.imageUrls ?? [])
       setFiles(d.attachedFiles ?? [])
     })
@@ -97,6 +99,7 @@ function ComposeContent() {
     setSubmitting(true)
     setError('')
     try {
+      if (targetAudience.length === 0) { setError('수신 대상을 하나 이상 선택해주세요.'); setSubmitting(false); return }
       const data = {
         title:         title.trim(),
         body:          body.trim(),
@@ -104,6 +107,7 @@ function ComposeContent() {
         attachedFiles: files,
         expiresAt:     expiresAt || null,
         neverDelete,
+        targetAudience,
       }
       if (editId) {
         await updateDoc(doc(db, 'messages', editId), {
@@ -229,6 +233,32 @@ function ComposeContent() {
           </div>
         </div>
       )}
+
+      {/* 수신 대상 */}
+      <div className="bg-blue-50 rounded-2xl p-4 space-y-2">
+        <p className="text-sm font-semibold text-gray-700">수신 대상 <span className="text-red-500">*</span></p>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox"
+              checked={targetAudience.includes('hq')}
+              onChange={e => setTargetAudience(prev =>
+                e.target.checked ? [...prev, 'hq'] : prev.filter(t => t !== 'hq')
+              )}
+              className="w-4 h-4 rounded accent-primary-600"/>
+            <span className="text-sm text-gray-700">본부멤버</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox"
+              checked={targetAudience.includes('biz')}
+              onChange={e => setTargetAudience(prev =>
+                e.target.checked ? [...prev, 'biz'] : prev.filter(t => t !== 'biz')
+              )}
+              className="w-4 h-4 rounded accent-primary-600"/>
+            <span className="text-sm text-gray-700">사업장</span>
+          </label>
+        </div>
+        <p className="text-xs text-gray-400">둘 다 선택하면 모든 멤버가 볼 수 있습니다</p>
+      </div>
 
       {/* 게시 설정 */}
       <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
