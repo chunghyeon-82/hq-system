@@ -117,11 +117,15 @@ export default function MessengerShell({ children, title }: Props) {
     const u2 = listenUsers(setAllUsers)
     const u3 = listenChatRooms(user.uid, rooms => {
       setRooms(rooms)
-      // activeRoom을 최신 데이터로 동기화
+      // activeRoom을 최신 데이터로 동기화 (input focus 유지)
       setActiveRoom(prev => {
         if (!prev?.id) return prev
         const updated = rooms.find(r => r.id === prev.id)
-        return updated ?? prev
+        if (!updated) return prev
+        // 내용이 실제로 바뀐 경우만 업데이트
+        if (JSON.stringify(updated.members) === JSON.stringify(prev.members) &&
+            updated.lastMessage === prev.lastMessage) return prev
+        return updated
       })
     })
     return () => { u1(); u2(); u3() }
@@ -222,11 +226,10 @@ export default function MessengerShell({ children, title }: Props) {
 
   const handleSend = async () => {
     if (!user || !activeRoom || sending) return
-    const val = inputRef.current?.value.trim()
-    if (!val) return
-    if (inputRef.current) inputRef.current.value = ''
+    const text = chatInput.trim()
+    if (!text) return
+    setChatInput('')
     setSending(true)
-    const text = val
     let roomId = activeRoom.id
     if (!roomId) {
       const target = activeRoom.members.find(m => m.uid !== user.uid)
@@ -241,7 +244,7 @@ export default function MessengerShell({ children, title }: Props) {
       body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids: activeRoom.members.filter(m => m.uid !== user.uid).map(m => m.uid) }),
     }).catch(() => {})
     setSending(false)
-    setTimeout(() => inputRef.current?.focus(), 50)
+    inputRef.current?.focus()
   }
 
   const handleSendComment = async () => {
@@ -414,7 +417,8 @@ export default function MessengerShell({ children, title }: Props) {
         <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
           <input
             ref={inputRef}
-            defaultValue=""
+            value={chatInput}
+            onChange={e => setChatInput(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
@@ -423,13 +427,10 @@ export default function MessengerShell({ children, title }: Props) {
             }}
             placeholder="메시지 입력..."
             autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
             className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
           <button
             onClick={handleSend}
-            disabled={sending}
+            disabled={!chatInput.trim() || sending}
             className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
             <Send size={14}/>
           </button>
