@@ -310,7 +310,7 @@ export default function SettingsPage() {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">화면</p>
           </div>
           {/* 알림 유형 */}
-          {settings.pushEnabled && (
+          {true && (
             <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-50">
                 <p className="text-sm font-semibold text-gray-900">알림 유형</p>
