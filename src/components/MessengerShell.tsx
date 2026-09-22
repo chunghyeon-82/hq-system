@@ -213,7 +213,8 @@ export default function MessengerShell({ children, title }: Props) {
     setActiveBroadcast(null)
     setLeftTab('rooms')
     setMobileChat(true)
-    setTimeout(() => inputRef.current?.focus(), 100)
+    router.push('/')
+    setTimeout(() => inputRef.current?.focus(), 200)
   }
 
   const handleCreateRoom = async () => {
@@ -636,13 +637,13 @@ export default function MessengerShell({ children, title }: Props) {
 
       {/* 멤버/채팅 탭 */}
       <div className="flex border-b border-white/10 shrink-0">
-        <button onClick={() => setLeftTab('members')}
+        <button onClick={() => { setLeftTab('members'); router.push('/') }}
           className={clsx('flex-1 py-2 text-xs font-medium transition-colors relative',
             leftTab === 'members' ? 'text-white' : 'text-white/40 hover:text-white/70')}>
           멤버
           {leftTab === 'members' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-400"/>}
         </button>
-        <button onClick={() => setLeftTab('rooms')}
+        <button onClick={() => { setLeftTab('rooms'); router.push('/') }}
           className={clsx('flex-1 py-2 text-xs font-medium transition-colors relative',
             leftTab === 'rooms' ? 'text-white' : 'text-white/40 hover:text-white/70')}>
           채팅
@@ -735,7 +736,7 @@ export default function MessengerShell({ children, title }: Props) {
               const unread = room.unread?.[user?.uid ?? ''] ?? 0
               const isActive = activeRoom?.id === room.id
               return (
-                <button key={room.id} onClick={() => { setActiveRoom(room); setActiveBroadcast(null); setMobileChat(true) }}
+                <button key={room.id} onClick={() => { setActiveRoom(room); setActiveBroadcast(null); setMobileChat(true); router.push('/') }}
                   className={clsx('w-full flex items-center gap-2.5 px-3 py-2.5 transition-colors text-left border-b border-white/5',
                     isActive ? 'bg-primary-600/30 border-l-2 border-primary-400' : 'hover:bg-white/5')}>
                   <div className="relative shrink-0">
@@ -880,8 +881,8 @@ export default function MessengerShell({ children, title }: Props) {
     </>
   )
 
-  // children이 있는 경우 (일정, 검색, 설정 등 서브페이지)
-  if (children) {
+  // children이 있어도 채팅방/전달사항 선택 시 메인 UI 표시
+  if (children && !activeRoom && !activeBroadcast) {
     return (
       <div className="flex h-screen overflow-hidden">
         {/* PC: 사이드바 */}
