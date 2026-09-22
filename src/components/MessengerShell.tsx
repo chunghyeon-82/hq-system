@@ -413,29 +413,6 @@ export default function MessengerShell({ children, title }: Props) {
         })}
         <div ref={bottomRef}/>
       </div>
-      <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
-        <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
-          <input
-            ref={inputRef}
-            value={chatInput}
-            onChange={e => setChatInput(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleSend()
-              }
-            }}
-            placeholder="메시지 입력..."
-            autoComplete="off"
-            className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
-          <button
-            onClick={handleSend}
-            disabled={!chatInput.trim() || sending}
-            className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
-            <Send size={14}/>
-          </button>
-        </div>
-      </div>
     </>
   )
 
@@ -884,7 +861,27 @@ export default function MessengerShell({ children, title }: Props) {
 
       {/* PC 오른쪽 */}
       <div className="hidden md:flex flex-1 flex-col overflow-hidden bg-gray-50">
-        {activeBroadcast ? <BroadcastView/> : activeRoom ? <ChatView/> : (
+        {activeBroadcast ? <BroadcastView/> : activeRoom ? (
+          <>
+            <ChatView/>
+            <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
+              <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
+                <input
+                  ref={inputRef}
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                  placeholder="메시지 입력..."
+                  autoComplete="off"
+                  className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
+                <button onClick={handleSend} disabled={!chatInput.trim() || sending}
+                  className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
+                  <Send size={14}/>
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-4">
             <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
               <MessageSquare size={28} className="text-gray-400"/>
@@ -908,7 +905,27 @@ export default function MessengerShell({ children, title }: Props) {
         {/* 채팅창 열린 경우 */}
         {mobileChat && (activeRoom || activeBroadcast) ? (
           <div className="flex flex-col h-full bg-white">
-            {activeRoom ? <ChatView/> : <BroadcastView/>}
+            {activeRoom ? (
+              <>
+                <ChatView/>
+                <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
+                  <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
+                    <input
+                      ref={inputRef}
+                      value={chatInput}
+                      onChange={e => setChatInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
+                      placeholder="메시지 입력..."
+                      autoComplete="off"
+                      className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
+                    <button onClick={handleSend} disabled={!chatInput.trim() || sending}
+                      className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
+                      <Send size={14}/>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : <BroadcastView/>}
           </div>
         ) : (
           // 목록 화면
