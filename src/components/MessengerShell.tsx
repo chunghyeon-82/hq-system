@@ -11,7 +11,7 @@ import {
   sendChatRoomMessage, markChatRoomRead,
   deleteChatRoom, leaveChatRoom, inviteToChatRoom,
   listenMessagesForHQ, listenMessagesForBiz,
-  listenBroadcastComments, addBroadcastComment, deleteBroadcastComment,
+  listenBroadcastComments, addBroadcastComment, deleteBroadcastComment, markBroadcastRead,
 } from '@/lib/db'
 import type { ChatRoom, ChatMessage, BroadcastComment } from '@/lib/db'
 import type { AppUser, Business, Message } from '@/types'
@@ -138,7 +138,7 @@ export default function MessengerShell({ children, title }: Props) {
         const bs = msgs.filter(m => m.type === 'broadcast')
           .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime())
         setBroadcasts(bs)
-        setUnreadBroadcast(bs.filter(m => m.status === 'open').length)
+        setUnreadBroadcast(bs.filter(m => !((m as any).readBy ?? []).includes(user.uid)).length)
       })
     }
     if (isBiz && user.bizId) {
@@ -146,9 +146,7 @@ export default function MessengerShell({ children, title }: Props) {
         const bs = msgs.filter(m => m.type === 'broadcast')
           .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime())
         setBroadcasts(bs)
-        setUnreadBroadcast(bs.filter(m =>
-          m.receipts?.some(r => r.bizId === user.bizId && r.status === 'pending')
-        ).length)
+        setUnreadBroadcast(bs.filter(m => !((m as any).readBy ?? []).includes(user.uid)).length)
       })
     }
   }, [user, isHQ, isAdmin, isBiz])
@@ -891,14 +889,20 @@ export default function MessengerShell({ children, title }: Props) {
                   <tbody className="divide-y divide-gray-100">
                     {broadcasts.map((msg, idx) => (
                       <tr key={msg.id}
-                        onClick={() => { setActiveBroadcast(msg); setMobileChat(true) }}
+                        onClick={() => {
+                        setActiveBroadcast(msg)
+                        setMobileChat(true)
+                        if (user && !((msg as any).readBy ?? []).includes(user.uid)) {
+                          markBroadcastRead(msg.id, user.uid)
+                        }
+                      }}
                         className="hover:bg-primary-50 cursor-pointer transition-colors">
                         <td className="text-center text-sm text-gray-400 py-3 px-4">
                           {broadcasts.length - idx}
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
-                            {msg.status === 'open' && (
+                            {!((msg as any).readBy ?? []).includes(user?.uid ?? '') && (
                               <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"/>
                             )}
                             <span className="text-sm font-medium text-gray-800 hover:text-primary-600">
@@ -1007,12 +1011,18 @@ export default function MessengerShell({ children, title }: Props) {
                 </div>
               ) : broadcasts.map((msg, idx) => (
                 <button key={msg.id}
-                  onClick={() => { setActiveBroadcast(msg); setMobileChat(true) }}
+                  onClick={() => {
+                        setActiveBroadcast(msg)
+                        setMobileChat(true)
+                        if (user && !((msg as any).readBy ?? []).includes(user.uid)) {
+                          markBroadcastRead(msg.id, user.uid)
+                        }
+                      }}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
                   <span className="text-xs text-gray-400 w-6 shrink-0">{broadcasts.length - idx}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      {msg.status === 'open' && <div className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"/>}
+                      {!((msg as any).readBy ?? []).includes(user?.uid ?? '') && <div className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"/>}
                       <p className="text-sm font-medium text-gray-800 truncate">{msg.title}</p>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
