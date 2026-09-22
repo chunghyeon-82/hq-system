@@ -437,7 +437,30 @@ export default function MessengerShell({ children, title }: Props) {
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-4">
-          <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{activeBroadcast!.body}</div>
+          <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{activeBroadcast!.body}</p>
+          {(activeBroadcast as any).imageUrls?.length > 0 && (
+            <div className="mt-4 space-y-3">
+              {((activeBroadcast as any).imageUrls as string[]).map((url: string, i: number) => (
+                <img key={i} src={url} alt="" className="w-full rounded-xl border border-gray-100"/>
+              ))}
+            </div>
+          )}
+          {(activeBroadcast as any).attachedFiles?.length > 0 && (
+            <div className="mt-4 border-t border-gray-100 pt-4 space-y-2">
+              <p className="text-xs font-semibold text-gray-500 mb-2">첨부파일</p>
+              {((activeBroadcast as any).attachedFiles as {name:string;url:string;size:number}[]).map((f, i) => (
+                <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" download={f.name}
+                  className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-primary-50 transition-colors">
+                  <span>📎</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-700 truncate">{f.name}</p>
+                    <p className="text-xs text-gray-400">{(f.size/1024).toFixed(0)}KB</p>
+                  </div>
+                  <span className="text-xs text-primary-600 font-medium shrink-0">다운로드</span>
+                </a>
+              ))}
+            </div>
+          )}
         </div>
         <div className="space-y-2">
           <p className="text-xs font-medium text-gray-500">댓글 {comments.length}개</p>
