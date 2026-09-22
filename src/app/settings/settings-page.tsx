@@ -45,6 +45,37 @@ export default function SettingsPage() {
   // ── 무음 모드 토글 ─────────────────────────────────
   const toggleSilent = () => updateSettings({ silentMode: !settings.silentMode })
 
+  // 푸시 권한 요청
+  const handlePushToggle = async () => {
+    if (settings.pushEnabled) {
+      // 끄기
+      if (user) {
+        const { unsubscribePush } = await import('@/lib/push')
+        await unsubscribePush(user.uid)
+      }
+      await updateSettings({ pushEnabled: false })
+      setPushPerm('default')
+    } else {
+      // 켜기
+      if (Notification.permission === 'denied') {
+        alert('알림이 차단되어 있습니다.\n\n[해제 방법]\n안드로이드: 설정 → 앱 → 본부관리시스템 → 알림 → 허용\n\nPC Chrome: 주소창 왼쪽 🔒 아이콘 → 알림 → 허용')
+        return
+      }
+      setPushLoading(true)
+      const perm = await Notification.requestPermission()
+      setPushPerm(perm)
+      if (perm === 'granted' && user) {
+        const { subscribePush } = await import('@/lib/push')
+        const result = await subscribePush(user.uid)
+        if (result.ok) await updateSettings({ pushEnabled: true })
+        else alert('알림 등록에 실패했습니다: ' + result.error)
+      } else if (perm === 'denied') {
+        alert('알림이 차단되었습니다.\n\n[해제 방법]\n안드로이드: 설정 → 앱 → 본부관리시스템 → 알림 → 허용')
+      }
+      setPushLoading(false)
+    }
+  }
+
   // 알림 유형 변경
   const alertTypes: { value: AlertType; label: string; desc: string }[] = [
     { value: 'vibrate_sound', label: '진동 + 소리', desc: '진동과 소리 모두 울립니다' },
@@ -59,23 +90,8 @@ export default function SettingsPage() {
     { value: 'large',  label: '크게' },
   ]
 
-  // ── 푸시 알림 ──────────────────────────────────────
-  const togglePush = async () => {
-    if (!user) return
-    setPushLoading(true)
-    if (settings.pushEnabled) {
-      await unsubscribePush(user.uid)
-      await updateSettings({ pushEnabled: false })
-    } else {
-      const perm = await Notification.requestPermission()
-      setPushPerm(perm)
-      if (perm === 'granted') {
-        const result = await subscribePush(user.uid)
-        if (result.ok) await updateSettings({ pushEnabled: true })
-      }
-    }
-    setPushLoading(false)
-  }
+  // ── 푸시 알림 ── (handlePushToggle로 대체됨)
+  const togglePush = handlePushToggle
 
   // ── 이름 저장 ──────────────────────────────────────
   const saveName = async () => {
@@ -245,12 +261,12 @@ export default function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-gray-800">푸시 알림</p>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  {pushPerm === 'denied' ? '브라우저에서 차단됨 — 브라우저 설정에서 허용해주세요' :
+                  {pushPerm === 'denied' ? '알림이 차단됨 — 아래 방법으로 허용해주세요' :
                    settings.pushEnabled ? '알림이 활성화되어 있습니다' : '알림이 꺼져 있습니다'}
                 </p>
               </div>
             </div>
-            <button onClick={togglePush} disabled={pushLoading || pushPerm === 'denied'}
+            <button onClick={handlePushToggle} disabled={pushLoading || pushPerm === 'denied'}
               style={{
                 position:'relative', width:'48px', height:'26px',
                 borderRadius:'99px', border:'none', cursor:'pointer',
@@ -272,6 +288,19 @@ export default function SettingsPage() {
               }}/>
             </button>
           </div>
+          {pushPerm === 'denied' && (
+            <div className="mx-4 mb-3 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+              <p className="text-xs font-semibold text-amber-700 mb-1.5">📱 안드로이드에서 허용하는 방법</p>
+              <ol className="text-xs text-amber-600 space-y-1 list-decimal list-inside">
+                <li>홈 화면에서 앱 아이콘 <b>길게 누르기</b></li>
+                <li><b>앱 정보</b> 선택</li>
+                <li><b>알림</b> 탭 선택</li>
+                <li><b>알림 허용</b> 켜기</li>
+              </ol>
+              <p className="text-xs font-semibold text-amber-700 mt-2 mb-1">💻 PC Chrome에서 허용하는 방법</p>
+              <p className="text-xs text-amber-600">주소창 왼쪽 🔒 → 알림 → <b>허용</b></p>
+            </div>
+          )}
           {/* 무음 모드 */}
           <div className="flex items-center justify-between px-5 py-4">
             <div className="flex items-center gap-3">
