@@ -677,21 +677,39 @@ export async function createGroupRoom(
 }
 
 // 메시지 전송
+export interface ChatFileInfo {
+  fileUrl:  string
+  fileName: string
+  fileSize: number
+  fileType: 'image' | 'file'
+}
+
+export interface ReplyTo {
+  msgId:      string
+  senderName: string
+  body:       string
+}
+
 export async function sendChatRoomMessage(
   roomId: string,
   senderUid: string,
   senderName: string,
   body: string,
-  allMemberUids: string[]
+  allMemberUids: string[],
+  fileInfo?: ChatFileInfo,
+  replyTo?: ReplyTo
 ) {
-  // 메시지 추가
-  await addDoc(collection(db, 'chatRooms', roomId, 'messages'), {
+  const msgData: Record<string, unknown> = {
     senderUid,
     senderName,
     body,
     createdAt: serverTimestamp(),
     readBy: [senderUid],
-  })
+  }
+  if (fileInfo) Object.assign(msgData, fileInfo)
+  if (replyTo)  msgData.replyTo = replyTo
+  // 메시지 추가
+  await addDoc(collection(db, 'chatRooms', roomId, 'messages'), msgData)
   // 채팅방 마지막 메시지 + 안읽음 업데이트
   const unreadUpdate: Record<string, number> = {}
   // 상대방들 unread +1 (increment 방식)
