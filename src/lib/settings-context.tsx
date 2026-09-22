@@ -6,16 +6,20 @@ import { useAuth } from './auth-context'
 
 export type FontSize = 'small' | 'medium' | 'large'
 
+export type AlertType = 'vibrate' | 'vibrate_sound' | 'off'
+
 export interface UserSettings {
-  silentMode: boolean
-  fontSize:   FontSize
+  silentMode:  boolean
+  fontSize:    FontSize
   pushEnabled: boolean
+  alertType:   AlertType
 }
 
 const DEFAULT: UserSettings = {
   silentMode:  false,
   fontSize:    'medium',
   pushEnabled: false,
+  alertType:   'vibrate_sound',
 }
 
 interface SettingsCtx {
