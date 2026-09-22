@@ -11,7 +11,7 @@ import { Send, Image, X, Calendar, Lock, Loader2 } from 'lucide-react'
 function ComposeContent() {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
   )
   const { user } = useAuth()
   const router   = useRouter()
