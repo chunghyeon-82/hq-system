@@ -19,7 +19,7 @@ import {
   ChevronDown, ChevronRight, LogOut, Users, Plus,
   MessageSquare, Send, Calendar, Search, X,
   Building2, Lock, Trash2, Settings,
-  UserPlus, Hash, Check, Megaphone, Bell, Edit2, Paperclip, CornerUpLeft,
+  UserPlus, Hash, Check, Megaphone, Bell, Edit2, Paperclip, CornerUpLeft, Loader2,
 } from 'lucide-react'
 import clsx from 'clsx'
 
