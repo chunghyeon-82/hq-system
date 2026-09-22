@@ -875,3 +875,17 @@ export async function inviteToChatRoom(
     },
   })
 }
+
+// ── 전달사항 읽음 처리 ─────────────────────────────────────────────
+
+// 전달사항 읽음 처리 (readBy 배열에 uid 추가)
+export async function markBroadcastRead(msgId: string, uid: string) {
+  const ref = doc(db, 'messages', msgId)
+  const snap = await getDoc(ref)
+  if (!snap.exists()) return
+  const readBy: string[] = snap.data().readBy ?? []
+  if (readBy.includes(uid)) return  // 이미 읽음
+  await updateDoc(ref, {
+    readBy: [...readBy, uid]
+  })
+}
