@@ -7,7 +7,7 @@ import { listenBroadcastComments, addBroadcastComment, deleteBroadcastComment } 
 import type { BroadcastComment } from '@/lib/db'
 import { db } from '@/lib/firebase'
 import { doc, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore'
-import { Trash2, Edit2, Send, X, ArrowLeft, Lock, Calendar } from 'lucide-react'
+import { Trash2, Edit2, Send, X, ArrowLeft, Lock, Calendar, FileText } from 'lucide-react'
 import clsx from 'clsx'
 
 function formatTime(ts: unknown): string {
@@ -17,11 +17,18 @@ function formatTime(ts: unknown): string {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
+interface AttachedFile {
+  name: string
+  url:  string
+  size: number
+}
+
 interface BroadcastDoc {
   id: string
   title: string
   body: string
   imageUrls?: string[]
+  attachedFiles?: AttachedFile[]
   authorUid: string
   authorName: string
   createdAt: unknown
@@ -140,6 +147,24 @@ export default function MessageDetailPage() {
                 {broadcast.imageUrls.map((url, i) => (
                   <img key={i} src={url} alt="" className="w-full rounded-xl border border-gray-100"/>
                 ))}
+              </div>
+            )}
+            {broadcast.attachedFiles && broadcast.attachedFiles.length > 0 && (
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <p className="text-xs font-semibold text-gray-500 mb-2">첨부파일</p>
+                <div className="space-y-2">
+                  {broadcast.attachedFiles.map((f, i) => (
+                    <a key={i} href={f.url} target="_blank" rel="noopener noreferrer" download={f.name}
+                      className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-primary-50 hover:border-primary-200 transition-colors group">
+                      <FileText size={16} className="text-gray-400 group-hover:text-primary-600 shrink-0"/>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-700 truncate group-hover:text-primary-600">{f.name}</p>
+                        <p className="text-xs text-gray-400">{(f.size / 1024).toFixed(0)}KB</p>
+                      </div>
+                      <span className="text-xs text-primary-600 font-medium shrink-0">다운로드</span>
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
           </div>
