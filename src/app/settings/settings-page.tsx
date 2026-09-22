@@ -40,7 +40,26 @@ export default function SettingsPage() {
     if (!user) { router.replace('/login'); return }
     setName(user.name)
     getPushPermission().then(setPushPerm)
-  }, [user, router])
+
+    // 앱으로 돌아왔을 때 (안드로이드 설정에서 허용 후) 권한 재확인
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        getPushPermission().then(perm => {
+          setPushPerm(perm)
+          // 새로 허용됐으면 자동으로 구독 시도
+          if (perm === 'granted' && !settings.pushEnabled && user) {
+            import('@/lib/push').then(({ subscribePush }) => {
+              subscribePush(user.uid).then(result => {
+                if (result.ok) updateSettings({ pushEnabled: true })
+              })
+            })
+          }
+        })
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [user, router, settings.pushEnabled])
 
   // ── 무음 모드 토글 ─────────────────────────────────
   const toggleSilent = () => updateSettings({ silentMode: !settings.silentMode })
@@ -57,8 +76,15 @@ export default function SettingsPage() {
       setPushPerm('default')
     } else {
       // 켜기
+      // Notification API 미지원 체크
+      if (!('Notification' in window)) {
+        alert('이 브라우저/앱은 푸시 알림을 지원하지 않습니다.')
+        return
+      }
       if (Notification.permission === 'denied') {
-        alert('알림이 차단되어 있습니다.\n\n[해제 방법]\n안드로이드: 설정 → 앱 → 본부관리시스템 → 알림 → 허용\n\nPC Chrome: 주소창 왼쪽 🔒 아이콘 → 알림 → 허용')
+        // denied 상태 - 안내만 표시 (토글은 허용)
+        setPushPerm('denied')
+        setPushLoading(false)
         return
       }
       setPushLoading(true)
@@ -266,13 +292,13 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
-            <button onClick={handlePushToggle} disabled={pushLoading || pushPerm === 'denied'}
+            <button onClick={handlePushToggle} disabled={pushLoading}
               style={{
                 position:'relative', width:'48px', height:'26px',
                 borderRadius:'99px', border:'none', cursor:'pointer',
                 backgroundColor: settings.pushEnabled ? '#534AB7' : '#D1D5DB',
                 transition:'background-color .2s',
-                opacity: (pushLoading || pushPerm === 'denied') ? 0.4 : 1,
+                opacity: pushLoading ? 0.4 : 1,
                 flexShrink: 0,
               }}>
               <span style={{
@@ -296,9 +322,25 @@ export default function SettingsPage() {
                 <li><b>앱 정보</b> 선택</li>
                 <li><b>알림</b> 탭 선택</li>
                 <li><b>알림 허용</b> 켜기</li>
+                <li>앱으로 돌아와서 아래 버튼 클릭</li>
               </ol>
               <p className="text-xs font-semibold text-amber-700 mt-2 mb-1">💻 PC Chrome에서 허용하는 방법</p>
               <p className="text-xs text-amber-600">주소창 왼쪽 🔒 → 알림 → <b>허용</b></p>
+              <button
+                onClick={async () => {
+                  const perm = await Notification.requestPermission()
+                  setPushPerm(perm)
+                  if (perm === 'granted' && user) {
+                    setPushLoading(true)
+                    const { subscribePush } = await import('@/lib/push')
+                    const result = await subscribePush(user.uid)
+                    if (result.ok) await updateSettings({ pushEnabled: true })
+                    setPushLoading(false)
+                  }
+                }}
+                className="mt-2 w-full py-2 bg-amber-500 text-white rounded-lg text-xs font-semibold hover:bg-amber-600 transition-colors">
+                ✓ 허용했습니다 — 알림 등록하기
+              </button>
             </div>
           )}
           {/* 무음 모드 */}
