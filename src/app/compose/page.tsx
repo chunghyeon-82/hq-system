@@ -1,20 +1,18 @@
 'use client'
-import { Suspense, useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState, useRef, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import MessengerShell from '@/components/MessengerShell'
 import { useAuth } from '@/lib/auth-context'
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { uploadAttachment, compressImage } from '@/lib/supabase-storage'
+import { addDoc, collection, serverTimestamp, doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-import { createClient } from '@supabase/supabase-js'
-import { Send, Image, X, Calendar, Lock, Loader2 } from 'lucide-react'
+import { Send, Image, X, Calendar, Lock, Loader2, ArrowLeft } from 'lucide-react'
 
 function ComposeContent() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  )
-  const { user } = useAuth()
-  const router   = useRouter()
+  const { user }     = useAuth()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const editId       = searchParams.get('edit')
 
   const [title,       setTitle]       = useState('')
   const [body,        setBody]        = useState('')
@@ -30,19 +28,33 @@ function ComposeContent() {
     user?.role === 'HQ_CHIEF' ||
     !!user?.permissions?.canBroadcast
 
+  // 수정 모드: 기존 데이터 로드
+  useEffect(() => {
+    if (!editId) return
+    getDoc(doc(db, 'messages', editId)).then(snap => {
+      if (!snap.exists()) return
+      const d = snap.data()
+      setTitle(d.title ?? '')
+      setBody(d.body ?? '')
+      setExpiresAt(d.expiresAt ?? '')
+      setNeverDelete(d.neverDelete ?? false)
+      setImageUrls(d.imageUrls ?? [])
+    })
+  }, [editId])
+
   // 이미지 업로드
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
-    if (!files || files.length === 0) return
+    if (!files || files.length === 0 || !user) return
     setUploading(true)
     const uploaded: string[] = []
     for (const file of Array.from(files)) {
-      const ext  = file.name.split('.').pop()
-      const path = `broadcasts/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-      const { error } = await supabase.storage.from('attachments').upload(path, file)
-      if (!error) {
-        const { data } = supabase.storage.from('attachments').getPublicUrl(path)
-        uploaded.push(data.publicUrl)
+      try {
+        const compressed = file.size > 500000 ? await compressImage(file) : file
+        const { url } = await uploadAttachment(compressed, user.uid)
+        uploaded.push(url)
+      } catch (e) {
+        console.error('이미지 업로드 실패:', e)
       }
     }
     setImageUrls(prev => [...prev, ...uploaded])
@@ -57,43 +69,59 @@ function ComposeContent() {
     setSubmitting(true)
     setError('')
     try {
-      await addDoc(collection(db, 'messages'), {
-        type:        'broadcast',
-        title:       title.trim(),
-        body:        body.trim(),
-        imageUrls,
-        authorUid:   user.uid,
-        authorName:  user.name,
-        createdAt:   serverTimestamp(),
-        expiresAt:   expiresAt || null,
-        neverDelete: neverDelete,
-        status:      'open',
-      })
+      if (editId) {
+        // 수정
+        await updateDoc(doc(db, 'messages', editId), {
+          title:       title.trim(),
+          body:        body.trim(),
+          imageUrls,
+          expiresAt:   expiresAt || null,
+          neverDelete,
+          updatedAt:   serverTimestamp(),
+        })
+      } else {
+        // 신규 등록
+        await addDoc(collection(db, 'messages'), {
+          type:        'broadcast',
+          title:       title.trim(),
+          body:        body.trim(),
+          imageUrls,
+          authorUid:   user.uid,
+          authorName:  user.name,
+          createdAt:   serverTimestamp(),
+          expiresAt:   expiresAt || null,
+          neverDelete,
+          status:      'open',
+        })
+      }
       router.push('/')
     } catch (e) {
-      setError('등록 중 오류가 발생했습니다.')
+      setError('저장 중 오류가 발생했습니다.')
       setSubmitting(false)
     }
   }
 
-  if (!canBroadcast) {
-    return (
-      <div className="flex items-center justify-center h-64 text-gray-400">
-        <p className="text-sm">전달사항 등록 권한이 없습니다.</p>
-      </div>
-    )
-  }
+  if (!canBroadcast) return (
+    <div className="flex items-center justify-center h-64 text-gray-400">
+      <p className="text-sm">전달사항 등록 권한이 없습니다.</p>
+    </div>
+  )
 
   return (
     <div className="max-w-2xl mx-auto p-4 space-y-5">
+      {/* 상단 */}
       <div className="flex items-center gap-3 py-2">
         <button onClick={() => router.back()}
-          className="text-gray-400 hover:text-gray-600 text-sm">← 돌아가기</button>
-        <h1 className="text-lg font-bold text-gray-900 flex-1">전달사항 등록</h1>
+          className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors">
+          <ArrowLeft size={18}/>
+        </button>
+        <h1 className="text-lg font-bold text-gray-900 flex-1">
+          {editId ? '전달사항 수정' : '전달사항 등록'}
+        </h1>
         <button onClick={handleSubmit} disabled={submitting}
           className="flex items-center gap-2 px-5 py-2 bg-primary-600 text-white rounded-xl text-sm font-semibold hover:bg-primary-700 disabled:opacity-50 transition-colors">
           {submitting ? <Loader2 size={15} className="animate-spin"/> : <Send size={15}/>}
-          {submitting ? '등록 중...' : '등록'}
+          {submitting ? '저장 중...' : (editId ? '수정' : '등록')}
         </button>
       </div>
 
@@ -106,24 +134,18 @@ function ComposeContent() {
       {/* 제목 */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1.5">제목</label>
-        <input
-          value={title}
-          onChange={e => setTitle(e.target.value)}
+        <input value={title} onChange={e => setTitle(e.target.value)}
           placeholder="전달사항 제목을 입력하세요"
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
-        />
+          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400"/>
       </div>
 
       {/* 내용 */}
       <div>
         <label className="block text-sm font-semibold text-gray-700 mb-1.5">내용</label>
-        <textarea
-          value={body}
-          onChange={e => setBody(e.target.value)}
+        <textarea value={body} onChange={e => setBody(e.target.value)}
           placeholder="전달사항 내용을 입력하세요"
           rows={10}
-          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none leading-relaxed"
-        />
+          className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 resize-none leading-relaxed"/>
       </div>
 
       {/* 이미지 첨부 */}
@@ -140,8 +162,7 @@ function ComposeContent() {
             {imageUrls.map((url, i) => (
               <div key={i} className="relative rounded-xl overflow-hidden aspect-square border border-gray-200">
                 <img src={url} alt="" className="w-full h-full object-cover"/>
-                <button
-                  onClick={() => setImageUrls(prev => prev.filter((_, j) => j !== i))}
+                <button onClick={() => setImageUrls(prev => prev.filter((_, j) => j !== i))}
                   className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center">
                   <X size={11} className="text-white"/>
                 </button>
@@ -151,24 +172,19 @@ function ComposeContent() {
         )}
       </div>
 
-      {/* 게시기한 */}
+      {/* 게시 설정 */}
       <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
         <p className="text-sm font-semibold text-gray-700">게시 설정</p>
         <div>
           <label className="block text-xs text-gray-500 mb-1.5 flex items-center gap-1.5">
             <Calendar size={13}/> 게시기한 (선택)
           </label>
-          <input
-            type="date"
-            value={expiresAt}
+          <input type="date" value={expiresAt}
             onChange={e => setExpiresAt(e.target.value)}
             disabled={neverDelete}
             min={new Date().toISOString().split('T')[0]}
-            className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:opacity-40 disabled:bg-gray-100"
-          />
-          <p className="text-xs text-gray-400 mt-1">
-            입력 시 해당 날짜 자정에 자동 삭제됩니다
-          </p>
+            className="border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-400 disabled:opacity-40 disabled:bg-gray-100"/>
+          <p className="text-xs text-gray-400 mt-1">입력 시 해당 날짜 자정에 자동 삭제됩니다</p>
         </div>
         <div>
           <label className="flex items-center gap-2.5 cursor-pointer">
@@ -180,9 +196,7 @@ function ComposeContent() {
               <span className="text-sm text-gray-700">삭제 금지 (작성자가 직접 삭제할 때까지 유지)</span>
             </div>
           </label>
-          <p className="text-xs text-gray-400 mt-1 ml-6.5">
-            체크 시 게시기한을 설정할 수 없습니다
-          </p>
+          <p className="text-xs text-gray-400 mt-1 ml-6">체크 시 게시기한을 설정할 수 없습니다</p>
         </div>
       </div>
     </div>
