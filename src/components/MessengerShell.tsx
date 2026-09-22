@@ -22,6 +22,7 @@ import {
   UserPlus, Hash, Check, Megaphone, Bell, Edit2, Paperclip, CornerUpLeft, Loader2,
 } from 'lucide-react'
 import clsx from 'clsx'
+import { useSettings } from '@/lib/settings-context'
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: '관리자', HQ_CHIEF: '본부장', HQ_MEMBER: '본부멤버',
@@ -48,6 +49,7 @@ interface Props { children?: ReactNode; title?: string }
 
 export default function MessengerShell({ children, title }: Props) {
   const { user, loading } = useAuth()
+  const { settings } = useSettings()
   const router   = useRouter()
   const pathname = usePathname()
 
@@ -295,7 +297,7 @@ export default function MessengerShell({ children, title }: Props) {
     fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer hq-cleanup-2026' },
-      body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids: activeRoom.members.filter(m => m.uid !== user.uid).map(m => m.uid) }),
+      body: JSON.stringify({ title: `💬 ${user.name}`, body: text, url: '/', targetUids: activeRoom.members.filter(m => m.uid !== user.uid).map(m => m.uid), alertType: settings.alertType ?? 'vibrate_sound' }),
     }).catch(() => {})
     setSending(false)
     inputRef.current?.focus()
@@ -474,17 +476,17 @@ export default function MessengerShell({ children, title }: Props) {
                         setTimeout(() => el?.classList.remove('bg-yellow-100'), 1500)
                       }}
                       className={clsx(
-                        'w-full text-left rounded-t-2xl rounded-b-none px-3 py-2 mb-0 border-b-2',
+                        'w-full text-left rounded-t-2xl rounded-b-none px-3 pt-2 pb-2.5 border-l-4',
                         isMine
-                          ? 'bg-primary-500 border-primary-300'
-                          : 'bg-gray-100 border-gray-300'
+                          ? 'bg-primary-800 border-white text-white'
+                          : 'bg-gray-200 border-primary-500 text-gray-800'
                       )}>
-                      <p className={clsx('text-[10px] font-bold mb-0.5',
-                        isMine ? 'text-white/80' : 'text-primary-600')}>
+                      <p className={clsx('text-[11px] font-bold mb-0.5',
+                        isMine ? 'text-white' : 'text-primary-600')}>
                         ↩ {(msg as any).replyTo.senderName}
                       </p>
                       <p className={clsx('text-xs truncate',
-                        isMine ? 'text-white/70' : 'text-gray-600')}>
+                        isMine ? 'text-white/90' : 'text-gray-700')}>
                         {(msg as any).replyTo.body}
                       </p>
                     </button>
