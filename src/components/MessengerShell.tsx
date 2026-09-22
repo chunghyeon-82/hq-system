@@ -84,6 +84,22 @@ export default function MessengerShell({ children, title }: Props) {
   // 모바일: 채팅창 열림 여부
   const [mobileChat, setMobileChat] = useState(false)
 
+  // 안드로이드 뒤로가기 처리
+  useEffect(() => {
+    if (mobileChat) {
+      window.history.pushState({ mobileChat: true }, '')
+    }
+    const handlePopState = (e: PopStateEvent) => {
+      if (mobileChat) {
+        setMobileChat(false)
+        setActiveRoom(null)
+        setActiveBroadcast(null)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [mobileChat])
+
   const bottomRef  = useRef<HTMLDivElement>(null)
   const inputRef   = useRef<HTMLInputElement>(null)
   const commentRef = useRef<HTMLInputElement>(null)
