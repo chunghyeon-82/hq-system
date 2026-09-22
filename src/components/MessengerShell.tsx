@@ -618,11 +618,11 @@ export default function MessengerShell({ children, title }: Props) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1">
-                      <p className="text-xs font-medium truncate">{getRoomDisplayName(room)}</p>
-                      <span className="text-[9px] text-white/30 shrink-0">{formatTime(room.lastAt)}</span>
+                      <p className="text-xs font-semibold text-white truncate">{getRoomDisplayName(room)}</p>
+                      <span className="text-[9px] text-white/50 shrink-0">{formatTime(room.lastAt)}</span>
                     </div>
                     <p className={clsx('text-[10px] truncate mt-0.5',
-                      unread > 0 ? 'text-white/70 font-medium' : 'text-white/30')}>
+                      unread > 0 ? 'text-white font-medium' : 'text-white/50')}>
                       {room.lastMessage || (room.type === 'group' ? `${room.members.length}명` : '새 대화')}
                     </p>
                   </div>
