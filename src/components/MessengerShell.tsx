@@ -420,7 +420,8 @@ export default function MessengerShell({ children, title }: Props) {
   const BroadcastView = () => (
     <>
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
-        <button onClick={() => { setActiveBroadcast(null); setMobileChat(false) }} className="md:hidden p-1 text-gray-400">
+        <button onClick={() => { setActiveBroadcast(null); setMobileChat(false) }}
+          className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors">
           <ChevronRight size={20} className="rotate-180"/>
         </button>
         <div className="flex-1 min-w-0">
@@ -526,38 +527,9 @@ export default function MessengerShell({ children, title }: Props) {
       {/* 탭 내용 */}
       <div className="flex-1 overflow-y-auto">
         {leftTab === 'broadcast' && (
-          <div className="py-2">
-            {canBroadcast && (
-              <div className="px-3 pb-2">
-                <button onClick={() => router.push('/compose')}
-                  className="w-full flex items-center gap-2 px-3 py-2 bg-primary-600 hover:bg-primary-700 rounded-xl text-xs font-medium transition-colors">
-                  <Plus size={13}/> 전달사항 등록
-                </button>
-              </div>
-            )}
-            {broadcasts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-32 gap-2 text-white/30">
-                <Megaphone size={20} className="opacity-50"/>
-                <p className="text-xs">전달사항이 없습니다</p>
-              </div>
-            ) : broadcasts.map(msg => (
-              <button key={msg.id}
-                onClick={() => { setActiveBroadcast(msg); setActiveRoom(null); setMobileChat(true) }}
-                className={clsx('w-full flex items-start gap-2.5 px-3 py-2.5 transition-colors text-left border-b border-white/5',
-                  activeBroadcast?.id === msg.id ? 'bg-primary-600/20 border-l-2 border-primary-400' : 'hover:bg-white/5')}>
-                <div className="w-8 h-8 rounded-full bg-primary-800 flex items-center justify-center shrink-0 mt-0.5">
-                  <Megaphone size={13} className="text-primary-300"/>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    {msg.status === 'open' && <div className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"/>}
-                    <p className="text-xs font-medium truncate text-white/90">{msg.title}</p>
-                  </div>
-                  <p className="text-[10px] text-white/40 truncate">{msg.authorName}</p>
-                  <p className="text-[10px] text-white/30">{formatTime(msg.createdAt)}</p>
-                </div>
-              </button>
-            ))}
+          <div className="flex flex-col items-center justify-center h-32 gap-2 text-white/40 py-4">
+            <Megaphone size={24} className="opacity-50"/>
+            <p className="text-xs text-center px-4">오른쪽 화면에서<br/>전달사항을 확인하세요</p>
           </div>
         )}
 
@@ -861,7 +833,69 @@ export default function MessengerShell({ children, title }: Props) {
 
       {/* PC 오른쪽 */}
       <div className="hidden md:flex flex-1 flex-col overflow-hidden bg-gray-50">
-        {activeBroadcast ? <BroadcastView/> : activeRoom ? (
+        {leftTab === 'broadcast' && !activeBroadcast ? (
+          // 전달사항 게시판 목록
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-200 shrink-0">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">전달사항</h2>
+                <p className="text-xs text-gray-400 mt-0.5">총 {broadcasts.length}건</p>
+              </div>
+              {canBroadcast && (
+                <button onClick={() => router.push('/compose')}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-700 transition-colors">
+                  <Plus size={14}/> 등록
+                </button>
+              )}
+            </div>
+            {/* 게시판 테이블 */}
+            <div className="flex-1 overflow-y-auto">
+              {broadcasts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
+                  <Megaphone size={32} className="opacity-20"/>
+                  <p className="text-sm">등록된 전달사항이 없습니다</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+                    <tr>
+                      <th className="text-center text-xs font-medium text-gray-500 py-3 px-4 w-12">번호</th>
+                      <th className="text-left text-xs font-medium text-gray-500 py-3 px-4">제목</th>
+                      <th className="text-center text-xs font-medium text-gray-500 py-3 px-4 w-24">작성자</th>
+                      <th className="text-center text-xs font-medium text-gray-500 py-3 px-4 w-24">일자</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {broadcasts.map((msg, idx) => (
+                      <tr key={msg.id}
+                        onClick={() => { setActiveBroadcast(msg); setMobileChat(true) }}
+                        className="hover:bg-primary-50 cursor-pointer transition-colors">
+                        <td className="text-center text-sm text-gray-400 py-3 px-4">
+                          {broadcasts.length - idx}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            {msg.status === 'open' && (
+                              <span className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"/>
+                            )}
+                            <span className="text-sm font-medium text-gray-800 hover:text-primary-600">
+                              {msg.title}
+                            </span>
+                            {comments && (
+                              <span className="text-xs text-gray-400 ml-1"></span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="text-center text-sm text-gray-500 py-3 px-4">{msg.authorName}</td>
+                        <td className="text-center text-xs text-gray-400 py-3 px-4">{formatTime(msg.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        ) : activeBroadcast ? <BroadcastView/> : activeRoom ? (
           <>
             <ChatView/>
             <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
@@ -926,6 +960,47 @@ export default function MessengerShell({ children, title }: Props) {
                 </div>
               </>
             ) : <BroadcastView/>}
+          </div>
+        ) : leftTab === 'broadcast' ? (
+          // 모바일 전달사항 게시판
+          <div className="flex flex-col h-full bg-white">
+            <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200 shrink-0">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">전달사항</h2>
+                <p className="text-xs text-gray-400">총 {broadcasts.length}건</p>
+              </div>
+              {canBroadcast && (
+                <button onClick={() => router.push('/compose')}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-xs font-medium">
+                  <Plus size={12}/> 등록
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-100">
+              {broadcasts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 gap-3 text-gray-400">
+                  <Megaphone size={32} className="opacity-20"/>
+                  <p className="text-sm">등록된 전달사항이 없습니다</p>
+                </div>
+              ) : broadcasts.map((msg, idx) => (
+                <button key={msg.id}
+                  onClick={() => { setActiveBroadcast(msg); setMobileChat(true) }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
+                  <span className="text-xs text-gray-400 w-6 shrink-0">{broadcasts.length - idx}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {msg.status === 'open' && <div className="w-1.5 h-1.5 bg-red-500 rounded-full shrink-0"/>}
+                      <p className="text-sm font-medium text-gray-800 truncate">{msg.title}</p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-gray-400">{msg.authorName}</span>
+                      <span className="text-xs text-gray-300">·</span>
+                      <span className="text-xs text-gray-400">{formatTime(msg.createdAt)}</span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           // 목록 화면
