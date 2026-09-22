@@ -312,7 +312,7 @@ export default function MessengerShell({ children, title }: Props) {
           <Trash2 size={15}/>
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-gray-50">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1 bg-white">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-400">
             <MessageSquare size={28} className="opacity-20"/>
@@ -352,7 +352,7 @@ export default function MessengerShell({ children, title }: Props) {
                   </div>
                 )}
                 <div className={clsx('flex flex-col max-w-[70%]', isMine ? 'items-end' : 'items-start')}>
-                  {showName && <p className="text-xs text-gray-500 mb-1 ml-1">{msg.senderName}</p>}
+                  {showName && <p className="text-xs font-semibold text-gray-700 mb-1 ml-1">{msg.senderName}</p>}
                   <div className={clsx('px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words',
                     isMine ? 'bg-primary-600 text-white rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm shadow-sm border border-gray-100')}>
                     {msg.body}
@@ -849,7 +849,7 @@ export default function MessengerShell({ children, title }: Props) {
       <div className="flex md:hidden flex-1 flex-col overflow-hidden">
         {/* 채팅창 열린 경우 */}
         {mobileChat && (activeRoom || activeBroadcast) ? (
-          <div className="flex flex-col h-full bg-gray-50">
+          <div className="flex flex-col h-full bg-white">
             {activeRoom ? <ChatView/> : <BroadcastView/>}
           </div>
         ) : (
