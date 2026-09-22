@@ -234,13 +234,41 @@ export default function MessengerShell({ children, title }: Props) {
   const handleInvite = async () => {
     if (!user || !activeRoom || inviteUids.length === 0) return
     setInviting(true)
-    const toInvite = allUsers.filter(u => inviteUids.includes(u.uid)).map(u => ({ uid: u.uid, name: u.name, role: u.role }))
-    await inviteToChatRoom(activeRoom.id, toInvite)
-    if (activeRoom.type === 'direct') setActiveRoom(prev => prev ? { ...prev, type: 'group' } : prev)
+    const toInvite = allUsers.filter(u => inviteUids.includes(u.uid))
+      .map(u => ({ uid: u.uid, name: u.name, role: u.role }))
+
+    if (activeRoom.type === 'direct') {
+      // 1:1 채팅에서 초대 → 새 그룹방 생성 (기존 1:1 방은 유지)
+      const allMembers = [
+        ...activeRoom.members,
+        ...toInvite.filter(m => !activeRoom.members.some(am => am.uid === m.uid))
+      ]
+      const name = allMembers.map(m => m.name).join(', ')
+      const newRoomId = await createGroupRoom(user.uid, name, allMembers)
+      // 새 그룹방으로 이동 (rooms 목록 업데이트 기다림)
+      setTimeout(() => {
+        setRooms(prev => {
+          const found = prev.find(r => r.id === newRoomId)
+          if (found) setActiveRoom(found)
+          return prev
+        })
+      }, 500)
+      setActiveRoom({
+        id: newRoomId,
+        name,
+        type: 'group',
+        members: allMembers,
+        memberUids: allMembers.map(m => m.uid),
+        createdBy: user.uid,
+      })
+    } else {
+      // 그룹 채팅에 멤버 추가
+      await inviteToChatRoom(activeRoom.id, toInvite)
+    }
     setShowInvite(false)
     setInviteUids([])
     setInviting(false)
-    setTimeout(() => inputRef.current?.focus(), 200)
+    setTimeout(() => inputRef.current?.focus(), 300)
   }
 
   const handleLeaveRoom = async () => {
