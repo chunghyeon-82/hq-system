@@ -136,6 +136,10 @@ export default function MessengerShell({ children, title }: Props) {
     if (isHQ || isAdmin) {
       return listenMessagesForHQ(user.uid, !!isAdmin, msgs => {
         const bs = msgs.filter(m => m.type === 'broadcast')
+          .filter(m => {
+            const ta = (m as any).targetAudience as string[] | undefined
+            return !ta || ta.length === 0 || ta.includes('hq')
+          })
           .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime())
         setBroadcasts(bs)
         setUnreadBroadcast(bs.filter(m => !((m as any).readBy ?? []).includes(user.uid)).length)
@@ -144,6 +148,10 @@ export default function MessengerShell({ children, title }: Props) {
     if (isBiz && user.bizId) {
       return listenMessagesForBiz(user.bizId, user.uid, msgs => {
         const bs = msgs.filter(m => m.type === 'broadcast')
+          .filter(m => {
+            const ta = (m as any).targetAudience as string[] | undefined
+            return !ta || ta.length === 0 || ta.includes('biz')
+          })
           .sort((a, b) => new Date(b.createdAt as string).getTime() - new Date(a.createdAt as string).getTime())
         setBroadcasts(bs)
         setUnreadBroadcast(bs.filter(m => !((m as any).readBy ?? []).includes(user.uid)).length)
@@ -426,11 +434,23 @@ export default function MessengerShell({ children, title }: Props) {
           <p className="text-sm font-semibold text-gray-900 truncate">{activeBroadcast!.title}</p>
           <p className="text-xs text-gray-400">{activeBroadcast!.authorName} · {formatTime(activeBroadcast!.createdAt)}</p>
         </div>
-        {canBroadcast && activeBroadcast!.authorUid === user?.uid && (
-          <button onClick={() => router.push(`/messages/${activeBroadcast!.id}`)}
-            className="p-1.5 text-gray-400 hover:text-primary-600 rounded-lg hover:bg-primary-50 transition-colors">
-            <Edit2 size={15}/>
-          </button>
+        {(isAdmin || (canBroadcast && activeBroadcast!.authorUid === user?.uid)) && (
+          <>
+            <button onClick={() => router.push(`/compose?edit=${activeBroadcast!.id}`)}
+              className="p-1.5 text-gray-400 hover:text-primary-600 rounded-lg hover:bg-primary-50 transition-colors">
+              <Edit2 size={15}/>
+            </button>
+            <button onClick={async () => {
+              if (!confirm('이 전달사항을 삭제하시겠습니까?')) return
+              const { deleteDoc: dd, doc: fd } = await import('firebase/firestore')
+              const { db: fdb } = await import('@/lib/firebase')
+              await dd(fd(fdb, 'messages', activeBroadcast!.id))
+              setActiveBroadcast(null)
+            }}
+              className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+              <Trash2 size={15}/>
+            </button>
+          </>
         )}
       </div>
       <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -494,7 +514,7 @@ export default function MessengerShell({ children, title }: Props) {
   const SidebarContent = () => (
     <>
       {/* 전달사항 탭 */}
-      <button onClick={() => { setLeftTab('broadcast'); setActiveRoom(null); setActiveBroadcast(null) }}
+      <button onClick={() => { setLeftTab('broadcast'); setActiveRoom(null); setActiveBroadcast(null); router.push('/') }}
         className={clsx('w-full flex items-center gap-2.5 px-4 py-2.5 border-b border-white/10 transition-colors shrink-0',
           leftTab === 'broadcast' ? 'bg-primary-600/20 text-white' : 'text-white/60 hover:text-white hover:bg-white/5')}>
         <Megaphone size={15} className={leftTab === 'broadcast' ? 'text-primary-400' : ''}/>
