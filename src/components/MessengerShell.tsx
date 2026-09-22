@@ -19,7 +19,7 @@ import {
   ChevronDown, ChevronRight, LogOut, Users, Plus,
   MessageSquare, Send, Calendar, Search, X,
   Building2, Lock, Trash2, Settings,
-  UserPlus, Hash, Check, Megaphone, Bell, Edit2, Paperclip, CornerUpLeft, Loader2,
+  UserPlus, Hash, Check, Megaphone, Bell, Edit2, Paperclip, CornerUpLeft,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -464,28 +464,37 @@ export default function MessengerShell({ children, title }: Props) {
                 )}
                 <div className={clsx('flex flex-col max-w-[70%]', isMine ? 'items-end' : 'items-start')}>
                   {showName && <p className="text-xs font-semibold text-gray-700 mb-1 ml-1">{msg.senderName}</p>}
-                  {/* 답장 원문 */}
+                  {/* 답장 원문 - 카톡 스타일 */}
                   {(msg as any).replyTo && (
                     <button
                       onClick={() => {
                         const el = msgRefs.current.get((msg as any).replyTo.msgId)
                         el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                        el?.classList.add('bg-yellow-50')
-                        setTimeout(() => el?.classList.remove('bg-yellow-50'), 1500)
+                        el?.classList.add('bg-yellow-100')
+                        setTimeout(() => el?.classList.remove('bg-yellow-100'), 1500)
                       }}
-                      className={clsx('w-full text-left px-3 py-1.5 rounded-xl border-l-2 mb-1 max-w-full',
-                        isMine ? 'bg-primary-700 border-white/50' : 'bg-gray-100 border-primary-400')}>
-                      <p className={clsx('text-[10px] font-semibold mb-0.5', isMine ? 'text-white/70' : 'text-primary-600')}>
-                        {(msg as any).replyTo.senderName}
+                      className={clsx(
+                        'w-full text-left rounded-t-2xl rounded-b-none px-3 py-2 mb-0 border-b-2',
+                        isMine
+                          ? 'bg-primary-500 border-primary-300'
+                          : 'bg-gray-100 border-gray-300'
+                      )}>
+                      <p className={clsx('text-[10px] font-bold mb-0.5',
+                        isMine ? 'text-white/80' : 'text-primary-600')}>
+                        ↩ {(msg as any).replyTo.senderName}
                       </p>
-                      <p className={clsx('text-xs truncate', isMine ? 'text-white/60' : 'text-gray-500')}>
+                      <p className={clsx('text-xs truncate',
+                        isMine ? 'text-white/70' : 'text-gray-600')}>
                         {(msg as any).replyTo.body}
                       </p>
                     </button>
                   )}
                   {/* 메시지 버블 */}
-                  <div className={clsx('px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words',
-                    isMine ? 'bg-primary-600 text-white rounded-br-sm' : 'bg-white text-gray-800 rounded-bl-sm shadow-sm border border-gray-100')}>
+                  <div className={clsx('px-3.5 py-2.5 text-sm leading-relaxed break-words',
+                    (msg as any).replyTo ? 'rounded-b-2xl rounded-t-none' : 'rounded-2xl',
+                    isMine
+                      ? [(msg as any).replyTo ? '' : 'rounded-br-sm', 'bg-primary-600 text-white'].join(' ')
+                      : [(msg as any).replyTo ? '' : 'rounded-bl-sm', 'bg-white text-gray-800 shadow-sm border border-gray-100'].join(' '))}>
                     {(msg as any).fileType === 'image' ? (
                       <a href={(msg as any).fileUrl} target="_blank" rel="noopener noreferrer">
                         <img src={(msg as any).fileUrl} alt={(msg as any).fileName} className="max-w-[200px] rounded-lg"/>
