@@ -115,7 +115,15 @@ export default function MessengerShell({ children, title }: Props) {
     if (loading || !user) return
     const u1 = listenBusinesses(setBusinesses)
     const u2 = listenUsers(setAllUsers)
-    const u3 = listenChatRooms(user.uid, setRooms)
+    const u3 = listenChatRooms(user.uid, rooms => {
+      setRooms(rooms)
+      // activeRoom을 최신 데이터로 동기화
+      setActiveRoom(prev => {
+        if (!prev?.id) return prev
+        const updated = rooms.find(r => r.id === prev.id)
+        return updated ?? prev
+      })
+    })
     return () => { u1(); u2(); u3() }
   }, [user, loading])
 
@@ -250,6 +258,7 @@ export default function MessengerShell({ children, title }: Props) {
     setShowInvite(false)
     setInviteUids([])
     setInviting(false)
+    setTimeout(() => inputRef.current?.focus(), 200)
   }
 
   const handleLeaveRoom = async () => {
@@ -298,10 +307,14 @@ export default function MessengerShell({ children, title }: Props) {
           {activeRoom!.type === 'group' ? <Hash size={16}/> : getRoomInitial(activeRoom!)}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-gray-900">{getRoomDisplayName(activeRoom!)}</p>
+          <p className="text-sm font-semibold text-gray-900">
+            {activeRoom!.type === 'group'
+              ? activeRoom!.members.map(m => m.name).join(', ')
+              : getRoomDisplayName(activeRoom!)}
+          </p>
           <p className="text-xs text-gray-400">
             {activeRoom!.type === 'group'
-              ? `${activeRoom!.members.length}명`
+              ? `그룹채팅 ${activeRoom!.members.length}명`
               : ROLE_LABEL[activeRoom!.members.find(m => m.uid !== user?.uid)?.role ?? '']}
           </p>
         </div>
@@ -335,7 +348,7 @@ export default function MessengerShell({ children, title }: Props) {
             const cd = (msg.createdAt  as {toDate?:()=>Date})?.toDate?.()
             return pd && cd && pd.toDateString() !== cd.toDateString()
           })()
-          const showName = !isMine && activeRoom!.type === 'group' && msg.senderUid !== prev?.senderUid
+          const showName = !isMine && activeRoom!.type === 'group'
           return (
             <div key={msg.id}>
               {showDate && (
@@ -371,6 +384,7 @@ export default function MessengerShell({ children, title }: Props) {
           <input ref={inputRef} value={chatInput} onChange={e => setChatInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
             placeholder="메시지 입력..."
+            autoComplete="off"
             className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
           <button onClick={handleSend} disabled={!chatInput.trim() || sending}
             className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
