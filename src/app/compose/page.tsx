@@ -8,12 +8,11 @@ import { db } from '@/lib/firebase'
 import { createClient } from '@supabase/supabase-js'
 import { Send, Image, X, Calendar, Lock, Loader2 } from 'lucide-react'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
 function ComposeContent() {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
   const { user } = useAuth()
   const router   = useRouter()
 
