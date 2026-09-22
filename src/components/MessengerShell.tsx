@@ -487,24 +487,6 @@ export default function MessengerShell({ children, title }: Props) {
           <div ref={bottomRef}/>
         </div>
       </div>
-      {canComment ? (
-        <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
-          <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
-            <input ref={commentRef} value={commentInput} onChange={e => setCommentInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
-              placeholder="댓글 입력..."
-              className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
-            <button onClick={handleSendComment} disabled={!commentInput.trim() || sendingComment}
-              className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
-              <Send size={14}/>
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0 text-center">
-          <p className="text-xs text-gray-400">댓글 권한이 없습니다</p>
-        </div>
-      )}
     </>
   )
 
@@ -922,7 +904,30 @@ export default function MessengerShell({ children, title }: Props) {
               )}
             </div>
           </div>
-        ) : activeBroadcast ? <BroadcastView/> : activeRoom ? (
+        ) : activeBroadcast ? (
+          <>
+            <BroadcastView/>
+            {canComment ? (
+              <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
+                <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
+                  <input ref={commentRef} value={commentInput} onChange={e => setCommentInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
+                    placeholder="댓글 입력..."
+                    autoComplete="off"
+                    className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
+                  <button onClick={handleSendComment} disabled={!commentInput.trim() || sendingComment}
+                    className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
+                    <Send size={14}/>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0 text-center">
+                <p className="text-xs text-gray-400">댓글 권한이 없습니다</p>
+              </div>
+            )}
+          </>
+        ) : activeRoom ? (
           <>
             <ChatView/>
             <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
@@ -966,7 +971,30 @@ export default function MessengerShell({ children, title }: Props) {
         {/* 채팅창 열린 경우 */}
         {mobileChat && (activeRoom || activeBroadcast) ? (
           <div className="flex flex-col h-full bg-white">
-            {activeRoom ? (
+            {activeBroadcast ? (
+              <>
+                <BroadcastView/>
+                {canComment ? (
+                  <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
+                    <div className="flex items-center gap-2 bg-gray-100 rounded-2xl px-4 py-2">
+                      <input ref={commentRef} value={commentInput} onChange={e => setCommentInput(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
+                        placeholder="댓글 입력..."
+                        autoComplete="off"
+                        className="flex-1 bg-transparent text-sm text-gray-800 placeholder-gray-400 focus:outline-none"/>
+                      <button onClick={handleSendComment} disabled={!commentInput.trim() || sendingComment}
+                        className="w-8 h-8 flex items-center justify-center bg-primary-600 text-white rounded-full hover:bg-primary-800 disabled:opacity-40 transition-colors shrink-0">
+                        <Send size={14}/>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0 text-center">
+                    <p className="text-xs text-gray-400">댓글 권한이 없습니다</p>
+                  </div>
+                )}
+              </>
+            ) : activeRoom ? (
               <>
                 <ChatView/>
                 <div className="px-4 py-3 bg-white border-t border-gray-200 shrink-0">
